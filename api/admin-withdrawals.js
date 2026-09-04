@@ -7,17 +7,23 @@ function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
 
-  if (A.length !== B.length) return false;
+  if (A.length !== B.length) {
+    return false;
+  }
 
   return timingSafeEqual(A, B);
 }
 
 function verifySession(token, secret) {
-  if (!token || !secret) return null;
+  if (!token || !secret) {
+    return null;
+  }
 
   const parts = token.split(".");
 
-  if (parts.length !== 2) return null;
+  if (parts.length !== 2) {
+    return null;
+  }
 
   const [data, signature] = parts;
 
@@ -43,27 +49,27 @@ function verifySession(token, secret) {
     }
 
     return payload;
-
   } catch {
     return null;
   }
 }
 
-function getSession(req) {
+function getSessionToken(req) {
   const cookies = req.headers.cookie || "";
 
   const cookie = cookies
     .split(";")
     .map(item => item.trim())
-    .find(item => item.startsWith(COOKIE_NAME + "="));
+    .find(item => item.startsWith(`${COOKIE_NAME}=`));
 
-  if (!cookie) return null;
+  if (!cookie) {
+    return null;
+  }
 
   return cookie.substring(COOKIE_NAME.length + 1);
 }
 
 export default async function handler(req, res) {
-
   if (req.method !== "GET") {
     return res.status(405).json({
       success: false,
@@ -72,7 +78,7 @@ export default async function handler(req, res) {
   }
 
   const secret = process.env.ADMIN_SESSION_SECRET;
-  const databaseUrl = process.env["URL do banco de dados"];
+  const databaseUrl = process.env.URL_DO_BANCO_DE_DADOS;
 
   if (!secret || !databaseUrl) {
     return res.status(500).json({
@@ -81,12 +87,13 @@ export default async function handler(req, res) {
     });
   }
 
-  const token = getSession(req);
+  const token = getSessionToken(req);
   const session = verifySession(token, secret);
 
   if (!session) {
     return res.status(401).json({
       success: false,
+      authenticated: false,
       message: "Sessão inválida ou expirada."
     });
   }
@@ -99,7 +106,6 @@ export default async function handler(req, res) {
   });
 
   try {
-
     await client.connect();
 
     const result = await client.query(`
@@ -117,11 +123,9 @@ export default async function handler(req, res) {
         w.processed_at,
         w.completed_at,
         w.updated_at
-      FROM withdrawals w
+      FROM withdrawals AS w
       ORDER BY w.created_at DESC
     `);
-
-    await client.end();
 
     return res.status(200).json({
       success: true,
@@ -129,16 +133,16 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-
-    try {
-      await client.end();
-    } catch {}
-
     console.error("Erro ao carregar levantamentos:", error);
 
     return res.status(500).json({
       success: false,
       message: "Erro ao consultar os levantamentos."
     });
+
+  } finally {
+    try {
+      await client.end();
+    } catch {}
   }
 }
