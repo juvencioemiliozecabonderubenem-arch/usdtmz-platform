@@ -1,12 +1,7 @@
-<!DOCTYPE html>
-<html lang="pt">
+<!DOCTYPE html><html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>USDTMZ — Painel Admin</title>
-
-  <style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">  <title>USDTMZ — Painel Admin</title>  <style>
     * {
       box-sizing: border-box;
     }
@@ -101,70 +96,70 @@
       font-weight: bold;
     }
 
+    .management-button {
+      width: 100%;
+      padding: 14px;
+      border: 0;
+      border-radius: 9px;
+      background: #111827;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .management-button:hover {
+      opacity: 0.9;
+    }
+
     #error {
       text-align: center;
       color: #dc2626;
       margin-top: 30px;
     }
-  </style>
-</head>
-
-<body>
-
-<header>
-  <h1>USDTMZ Admin</h1>
-
-  <button class="logout" onclick="logout()">
+  </style></head><body><header>
+  <h1>USDTMZ Admin</h1>  <button class="logout" onclick="logout()">
     Sair
   </button>
-</header>
-
-<main>
-
-  <div class="welcome">
+</header><main>  <div class="welcome">
     <h2>Painel Administrativo</h2>
     <p>Bem-vindo ao centro de controle da USDTMZ.</p>
-  </div>
+  </div>  <div class="cards"><div class="card">
+  <span>Utilizadores</span>
+  <strong>0</strong>
+</div>
 
-  <div class="cards">
+<div class="card">
+  <span>Pedidos pendentes</span>
+  <strong>0</strong>
+</div>
 
-    <div class="card">
-      <span>Utilizadores</span>
-      <strong>0</strong>
-    </div>
+<div class="card">
+  <span>Transações</span>
+  <strong>0</strong>
+</div>
 
-    <div class="card">
-      <span>Pedidos pendentes</span>
-      <strong>0</strong>
-    </div>
+<div class="card">
+  <span>Status</span>
+  <strong class="status">Online</strong>
+</div>
 
-    <div class="card">
-      <span>Transações</span>
-      <strong>0</strong>
-    </div>
+  </div>  <div class="section">
+    <h3>Gestão</h3><button
+  class="management-button"
+  onclick="window.location.href='/admin-retiradas.html'"
+>
+  💰 Levantamentos
+</button>
 
-    <div class="card">
-      <span>Status</span>
-      <strong class="status">Online</strong>
-    </div>
+  </div>  <div class="section">
+    <h3>Centro administrativo</h3><p>
+  O painel está protegido e pronto para receber
+  os módulos de utilizadores, pagamentos,
+  saldos e levantamentos.
+</p>
 
-  </div>
-
-  <div class="section">
-    <h3>Centro administrativo</h3>
-
-    <p>
-      O painel está protegido e pronto para receber
-      os módulos de utilizadores, pagamentos,
-      saldos e levantamentos.
-    </p>
-  </div>
-
-  <div id="error"></div>
-
-</main>
-
-<script>
+  </div>  <div id="error"></div></main><script>
 async function checkSession() {
   try {
 
@@ -186,12 +181,10 @@ async function checkSession() {
   }
 }
 
-async function logout() {
+function logout() {
   window.location.href = "/admin-login.html";
 }
 
 checkSession();
-</script>
-
-</body>
+</script></body>
 </html>
