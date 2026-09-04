@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>USDTMZ — Levantamentos</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f7fb;
+      color: #111827;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 18px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 21px;
+    }
+
+    .back-button {
+      border: 0;
+      padding: 9px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      background: white;
+      color: #111827;
+      font-weight: bold;
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    .page-title {
+      margin-bottom: 25px;
+    }
+
+    .page-title h2 {
+      margin: 0 0 7px;
+    }
+
+    .page-title p {
+      margin: 0;
+      color: #6b7280;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 18px;
+      margin-bottom: 25px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 14px;
+      box-shadow: 0 5px 20px rgba(0,0,0,.06);
+    }
+
+    .card span {
+      display: block;
+      color: #6b7280;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .card strong {
+      font-size: 27px;
+    }
+
+    .pending {
+      color: #d97706;
+    }
+
+    .approved {
+      color: #059669;
+    }
+
+    .rejected {
+      color: #dc2626;
+    }
+
+    .table-box {
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 5px 20px rgba(0,0,0,.06);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .table-header h3 {
+      margin: 0;
+    }
+
+    .empty {
+      padding: 50px 20px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    .empty-icon {
+      font-size: 45px;
+      margin-bottom: 12px;
+    }
+
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 850px;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f9fafb;
+      color: #374151;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .status-pending {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-authorized {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .status-processing {
+      background: #e0e7ff;
+      color: #4338ca;
+    }
+
+    .status-completed {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-rejected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .info-box {
+      margin-top: 25px;
+      padding: 18px;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 5px 20px rgba(0,0,0,.06);
+      color: #4b5563;
+      line-height: 1.6;
+    }
+
+    #error {
+      margin-top: 20px;
+      text-align: center;
+      color: #dc2626;
+    }
+
+    .loading {
+      padding: 35px;
+      text-align: center;
+      color: #6b7280;
+    }
+
+    @media (max-width: 600px) {
+      header {
+        padding: 15px;
+      }
+
+      header h1 {
+        font-size: 18px;
+      }
+
+      .back-button {
+        padding: 8px 11px;
+        font-size: 13px;
+      }
+
+      main {
+        margin: 20px auto;
+        padding: 0 12px;
+      }
+
+      .page-title h2 {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+
+  <h1>USDTMZ Admin</h1>
+
+  <button
+    class="back-button"
+    onclick="window.location.href='/admin.html'"
+  >
+    ← Voltar
+  </button>
+
+</header>
+
+<main>
+
+  <div class="page-title">
+    <h2>💰 Levantamentos</h2>
+    <p>Gestão dos pedidos de levantamento dos utilizadores.</p>
+  </div>
+
+  <div class="cards">
+
+    <div class="card">
+      <span>Pendentes</span>
+      <strong class="pending" id="pendingCount">0</strong>
+    </div>
+
+    <div class="card">
+      <span>Autorizados</span>
+      <strong class="approved" id="authorizedCount">0</strong>
+    </div>
+
+    <div class="card">
+      <span>Processando</span>
+      <strong id="processingCount">0</strong>
+    </div>
+
+    <div class="card">
+      <span>Concluídos</span>
+      <strong class="approved" id="completedCount">0</strong>
+    </div>
+
+    <div class="card">
+      <span>Rejeitados</span>
+      <strong class="rejected" id="rejectedCount">0</strong>
+    </div>
+
+  </div>
+
+  <div class="table-box">
+
+    <div class="table-header">
+      <h3>Pedidos de levantamento</h3>
+    </div>
+
+    <div id="loading" class="loading">
+      A carregar levantamentos...
+    </div>
+
+    <div id="empty" class="empty" style="display:none;">
+
+      <div class="empty-icon">💰</div>
+
+      <strong>Nenhum levantamento encontrado</strong>
+
+      <p>
+        Quando um utilizador solicitar um levantamento,
+        o pedido aparecerá aqui.
+      </p>
+
+    </div>
+
+    <div id="tableContainer" class="table-wrapper" style="display:none;">
+
+      <table>
+
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Utilizador</th>
+            <th>Valor USDT</th>
+            <th>Endereço TRON</th>
+            <th>Data</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+
+        <tbody id="withdrawalsTable">
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+  <div class="info-box">
+
+    <strong>Segurança</strong>
+
+    <p>
+      Esta área é exclusiva para administradores.
+      Os levantamentos reais serão processados somente
+      depois de implementarmos a autorização segura,
+      validação do endereço TRON e processamento da
+      transferência USDT TRC-20.
+    </p>
+
+  </div>
+
+  <div id="error"></div>
+
+</main>
+
+<script>
+
+async function checkSession() {
+
+  try {
+
+    const response = await fetch("/api/admin-session", {
+      method: "GET",
+      credentials: "include"
+    });
+
+    if (!response.ok) {
+
+      window.location.href = "/admin-login.html";
+
+      return false;
+    }
+
+    return true;
+
+  } catch (error) {
+
+    document.getElementById("error").textContent =
+      "Não foi possível verificar a sessão.";
+
+    return false;
+  }
+}
+
+
+function formatStatus(status) {
+
+  const value = String(status || "").toUpperCase();
+
+  const labels = {
+    PENDING: "Pendente",
+    AUTHORIZED: "Autorizado",
+    PROCESSING: "Processando",
+    COMPLETED: "Concluído",
+    REJECTED: "Rejeitado"
+  };
+
+  const classes = {
+    PENDING: "status-pending",
+    AUTHORIZED: "status-authorized",
+    PROCESSING: "status-processing",
+    COMPLETED: "status-completed",
+    REJECTED: "status-rejected"
+  };
+
+  return `
+    <span class="status ${classes[value] || "status-pending"}">
+      ${labels[value] || value || "Desconhecido"}
+    </span>
+  `;
+}
+
+
+function formatDate(date) {
+
+  if (!date) {
+    return "-";
+  }
+
+  try {
+
+    return new Date(date).toLocaleString("pt-PT");
+
+  } catch {
+
+    return date;
+  }
+}
+
+
+function maskAddress(address) {
+
+  if (!address) {
+    return "-";
+  }
+
+  const value = String(address);
+
+  if (value.length <= 14) {
+    return value;
+  }
+
+  return value.substring(0, 7) +
+    "..." +
+    value.substring(value.length - 7);
+}
+
+
+function renderWithdrawals(withdrawals) {
+
+  const table = document.getElementById("withdrawalsTable");
+
+  const empty = document.getElementById("empty");
+
+  const tableContainer =
+    document.getElementById("tableContainer");
+
+  document.getElementById("loading").style.display = "none";
+
+  if (!Array.isArray(withdrawals) || withdrawals.length === 0) {
+
+    empty.style.display = "block";
+
+    tableContainer.style.display = "none";
+
+    return;
+  }
+
+  empty.style.display = "none";
+
+  tableContainer.style.display = "block";
+
+  table.innerHTML = "";
+
+  withdrawals.forEach(item => {
+
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+
+      <td>${item.id ?? "-"}</td>
+
+      <td>${item.user_id ?? "-"}</td>
+
+      <td>${item.amount ?? "-"} USDT</td>
+
+      <td title="${item.wallet_address ?? ""}">
+        ${maskAddress(item.wallet_address)}
+      </td>
+
+      <td>${formatDate(item.created_at)}</td>
+
+      <td>${formatStatus(item.status)}</td>
+
+    `;
+
+    table.appendChild(row);
+
+  });
+
+  updateCounters(withdrawals);
+}
+
+
+function updateCounters(withdrawals) {
+
+  const count = status =>
+    withdrawals.filter(
+      item =>
+        String(item.status || "").toUpperCase() === status
+    ).length;
+
+  document.getElementById("pendingCount").textContent =
+    count("PENDING");
+
+  document.getElementById("authorizedCount").textContent =
+    count("AUTHORIZED");
+
+  document.getElementById("processingCount").textContent =
+    count("PROCESSING");
+
+  document.getElementById("completedCount").textContent =
+    count("COMPLETED");
+
+  document.getElementById("rejectedCount").textContent =
+    count("REJECTED");
+}
+
+
+async function loadWithdrawals() {
+
+  const authenticated = await checkSession();
+
+  if (!authenticated) {
+    return;
+  }
+
+  /*
+    A API de levantamentos será ligada
+    numa próxima etapa.
+
+    Por enquanto mostramos a área administrativa
+    sem inventar dados reais.
+  */
+
+  renderWithdrawals([]);
+
+}
+
+
+loadWithdrawals();
+
+</script>
+
+</body>
+</html>
