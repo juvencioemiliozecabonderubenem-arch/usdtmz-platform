@@ -3,55 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>Comprar USDT - USDTMZ</title>
 
   <style>
     * {
       box-sizing: border-box;
-      font-family: Arial, sans-serif;
     }
 
     body {
       margin: 0;
-      background: #f4f6f8;
+      font-family: Arial, sans-serif;
+      background: #f4f7fb;
       color: #111827;
-      padding: 20px;
     }
 
     .container {
-      width: 100%;
       max-width: 500px;
-      margin: 30px auto;
+      margin: 40px auto;
+      padding: 20px;
     }
 
     .card {
       background: white;
+      border-radius: 16px;
       padding: 25px;
-      border-radius: 14px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-    }
-
-    .back {
-      display: inline-block;
-      margin-bottom: 20px;
-      color: #2563eb;
-      text-decoration: none;
-      font-weight: bold;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
     }
 
     h1 {
-      margin: 0 0 8px;
+      margin-top: 0;
+      text-align: center;
     }
 
-    .subtitle {
-      color: #6b7280;
+    .rate {
+      text-align: center;
+      color: #555;
       margin-bottom: 25px;
     }
 
     label {
       display: block;
-      margin-bottom: 7px;
+      margin-bottom: 8px;
       font-weight: bold;
     }
 
@@ -60,255 +52,263 @@
       width: 100%;
       padding: 13px;
       border: 1px solid #d1d5db;
-      border-radius: 8px;
+      border-radius: 10px;
       font-size: 16px;
       margin-bottom: 18px;
     }
 
-    .rate {
-      background: #f3f4f6;
-      padding: 14px;
-      border-radius: 8px;
-      margin-bottom: 18px;
-      font-size: 14px;
-      color: #4b5563;
-    }
-
     .receive {
-      background: #ecfdf5;
-      padding: 18px;
+      background: #f3f4f6;
+      padding: 16px;
       border-radius: 10px;
       margin-bottom: 20px;
     }
 
-    .receive-title {
-      color: #047857;
-      font-size: 14px;
-      margin-bottom: 6px;
-    }
-
-    .receive-value {
-      font-size: 25px;
-      font-weight: bold;
-      color: #065f46;
+    .receive strong {
+      font-size: 22px;
     }
 
     button {
       width: 100%;
       padding: 14px;
       border: none;
-      border-radius: 8px;
-      background: #16a34a;
+      border-radius: 10px;
+      background: #111827;
       color: white;
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
 
-    button:hover {
-      background: #15803d;
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     .message {
-      margin-top: 15px;
+      margin-top: 18px;
+      padding: 12px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .success {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .back {
+      display: block;
       text-align: center;
-      font-size: 14px;
+      margin-top: 18px;
+      color: #111827;
+      text-decoration: none;
     }
   </style>
 </head>
 
 <body>
 
-<div class="container">
+  <div class="container">
+    <div class="card">
 
-  <a
-    href="/dashboard.html"
-    class="back"
-  >
-    ← Voltar para o dashboard
-  </a>
+      <h1>Comprar USDT</h1>
 
-  <div class="card">
-
-    <h1>
-      Comprar USDT
-    </h1>
-
-    <div class="subtitle">
-      Escolha o valor que deseja comprar.
-    </div>
-
-    <label for="amount">
-      Valor em MZN
-    </label>
-
-    <input
-      id="amount"
-      type="number"
-      min="10"
-      step="0.01"
-      placeholder="Ex: 1000"
-    >
-
-    <div class="rate">
-      Taxa de conversão:
-      <strong>1 USDT = 65 MZN</strong>
-    </div>
-
-    <div class="receive">
-
-      <div class="receive-title">
-        Você receberá aproximadamente
+      <div class="rate">
+        Taxa atual: <strong>1 USDT = 65 MZN</strong>
       </div>
 
-      <div class="receive-value">
+      <label for="amount">Valor em MZN</label>
 
-        <span id="usdtAmount">
-          0
-        </span>
+      <input
+        type="number"
+        id="amount"
+        min="10"
+        step="0.01"
+        placeholder="Ex.: 1000"
+      >
 
-        USDT
-
+      <div class="receive">
+        Você receberá:
+        <br>
+        <strong id="usdtAmount">0 USDT</strong>
       </div>
 
+      <label for="paymentMethod">
+        Método de pagamento
+      </label>
+
+      <select id="paymentMethod">
+        <option value="mpesa">M-Pesa</option>
+        <option value="emola">e-Mola</option>
+      </select>
+
+      <button id="continueButton">
+        Continuar
+      </button>
+
+      <div id="message" class="message"></div>
+
+      <a href="/dashboard.html" class="back">
+        ← Voltar para o painel
+      </a>
+
     </div>
-
-    <label for="method">
-      Método de pagamento
-    </label>
-
-    <select id="method">
-
-      <option value="">
-        Selecionar método
-      </option>
-
-      <option value="mpesa">
-        M-Pesa
-      </option>
-
-      <option value="emola">
-        e-Mola
-      </option>
-
-    </select>
-
-    <button
-      id="continueButton"
-      type="button"
-      onclick="continuePurchase()"
-    >
-      Continuar
-    </button>
-
-    <div
-      id="message"
-      class="message"
-    ></div>
-
   </div>
 
-</div>
+  <script>
+    const RATE = 65;
 
-<script>
+    const amountInput =
+      document.getElementById("amount");
 
-  const amountInput =
-    document.getElementById(
-      "amount"
-    );
+    const usdtAmount =
+      document.getElementById("usdtAmount");
 
-  const usdtAmount =
-    document.getElementById(
-      "usdtAmount"
-    );
+    const paymentMethod =
+      document.getElementById("paymentMethod");
 
-  const method =
-    document.getElementById(
-      "method"
-    );
+    const continueButton =
+      document.getElementById("continueButton");
 
-  const message =
-    document.getElementById(
-      "message"
-    );
+    const message =
+      document.getElementById("message");
 
-  const RATE = 65;
+    amountInput.addEventListener(
+      "input",
+      function () {
 
-  amountInput.addEventListener(
-    "input",
-    function() {
+        const mzn =
+          Number(amountInput.value);
 
-      const mzn =
-        Number(
-          amountInput.value
-        );
+        if (
+          !Number.isFinite(mzn) ||
+          mzn <= 0
+        ) {
+          usdtAmount.textContent =
+            "0 USDT";
+          return;
+        }
 
-      if (
-        !Number.isFinite(mzn) ||
-        mzn <= 0
-      ) {
+        const usdt =
+          mzn / RATE;
 
         usdtAmount.textContent =
-          "0";
-
-        return;
+          usdt
+            .toFixed(4)
+            .replace(/\.?0+$/, "") +
+          " USDT";
       }
+    );
 
-      const usdt =
-        mzn / RATE;
-
-      usdtAmount.textContent =
-        usdt
-          .toFixed(4)
-          .replace(/\.?0+$/, "");
-
-    }
-  );
-
-  function continuePurchase() {
-
-    message.textContent = "";
-    message.style.color = "";
-
-    const mzn =
-      Number(
-        amountInput.value
-      );
-
-    if (
-      !Number.isFinite(mzn) ||
-      mzn < 10
+    function showMessage(
+      text,
+      type
     ) {
-
-      message.textContent =
-        "Digite um valor mínimo de 10 MZN.";
-
-      message.style.color =
-        "#dc2626";
-
-      return;
+      message.textContent = text;
+      message.className =
+        "message " + type;
+      message.style.display =
+        "block";
     }
 
-    if (!method.value) {
+    continueButton.addEventListener(
+      "click",
+      async function () {
 
-      message.textContent =
-        "Selecione o método de pagamento.";
+        message.style.display =
+          "none";
 
-      message.style.color =
-        "#dc2626";
+        const mzn =
+          Number(amountInput.value);
 
-      return;
-    }
+        if (
+          !Number.isFinite(mzn) ||
+          mzn < 10
+        ) {
+          showMessage(
+            "O valor mínimo é 10 MZN.",
+            "error"
+          );
+          return;
+        }
 
-    message.textContent =
-      "Tela de pagamento será criada no próximo passo.";
+        continueButton.disabled =
+          true;
 
-    message.style.color =
-      "#16a34a";
+        continueButton.textContent =
+          "A criar ordem...";
 
-  }
+        try {
 
-</script>
+          const response =
+            await fetch(
+              "/api/criar-compra",
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type":
+                    "application/json"
+                },
+
+                credentials: "include",
+
+                body: JSON.stringify({
+                  amount_mzn: mzn,
+                  payment_method:
+                    paymentMethod.value
+                })
+              }
+            );
+
+          const data =
+            await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              data.message ||
+              "Não foi possível criar a compra."
+            );
+          }
+
+          showMessage(
+            "Ordem criada com sucesso! Referência: " +
+            data.purchase.payment_reference,
+            "success"
+          );
+
+          console.log(
+            "Compra criada:",
+            data.purchase
+          );
+
+        } catch (error) {
+
+          console.error(error);
+
+          showMessage(
+            error.message ||
+            "Ocorreu um erro ao criar a compra.",
+            "error"
+          );
+
+        } finally {
+
+          continueButton.disabled =
+            false;
+
+          continueButton.textContent =
+            "Continuar";
+        }
+      }
+    );
+  </script>
 
 </body>
 </html>
