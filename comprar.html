@@ -128,7 +128,6 @@
     ← Voltar para o dashboard
   </a>
 
-
   <div class="card">
 
     <h1>
@@ -138,7 +137,6 @@
     <div class="subtitle">
       Escolha o valor que deseja comprar.
     </div>
-
 
     <label for="amount">
       Valor em MZN
@@ -152,12 +150,10 @@
       placeholder="Ex: 1000"
     >
 
-
     <div class="rate">
       Taxa de conversão:
       <strong>1 USDT = 65 MZN</strong>
     </div>
-
 
     <div class="receive">
 
@@ -176,7 +172,6 @@
       </div>
 
     </div>
-
 
     <label for="method">
       Método de pagamento
@@ -198,7 +193,6 @@
 
     </select>
 
-
     <button
       id="continueButton"
       type="button"
@@ -206,7 +200,6 @@
     >
       Continuar
     </button>
-
 
     <div
       id="message"
@@ -216,7 +209,6 @@
   </div>
 
 </div>
-
 
 <script>
 
@@ -240,9 +232,7 @@
       "message"
     );
 
-
   const RATE = 65;
-
 
   amountInput.addEventListener(
     "input",
@@ -269,24 +259,21 @@
 
       usdtAmount.textContent =
         usdt
-          .toFixed(8)
+          .toFixed(4)
           .replace(/\.?0+$/, "");
 
     }
   );
-
 
   function continuePurchase() {
 
     message.textContent = "";
     message.style.color = "";
 
-
     const mzn =
       Number(
         amountInput.value
       );
-
 
     if (
       !Number.isFinite(mzn) ||
@@ -302,7 +289,6 @@
       return;
     }
 
-
     if (!method.value) {
 
       message.textContent =
@@ -313,7 +299,6 @@
 
       return;
     }
-
 
     message.textContent =
       "Tela de pagamento será criada no próximo passo.";
