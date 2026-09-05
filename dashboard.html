@@ -144,6 +144,12 @@
       font-size: 14px;
     }
 
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
+      color: #6b7280;
+    }
+
     @media (max-width: 600px) {
 
       .actions {
@@ -179,96 +185,192 @@
 </header>
 
 
-<main>
+<main id="mainContent">
 
-  <div class="welcome">
-
-    <h1>
-      Olá, <span id="userName">Cliente</span> 👋
-    </h1>
-
-    <p>
-      Bem-vindo à sua conta USDTMZ.
-    </p>
-
-  </div>
-
-
-  <div class="balance-card">
-
-    <div class="balance-title">
-      Saldo disponível
-    </div>
-
-    <div class="balance">
-
-      <span id="balance">
-        0
-      </span>
-
-      <span class="currency">
-        USDT
-      </span>
-
-    </div>
-
-  </div>
-
-
-  <div class="actions">
-
-    <button
-      class="action buy"
-      onclick="buyUsdt()"
-    >
-
-      <h2>
-        Comprar USDT
-      </h2>
-
-      <p>
-        Comprar USDT usando M-Pesa,
-        e-Mola ou outro método disponível.
-      </p>
-
-    </button>
-
-
-    <button
-      class="action withdraw"
-      onclick="withdrawUsdt()"
-    >
-
-      <h2>
-        Retirar USDT
-      </h2>
-
-      <p>
-        Enviar USDT para uma carteira
-        TRON (TRC-20).
-      </p>
-
-    </button>
-
-  </div>
-
-
-  <div class="history">
-
-    <h2>
-      Histórico
-    </h2>
-
-    <div class="empty">
-      Ainda não existem transações.
-    </div>
-
+  <div class="loading">
+    A carregar a sua conta...
   </div>
 
 </main>
 
 
 <script>
+
+  const mainContent =
+    document.getElementById(
+      "mainContent"
+    );
+
+
+  function formatUsdtBalance(value) {
+
+    const number = Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+      return "0";
+    }
+
+    if (number === 0) {
+      return "0";
+    }
+
+    return number
+      .toFixed(8)
+      .replace(/\.?0+$/, "");
+  }
+
+
+  async function loadDashboard() {
+
+    try {
+
+      const response =
+        await fetch(
+          "/api/user-session",
+          {
+            method: "GET",
+            credentials: "include"
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.authenticated
+      ) {
+
+        window.location.href =
+          "/login.html";
+
+        return;
+      }
+
+
+      const user =
+        data.user;
+
+
+      mainContent.innerHTML = `
+
+        <div class="welcome">
+
+          <h1>
+            Olá, ${escapeHtml(user.name)} 👋
+          </h1>
+
+          <p>
+            Bem-vindo à sua conta USDTMZ.
+          </p>
+
+        </div>
+
+
+        <div class="balance-card">
+
+          <div class="balance-title">
+            Saldo disponível
+          </div>
+
+          <div class="balance">
+
+            <span>
+              ${formatUsdtBalance(
+                user.usdt_balance
+              )}
+            </span>
+
+            <span class="currency">
+              USDT
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div class="actions">
+
+          <button
+            class="action buy"
+            onclick="buyUsdt()"
+          >
+
+            <h2>
+              Comprar USDT
+            </h2>
+
+            <p>
+              Comprar USDT usando M-Pesa,
+              e-Mola ou outro método disponível.
+            </p>
+
+          </button>
+
+
+          <button
+            class="action withdraw"
+            onclick="withdrawUsdt()"
+          >
+
+            <h2>
+              Retirar USDT
+            </h2>
+
+            <p>
+              Enviar USDT para uma carteira
+              TRON (TRC-20).
+            </p>
+
+          </button>
+
+        </div>
+
+
+        <div class="history">
+
+          <h2>
+            Histórico
+          </h2>
+
+          <div class="empty">
+            Ainda não existem transações.
+          </div>
+
+        </div>
+
+      `;
+
+    } catch (error) {
+
+      console.error(
+        "Erro ao carregar dashboard:",
+        error
+      );
+
+      window.location.href =
+        "/login.html";
+
+    }
+
+  }
+
+
+  function escapeHtml(value) {
+
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  }
+
 
   function buyUsdt() {
 
@@ -295,6 +397,9 @@
     );
 
   }
+
+
+  loadDashboard();
 
 </script>
 
