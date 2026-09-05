@@ -162,7 +162,7 @@
     .users-table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 700px;
+      min-width: 820px;
     }
 
     .users-table th,
@@ -176,6 +176,10 @@
     .users-table th {
       background: #f9fafb;
       color: #4b5563;
+    }
+
+    .balance-usdt {
+      font-weight: bold;
     }
 
     .status-active {
@@ -220,28 +224,48 @@
 <body>
 
 <header>
-  <h1>USDTMZ Admin</h1>
 
-  <button class="logout" onclick="logout()">
+  <h1>
+    USDTMZ Admin
+  </h1>
+
+  <button
+    class="logout"
+    onclick="logout()"
+  >
     Sair
   </button>
+
 </header>
 
 <div class="container">
 
   <!-- CARTEIRA -->
+
   <div class="wallet">
 
-    <h2>💰 Carteira USDTMZ</h2>
+    <h2>
+      💰 Carteira USDTMZ
+    </h2>
 
     <div class="wallet-address">
-      <strong>Endereço TRON:</strong><br>
-      <span id="walletAddress">Carregando...</span>
+
+      <strong>
+        Endereço TRON:
+      </strong>
+
+      <br>
+
+      <span id="walletAddress">
+        Carregando...
+      </span>
+
     </div>
 
     <div class="balances">
 
       <div class="balance">
+
         <div class="balance-title">
           💵 Saldo USDT
         </div>
@@ -249,44 +273,62 @@
         <div class="balance-value">
           $<span id="usdtBalance">...</span>
         </div>
+
       </div>
 
       <div class="balance">
+
         <div class="balance-title">
           ⚡ Saldo TRX
         </div>
 
         <div class="balance-value">
-          <span id="trxBalance">...</span> TRX
+          <span id="trxBalance">...</span>
+          TRX
         </div>
+
       </div>
 
     </div>
 
-    <button class="refresh" onclick="loadWalletBalance()">
+    <button
+      class="refresh"
+      onclick="loadWalletBalance()"
+    >
       🔄 Atualizar saldo
     </button>
 
-    <div class="status" id="walletStatus">
+    <div
+      class="status"
+      id="walletStatus"
+    >
       Consultando carteira...
     </div>
 
   </div>
 
+
   <!-- ESTATÍSTICAS -->
+
   <div class="cards">
 
     <div class="card">
+
       <div class="card-title">
         Utilizadores
       </div>
 
-      <div class="card-value" id="usersCount">
+      <div
+        class="card-value"
+        id="usersCount"
+      >
         0
       </div>
+
     </div>
 
     <div class="card">
+
       <div class="card-title">
         Pedidos pendentes
       </div>
@@ -294,9 +336,11 @@
       <div class="card-value">
         0
       </div>
+
     </div>
 
     <div class="card">
+
       <div class="card-title">
         Transações
       </div>
@@ -304,9 +348,11 @@
       <div class="card-value">
         0
       </div>
+
     </div>
 
     <div class="card">
+
       <div class="card-title">
         Status
       </div>
@@ -314,18 +360,27 @@
       <div class="card-value">
         Online
       </div>
+
     </div>
 
   </div>
 
+
   <!-- UTILIZADORES -->
+
   <div class="users-section">
 
-    <h2>👤 Utilizadores</h2>
+    <h2>
+      👤 Utilizadores
+    </h2>
 
     <div class="users-count">
+
       Total de utilizadores:
-      <strong id="usersTotal">0</strong>
+      <strong id="usersTotal">
+        0
+      </strong>
+
     </div>
 
     <div class="users-table-container">
@@ -333,22 +388,39 @@
       <table class="users-table">
 
         <thead>
+
           <tr>
+
             <th>ID</th>
+
             <th>Nome</th>
+
             <th>Email</th>
+
             <th>Telefone</th>
+
+            <th>Saldo USDT</th>
+
             <th>Estado</th>
+
             <th>Data</th>
+
           </tr>
+
         </thead>
 
         <tbody id="usersTableBody">
 
           <tr>
-            <td colspan="6" class="empty">
+
+            <td
+              colspan="7"
+              class="empty"
+            >
               Carregando utilizadores...
+
             </td>
+
           </tr>
 
         </tbody>
@@ -357,11 +429,15 @@
 
     </div>
 
-    <div class="status" id="usersStatus">
+    <div
+      class="status"
+      id="usersStatus"
+    >
       Consultando utilizadores...
     </div>
 
   </div>
+
 
   <!-- LEVANTAMENTOS -->
 
@@ -374,29 +450,38 @@
 
 </div>
 
+
 <script>
 
   async function checkSession() {
 
     try {
 
-      const response = await fetch(
-        "/api/admin-session",
-        {
-          credentials: "include",
-          cache: "no-store"
-        }
-      );
+      const response =
+        await fetch(
+          "/api/admin-session",
+          {
+            credentials: "include",
+            cache: "no-store"
+          }
+        );
 
       if (!response.ok) {
-        window.location.href = "/admin-login.html";
+
+        window.location.href =
+          "/admin-login.html";
+
         return false;
       }
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!data.authenticated) {
-        window.location.href = "/admin-login.html";
+
+        window.location.href =
+          "/admin-login.html";
+
         return false;
       }
 
@@ -404,7 +489,9 @@
 
     } catch (error) {
 
-      window.location.href = "/admin-login.html";
+      window.location.href =
+        "/admin-login.html";
+
       return false;
     }
   }
@@ -413,34 +500,47 @@
   async function loadWalletBalance() {
 
     const status =
-      document.getElementById("walletStatus");
+      document.getElementById(
+        "walletStatus"
+      );
 
     const usdt =
-      document.getElementById("usdtBalance");
+      document.getElementById(
+        "usdtBalance"
+      );
 
     const trx =
-      document.getElementById("trxBalance");
+      document.getElementById(
+        "trxBalance"
+      );
 
     const address =
-      document.getElementById("walletAddress");
+      document.getElementById(
+        "walletAddress"
+      );
 
     status.textContent =
       "Consultando saldo...";
 
     try {
 
-      const response = await fetch(
-        "/api/tron-wallet-balance",
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store"
-        }
-      );
+      const response =
+        await fetch(
+          "/api/tron-wallet-balance",
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store"
+          }
+        );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
 
         throw new Error(
           data.message ||
@@ -452,20 +552,25 @@
         data.wallet_address;
 
       usdt.textContent =
-        Number(data.balances.USDT || 0)
-          .toFixed(2);
+        Number(
+          data.balances.USDT || 0
+        ).toFixed(2);
 
       trx.textContent =
-        Number(data.balances.TRX || 0)
-          .toFixed(2);
+        Number(
+          data.balances.TRX || 0
+        ).toFixed(2);
 
       status.textContent =
         "✓ Saldo atualizado com sucesso.";
 
     } catch (error) {
 
-      usdt.textContent = "—";
-      trx.textContent = "—";
+      usdt.textContent =
+        "—";
+
+      trx.textContent =
+        "—";
 
       status.textContent =
         "Erro: " + error.message;
@@ -473,37 +578,69 @@
   }
 
 
+  function formatUsdtBalance(value) {
+
+    const number =
+      Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+      return "0";
+    }
+
+    if (number === 0) {
+      return "0";
+    }
+
+    return number
+      .toFixed(8)
+      .replace(/\.?0+$/, "");
+  }
+
+
   async function loadUsers() {
 
     const tableBody =
-      document.getElementById("usersTableBody");
+      document.getElementById(
+        "usersTableBody"
+      );
 
     const usersCount =
-      document.getElementById("usersCount");
+      document.getElementById(
+        "usersCount"
+      );
 
     const usersTotal =
-      document.getElementById("usersTotal");
+      document.getElementById(
+        "usersTotal"
+      );
 
     const status =
-      document.getElementById("usersStatus");
+      document.getElementById(
+        "usersStatus"
+      );
 
     status.textContent =
       "Consultando utilizadores...";
 
     try {
 
-      const response = await fetch(
-        "/api/admin-users",
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store"
-        }
-      );
+      const response =
+        await fetch(
+          "/api/admin-users",
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store"
+          }
+        );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
 
         throw new Error(
           data.message ||
@@ -522,11 +659,15 @@
       usersTotal.textContent =
         users.length;
 
+
       if (users.length === 0) {
 
         tableBody.innerHTML = `
           <tr>
-            <td colspan="6" class="empty">
+            <td
+              colspan="7"
+              class="empty"
+            >
               Nenhum utilizador cadastrado.
             </td>
           </tr>
@@ -538,56 +679,97 @@
         return;
       }
 
+
       tableBody.innerHTML =
         users.map(user => {
 
           const userStatus =
-            String(user.status || "")
-              .toUpperCase();
+            String(
+              user.status || ""
+            ).toUpperCase();
 
-          let statusClass =
-            "";
+          let statusClass = "";
 
-          if (userStatus === "ACTIVE") {
+          if (
+            userStatus === "ACTIVE"
+          ) {
             statusClass =
               "status-active";
           }
 
-          if (userStatus === "BLOCKED") {
+          if (
+            userStatus === "BLOCKED"
+          ) {
             statusClass =
               "status-blocked";
           }
 
-          if (userStatus === "SUSPENDED") {
+          if (
+            userStatus === "SUSPENDED"
+          ) {
             statusClass =
               "status-suspended";
           }
 
+
           const date =
             user.created_at
-              ? new Date(user.created_at)
-                  .toLocaleDateString("pt-PT")
+              ? new Date(
+                  user.created_at
+                ).toLocaleDateString(
+                  "pt-PT"
+                )
               : "—";
+
+
+          const usdtBalance =
+            formatUsdtBalance(
+              user.usdt_balance
+            );
+
 
           return `
             <tr>
-              <td>${escapeHtml(user.id)}</td>
 
-              <td>${escapeHtml(user.name)}</td>
-
-              <td>${escapeHtml(user.email)}</td>
-
-              <td>${escapeHtml(user.phone || "—")}</td>
-
-              <td class="${statusClass}">
-                ${escapeHtml(user.status || "—")}
+              <td>
+                ${escapeHtml(user.id)}
               </td>
 
-              <td>${escapeHtml(date)}</td>
+              <td>
+                ${escapeHtml(user.name)}
+              </td>
+
+              <td>
+                ${escapeHtml(user.email)}
+              </td>
+
+              <td>
+                ${escapeHtml(
+                  user.phone || "—"
+                )}
+              </td>
+
+              <td class="balance-usdt">
+                ${escapeHtml(
+                  usdtBalance
+                )} USDT
+              </td>
+
+              <td class="${statusClass}">
+                ${escapeHtml(
+                  user.status || "—"
+                )}
+              </td>
+
+              <td>
+                ${escapeHtml(date)}
+              </td>
+
             </tr>
           `;
 
         }).join("");
+
 
       status.textContent =
         "✓ Utilizadores atualizados com sucesso.";
@@ -596,7 +778,10 @@
 
       tableBody.innerHTML = `
         <tr>
-          <td colspan="6" class="error">
+          <td
+            colspan="7"
+            class="error"
+          >
             Erro ao carregar utilizadores.
           </td>
         </tr>
@@ -617,11 +802,26 @@
   function escapeHtml(value) {
 
     return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(
+        /&/g,
+        "&amp;"
+      )
+      .replace(
+        /</g,
+        "&lt;"
+      )
+      .replace(
+        />/g,
+        "&gt;"
+      )
+      .replace(
+        /"/g,
+        "&quot;"
+      )
+      .replace(
+        /'/g,
+        "&#039;"
+      );
   }
 
 
