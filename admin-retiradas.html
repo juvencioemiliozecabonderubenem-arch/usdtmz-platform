@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>USDTMZ — Levantamentos</title>
+  <title>USDTMZ Admin - Levantamentos</title>
 
   <style>
     * {
@@ -14,8 +14,8 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #f4f7fb;
-      color: #111827;
+      background: #f4f6f8;
+      color: #1f2937;
     }
 
     header {
@@ -23,57 +23,52 @@
       color: white;
       padding: 18px 20px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: 15px;
+      justify-content: space-between;
     }
 
     header h1 {
       margin: 0;
-      font-size: 21px;
+      font-size: 20px;
     }
 
-    .back-button {
-      border: 0;
-      padding: 9px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      background: white;
-      color: #111827;
-      font-weight: bold;
+    header a {
+      color: white;
+      text-decoration: none;
+      font-size: 14px;
     }
 
     main {
       max-width: 1200px;
       margin: 30px auto;
-      padding: 0 20px;
+      padding: 0 16px;
     }
 
-    .page-title {
+    .title {
       margin-bottom: 25px;
     }
 
-    .page-title h2 {
-      margin: 0 0 7px;
+    .title h2 {
+      margin: 0 0 8px;
     }
 
-    .page-title p {
+    .title p {
       margin: 0;
       color: #6b7280;
     }
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 18px;
-      margin-bottom: 25px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 15px;
+      margin-bottom: 30px;
     }
 
     .card {
       background: white;
       padding: 20px;
-      border-radius: 14px;
-      box-shadow: 0 5px 20px rgba(0,0,0,.06);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
 
     .card span {
@@ -84,62 +79,26 @@
     }
 
     .card strong {
-      font-size: 27px;
-    }
-
-    .pending {
-      color: #d97706;
-    }
-
-    .approved {
-      color: #059669;
-    }
-
-    .rejected {
-      color: #dc2626;
+      font-size: 28px;
     }
 
     .table-box {
       background: white;
-      border-radius: 14px;
-      box-shadow: 0 5px 20px rgba(0,0,0,.06);
-      overflow: hidden;
-    }
-
-    .table-header {
+      border-radius: 12px;
       padding: 20px;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    .table-header h3 {
-      margin: 0;
-    }
-
-    .empty {
-      padding: 50px 20px;
-      text-align: center;
-      color: #6b7280;
-    }
-
-    .empty-icon {
-      font-size: 45px;
-      margin-bottom: 12px;
-    }
-
-    .table-wrapper {
-      width: 100%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       overflow-x: auto;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 850px;
+      min-width: 900px;
     }
 
     th,
     td {
-      padding: 14px 16px;
+      padding: 13px 10px;
       text-align: left;
       border-bottom: 1px solid #e5e7eb;
       font-size: 14px;
@@ -147,7 +106,7 @@
 
     th {
       background: #f9fafb;
-      color: #374151;
+      font-weight: bold;
     }
 
     .status {
@@ -158,74 +117,66 @@
       font-weight: bold;
     }
 
-    .status-pending {
+    .PENDING {
       background: #fef3c7;
       color: #92400e;
     }
 
-    .status-authorized {
+    .AUTHORIZED {
       background: #dbeafe;
-      color: #1d4ed8;
+      color: #1e40af;
     }
 
-    .status-processing {
+    .PROCESSING {
       background: #e0e7ff;
-      color: #4338ca;
+      color: #3730a3;
     }
 
-    .status-completed {
+    .COMPLETED {
       background: #d1fae5;
       color: #065f46;
     }
 
-    .status-rejected {
+    .REJECTED,
+    .FAILED {
       background: #fee2e2;
       color: #991b1b;
     }
 
-    .info-box {
-      margin-top: 25px;
-      padding: 18px;
-      background: #fff;
-      border-radius: 14px;
-      box-shadow: 0 5px 20px rgba(0,0,0,.06);
-      color: #4b5563;
-      line-height: 1.6;
-    }
-
-    #error {
-      margin-top: 20px;
+    .empty {
       text-align: center;
-      color: #dc2626;
-    }
-
-    .loading {
-      padding: 35px;
-      text-align: center;
+      padding: 50px 20px;
       color: #6b7280;
     }
 
-    @media (max-width: 600px) {
-      header {
-        padding: 15px;
-      }
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
 
-      header h1 {
-        font-size: 18px;
-      }
+    .security {
+      margin-top: 25px;
+      background: #fff7ed;
+      border-left: 4px solid #f97316;
+      padding: 16px;
+      border-radius: 8px;
+      color: #7c2d12;
+      font-size: 14px;
+    }
 
-      .back-button {
-        padding: 8px 11px;
-        font-size: 13px;
+    @media (max-width: 900px) {
+      .cards {
+        grid-template-columns: repeat(2, 1fr);
       }
+    }
 
-      main {
-        margin: 20px auto;
-        padding: 0 12px;
-      }
-
-      .page-title h2 {
-        font-size: 22px;
+    @media (max-width: 500px) {
+      .cards {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -234,35 +185,29 @@
 <body>
 
 <header>
-
   <h1>USDTMZ Admin</h1>
-
-  <button
-    class="back-button"
-    onclick="window.location.href='/admin.html'"
-  >
-    ← Voltar
-  </button>
-
+  <a href="/admin.html">← Voltar</a>
 </header>
 
 <main>
 
-  <div class="page-title">
+  <div class="title">
     <h2>💰 Levantamentos</h2>
     <p>Gestão dos pedidos de levantamento dos utilizadores.</p>
   </div>
+
+  <div id="errorBox" class="error"></div>
 
   <div class="cards">
 
     <div class="card">
       <span>Pendentes</span>
-      <strong class="pending" id="pendingCount">0</strong>
+      <strong id="pendingCount">0</strong>
     </div>
 
     <div class="card">
       <span>Autorizados</span>
-      <strong class="approved" id="authorizedCount">0</strong>
+      <strong id="authorizedCount">0</strong>
     </div>
 
     <div class="card">
@@ -272,78 +217,56 @@
 
     <div class="card">
       <span>Concluídos</span>
-      <strong class="approved" id="completedCount">0</strong>
+      <strong id="completedCount">0</strong>
     </div>
 
     <div class="card">
       <span>Rejeitados</span>
-      <strong class="rejected" id="rejectedCount">0</strong>
+      <strong id="rejectedCount">0</strong>
     </div>
 
   </div>
 
   <div class="table-box">
 
-    <div class="table-header">
-      <h3>Pedidos de levantamento</h3>
-    </div>
+    <h3>Pedidos de levantamento</h3>
 
-    <div id="loading" class="loading">
-      A carregar levantamentos...
-    </div>
+    <table>
 
-    <div id="empty" class="empty" style="display:none;">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Utilizador</th>
+          <th>Valor USDT</th>
+          <th>Endereço TRON</th>
+          <th>Rede</th>
+          <th>Data</th>
+          <th>Status</th>
+        </tr>
+      </thead>
 
-      <div class="empty-icon">💰</div>
+      <tbody id="withdrawalsTable">
+      </tbody>
 
+    </table>
+
+    <div id="emptyMessage" class="empty">
+      💰<br><br>
       <strong>Nenhum levantamento encontrado</strong>
-
-      <p>
-        Quando um utilizador solicitar um levantamento,
-        o pedido aparecerá aqui.
-      </p>
-
-    </div>
-
-    <div id="tableContainer" class="table-wrapper" style="display:none;">
-
-      <table>
-
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Utilizador</th>
-            <th>Valor USDT</th>
-            <th>Endereço TRON</th>
-            <th>Data</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-
-        <tbody id="withdrawalsTable">
-        </tbody>
-
-      </table>
-
+      <br><br>
+      Quando um utilizador solicitar um levantamento,
+      o pedido aparecerá aqui.
     </div>
 
   </div>
 
-  <div class="info-box">
-
-    <strong>Segurança</strong>
-
-    <p>
-      Esta área é exclusiva para administradores.
-      Os levantamentos reais serão processados somente
-      depois de implementarmos a autorização segura,
-      validação do endereço TRON e processamento da
-      transferência USDT TRC-20.
-    </p>
-
+  <div class="security">
+    <strong>Segurança</strong><br><br>
+    Esta área é exclusiva para administradores.
+    Os levantamentos reais serão processados somente depois
+    de implementarmos a autorização segura, validação do endereço
+    TRON e processamento da transferência USDT TRC-20.
   </div>
-
-  <div id="error"></div>
 
 </main>
 
@@ -359,9 +282,14 @@ async function checkSession() {
     });
 
     if (!response.ok) {
-
       window.location.href = "/admin-login.html";
+      return false;
+    }
 
+    const data = await response.json();
+
+    if (!data.authenticated) {
+      window.location.href = "/admin-login.html";
       return false;
     }
 
@@ -369,39 +297,11 @@ async function checkSession() {
 
   } catch (error) {
 
-    document.getElementById("error").textContent =
-      "Não foi possível verificar a sessão.";
-
+    window.location.href = "/admin-login.html";
     return false;
+
   }
-}
 
-
-function formatStatus(status) {
-
-  const value = String(status || "").toUpperCase();
-
-  const labels = {
-    PENDING: "Pendente",
-    AUTHORIZED: "Autorizado",
-    PROCESSING: "Processando",
-    COMPLETED: "Concluído",
-    REJECTED: "Rejeitado"
-  };
-
-  const classes = {
-    PENDING: "status-pending",
-    AUTHORIZED: "status-authorized",
-    PROCESSING: "status-processing",
-    COMPLETED: "status-completed",
-    REJECTED: "status-rejected"
-  };
-
-  return `
-    <span class="status ${classes[value] || "status-pending"}">
-      ${labels[value] || value || "Desconhecido"}
-    </span>
-  `;
 }
 
 
@@ -411,117 +311,149 @@ function formatDate(date) {
     return "-";
   }
 
-  try {
+  return new Date(date).toLocaleString("pt-PT");
 
-    return new Date(date).toLocaleString("pt-PT");
-
-  } catch {
-
-    return date;
-  }
 }
 
 
-function maskAddress(address) {
+function updateCounters(withdrawals) {
 
-  if (!address) {
-    return "-";
-  }
+  const counts = {
+    PENDING: 0,
+    AUTHORIZED: 0,
+    PROCESSING: 0,
+    COMPLETED: 0,
+    REJECTED: 0
+  };
 
-  const value = String(address);
+  withdrawals.forEach(withdrawal => {
 
-  if (value.length <= 14) {
-    return value;
-  }
+    if (counts[withdrawal.status] !== undefined) {
+      counts[withdrawal.status]++;
+    }
 
-  return value.substring(0, 7) +
-    "..." +
-    value.substring(value.length - 7);
+  });
+
+  document.getElementById("pendingCount").textContent =
+    counts.PENDING;
+
+  document.getElementById("authorizedCount").textContent =
+    counts.AUTHORIZED;
+
+  document.getElementById("processingCount").textContent =
+    counts.PROCESSING;
+
+  document.getElementById("completedCount").textContent =
+    counts.COMPLETED;
+
+  document.getElementById("rejectedCount").textContent =
+    counts.REJECTED;
+
 }
 
 
 function renderWithdrawals(withdrawals) {
 
   const table = document.getElementById("withdrawalsTable");
-
-  const empty = document.getElementById("empty");
-
-  const tableContainer =
-    document.getElementById("tableContainer");
-
-  document.getElementById("loading").style.display = "none";
-
-  if (!Array.isArray(withdrawals) || withdrawals.length === 0) {
-
-    empty.style.display = "block";
-
-    tableContainer.style.display = "none";
-
-    return;
-  }
-
-  empty.style.display = "none";
-
-  tableContainer.style.display = "block";
+  const emptyMessage = document.getElementById("emptyMessage");
 
   table.innerHTML = "";
 
-  withdrawals.forEach(item => {
+  updateCounters(withdrawals);
+
+  if (!withdrawals.length) {
+
+    emptyMessage.style.display = "block";
+    return;
+
+  }
+
+  emptyMessage.style.display = "none";
+
+  withdrawals.forEach(withdrawal => {
 
     const row = document.createElement("tr");
 
+    const status = withdrawal.status || "PENDING";
+
     row.innerHTML = `
+      <td>${withdrawal.id}</td>
 
-      <td>${item.id ?? "-"}</td>
-
-      <td>${item.user_id ?? "-"}</td>
-
-      <td>${item.amount ?? "-"} USDT</td>
-
-      <td title="${item.wallet_address ?? ""}">
-        ${maskAddress(item.wallet_address)}
+      <td>
+        ${withdrawal.user_id}
       </td>
 
-      <td>${formatDate(item.created_at)}</td>
+      <td>
+        ${withdrawal.amount_usdt} USDT
+      </td>
 
-      <td>${formatStatus(item.status)}</td>
+      <td>
+        ${withdrawal.wallet_address}
+      </td>
 
+      <td>
+        ${withdrawal.network || "TRC20"}
+      </td>
+
+      <td>
+        ${formatDate(withdrawal.created_at)}
+      </td>
+
+      <td>
+        <span class="status ${status}">
+          ${status}
+        </span>
+      </td>
     `;
 
     table.appendChild(row);
 
   });
 
-  updateCounters(withdrawals);
-}
-
-
-function updateCounters(withdrawals) {
-
-  const count = status =>
-    withdrawals.filter(
-      item =>
-        String(item.status || "").toUpperCase() === status
-    ).length;
-
-  document.getElementById("pendingCount").textContent =
-    count("PENDING");
-
-  document.getElementById("authorizedCount").textContent =
-    count("AUTHORIZED");
-
-  document.getElementById("processingCount").textContent =
-    count("PROCESSING");
-
-  document.getElementById("completedCount").textContent =
-    count("COMPLETED");
-
-  document.getElementById("rejectedCount").textContent =
-    count("REJECTED");
 }
 
 
 async function loadWithdrawals() {
+
+  const errorBox = document.getElementById("errorBox");
+
+  errorBox.style.display = "none";
+
+  try {
+
+    const response = await fetch("/api/admin-withdrawals", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store"
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+
+      throw new Error(
+        data.message || "Não foi possível carregar os levantamentos."
+      );
+
+    }
+
+    renderWithdrawals(data.withdrawals || []);
+
+  } catch (error) {
+
+    console.error(error);
+
+    errorBox.textContent =
+      "Erro ao carregar os levantamentos: " + error.message;
+
+    errorBox.style.display = "block";
+
+  }
+
+}
+
+
+async function start() {
 
   const authenticated = await checkSession();
 
@@ -529,20 +461,12 @@ async function loadWithdrawals() {
     return;
   }
 
-  /*
-    A API de levantamentos será ligada
-    numa próxima etapa.
-
-    Por enquanto mostramos a área administrativa
-    sem inventar dados reais.
-  */
-
-  renderWithdrawals([]);
+  await loadWithdrawals();
 
 }
 
 
-loadWithdrawals();
+start();
 
 </script>
 
