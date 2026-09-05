@@ -79,8 +79,6 @@ export default async function handler(req, res) {
 
   const secret = process.env.ADMIN_SESSION_SECRET;
 
-  // Aceita a variável que criamos e também variáveis padrão
-  // que podem ter sido criadas pela integração Neon/Vercel.
   const databaseUrl =
     process.env.URL_DO_BANCO_DE_DADOS ||
     process.env.POSTGRES_URL ||
@@ -88,17 +86,10 @@ export default async function handler(req, res) {
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.DATABASE_URL_UNPOOLED;
 
-  if (!secret) {
+  if (!secret || !databaseUrl) {
     return res.status(500).json({
       success: false,
-      message: "Configuração do administrador incompleta."
-    });
-  }
-
-  if (!databaseUrl) {
-    return res.status(500).json({
-      success: false,
-      message: "Configuração do banco de dados incompleta."
+      message: "Configuração do servidor incompleta."
     });
   }
 
@@ -118,21 +109,23 @@ export default async function handler(req, res) {
 
     const withdrawals = await sql`
       SELECT
-        w.id,
-        w.user_id,
-        w.amount_usdt,
-        w.wallet_address,
-        w.network,
-        w.status,
-        w.transaction_hash,
-        w.rejection_reason,
-        w.created_at,
-        w.authorized_at,
-        w.processed_at,
-        w.completed_at,
-        w.updated_at
-      FROM withdrawals AS w
-      ORDER BY w.created_at DESC
+        id,
+        withdrawal_id,
+        user_id,
+        amount,
+        asset,
+        network,
+        destination_address,
+        status,
+        tx_hash,
+        created_at,
+        updated_at,
+        order_id,
+        amount_requested,
+        withdrawal_fee,
+        amount_to_send
+      FROM withdrawals
+      ORDER BY created_at DESC
     `;
 
     return res.status(200).json({
