@@ -186,7 +186,7 @@
         </div>
 
         <div class="balance-value">
-          <span id="usdtBalance">...</span> USDT
+          $<span id="usdtBalance">...</span>
         </div>
       </div>
 
@@ -347,7 +347,7 @@
 
       usdt.textContent =
         Number(data.balances.USDT || 0)
-          .toFixed(6);
+          .toFixed(2);
 
       trx.textContent =
         Number(data.balances.TRX || 0)
