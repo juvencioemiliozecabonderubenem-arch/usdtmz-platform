@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Comprar USDT - USDTMZ</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f4f6f8;
+      color: #111827;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 500px;
+      margin: 30px auto;
+    }
+
+    .card {
+      background: white;
+      padding: 25px;
+      border-radius: 14px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    }
+
+    .back {
+      display: inline-block;
+      margin-bottom: 20px;
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-weight: bold;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 18px;
+    }
+
+    .rate {
+      background: #f3f4f6;
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+      font-size: 14px;
+      color: #4b5563;
+    }
+
+    .receive {
+      background: #ecfdf5;
+      padding: 18px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .receive-title {
+      color: #047857;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .receive-value {
+      font-size: 25px;
+      font-weight: bold;
+      color: #065f46;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      background: #16a34a;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #15803d;
+    }
+
+    .message {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <a
+    href="/dashboard.html"
+    class="back"
+  >
+    ← Voltar para o dashboard
+  </a>
+
+
+  <div class="card">
+
+    <h1>
+      Comprar USDT
+    </h1>
+
+    <div class="subtitle">
+      Escolha o valor que deseja comprar.
+    </div>
+
+
+    <label for="amount">
+      Valor em MZN
+    </label>
+
+    <input
+      id="amount"
+      type="number"
+      min="10"
+      step="0.01"
+      placeholder="Ex: 1000"
+    >
+
+
+    <div class="rate">
+      Taxa de conversão:
+      <strong>1 USDT = 65 MZN</strong>
+    </div>
+
+
+    <div class="receive">
+
+      <div class="receive-title">
+        Você receberá aproximadamente
+      </div>
+
+      <div class="receive-value">
+
+        <span id="usdtAmount">
+          0
+        </span>
+
+        USDT
+
+      </div>
+
+    </div>
+
+
+    <label for="method">
+      Método de pagamento
+    </label>
+
+    <select id="method">
+
+      <option value="">
+        Selecionar método
+      </option>
+
+      <option value="mpesa">
+        M-Pesa
+      </option>
+
+      <option value="emola">
+        e-Mola
+      </option>
+
+    </select>
+
+
+    <button
+      id="continueButton"
+      type="button"
+      onclick="continuePurchase()"
+    >
+      Continuar
+    </button>
+
+
+    <div
+      id="message"
+      class="message"
+    ></div>
+
+  </div>
+
+</div>
+
+
+<script>
+
+  const amountInput =
+    document.getElementById(
+      "amount"
+    );
+
+  const usdtAmount =
+    document.getElementById(
+      "usdtAmount"
+    );
+
+  const method =
+    document.getElementById(
+      "method"
+    );
+
+  const message =
+    document.getElementById(
+      "message"
+    );
+
+
+  const RATE = 65;
+
+
+  amountInput.addEventListener(
+    "input",
+    function() {
+
+      const mzn =
+        Number(
+          amountInput.value
+        );
+
+      if (
+        !Number.isFinite(mzn) ||
+        mzn <= 0
+      ) {
+
+        usdtAmount.textContent =
+          "0";
+
+        return;
+      }
+
+      const usdt =
+        mzn / RATE;
+
+      usdtAmount.textContent =
+        usdt
+          .toFixed(8)
+          .replace(/\.?0+$/, "");
+
+    }
+  );
+
+
+  function continuePurchase() {
+
+    message.textContent = "";
+    message.style.color = "";
+
+
+    const mzn =
+      Number(
+        amountInput.value
+      );
+
+
+    if (
+      !Number.isFinite(mzn) ||
+      mzn < 10
+    ) {
+
+      message.textContent =
+        "Digite um valor mínimo de 10 MZN.";
+
+      message.style.color =
+        "#dc2626";
+
+      return;
+    }
+
+
+    if (!method.value) {
+
+      message.textContent =
+        "Selecione o método de pagamento.";
+
+      message.style.color =
+        "#dc2626";
+
+      return;
+    }
+
+
+    message.textContent =
+      "Tela de pagamento será criada no próximo passo.";
+
+    message.style.color =
+      "#16a34a";
+
+  }
+
+</script>
+
+</body>
+</html>
