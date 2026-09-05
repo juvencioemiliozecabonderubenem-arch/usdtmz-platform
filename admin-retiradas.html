@@ -184,6 +184,11 @@
       color: white;
     }
 
+    .complete {
+      background: #059669;
+      color: white;
+    }
+
     .no-action {
       color: #6b7280;
       font-size: 12px;
@@ -214,6 +219,7 @@
 <body>
 
 <header>
+
   <h1>USDTMZ Admin — Levantamentos</h1>
 
   <button
@@ -222,11 +228,13 @@
   >
     ← Voltar
   </button>
+
 </header>
 
 <div class="container">
 
   <div class="top">
+
     <h2>Pedidos de Levantamento</h2>
 
     <button
@@ -235,6 +243,7 @@
     >
       🔄 Atualizar
     </button>
+
   </div>
 
   <div class="cards">
@@ -271,6 +280,7 @@
     <table>
 
       <thead>
+
         <tr>
           <th>ID</th>
           <th>Utilizador</th>
@@ -282,6 +292,7 @@
           <th>TX Hash</th>
           <th>Ações</th>
         </tr>
+
       </thead>
 
       <tbody id="withdrawalsBody">
@@ -316,17 +327,21 @@ async function verificarSessao() {
     );
 
     if (!response.ok) {
-      window.location.href = "/admin-login.html";
+
+      window.location.href =
+        "/admin-login.html";
+
       return false;
     }
 
     return true;
 
-  } catch (error) {
+  } catch {
 
-    window.location.href = "/admin-login.html";
+    window.location.href =
+      "/admin-login.html";
+
     return false;
-
   }
 }
 
@@ -344,27 +359,45 @@ function statusTexto(status) {
 
   const s = normalizarStatus(status);
 
-  if (s === "PENDING" || s === "PENDENTE") {
+  if (
+    s === "PENDING" ||
+    s === "PENDENTE"
+  ) {
     return "Pendente";
   }
 
-  if (s === "AUTHORIZED" || s === "AUTORIZADO") {
+  if (
+    s === "AUTHORIZED" ||
+    s === "AUTORIZADO"
+  ) {
     return "Autorizado";
   }
 
-  if (s === "PROCESSING" || s === "PROCESSANDO") {
+  if (
+    s === "PROCESSING" ||
+    s === "PROCESSANDO"
+  ) {
     return "Processando";
   }
 
-  if (s === "COMPLETED" || s === "CONCLUIDO") {
+  if (
+    s === "COMPLETED" ||
+    s === "CONCLUIDO"
+  ) {
     return "Concluído";
   }
 
-  if (s === "REJECTED" || s === "REJEITADO") {
+  if (
+    s === "REJECTED" ||
+    s === "REJEITADO"
+  ) {
     return "Rejeitado";
   }
 
-  if (s === "FAILED" || s === "FALHOU") {
+  if (
+    s === "FAILED" ||
+    s === "FALHOU"
+  ) {
     return "Falhou";
   }
 
@@ -376,27 +409,45 @@ function statusClasse(status) {
 
   const s = normalizarStatus(status);
 
-  if (s === "PENDING" || s === "PENDENTE") {
+  if (
+    s === "PENDING" ||
+    s === "PENDENTE"
+  ) {
     return "pendente";
   }
 
-  if (s === "AUTHORIZED" || s === "AUTORIZADO") {
+  if (
+    s === "AUTHORIZED" ||
+    s === "AUTORIZADO"
+  ) {
     return "autorizado";
   }
 
-  if (s === "PROCESSING" || s === "PROCESSANDO") {
+  if (
+    s === "PROCESSING" ||
+    s === "PROCESSANDO"
+  ) {
     return "processando";
   }
 
-  if (s === "COMPLETED" || s === "CONCLUIDO") {
+  if (
+    s === "COMPLETED" ||
+    s === "CONCLUIDO"
+  ) {
     return "concluido";
   }
 
-  if (s === "REJECTED" || s === "REJEITADO") {
+  if (
+    s === "REJECTED" ||
+    s === "REJEITADO"
+  ) {
     return "rejeitado";
   }
 
-  if (s === "FAILED" || s === "FALHOU") {
+  if (
+    s === "FAILED" ||
+    s === "FALHOU"
+  ) {
     return "falhou";
   }
 
@@ -421,7 +472,6 @@ function formatarData(data) {
     return data;
 
   }
-
 }
 
 
@@ -440,7 +490,9 @@ function escaparHTML(valor) {
 async function carregarLevantamentos() {
 
   const body =
-    document.getElementById("withdrawalsBody");
+    document.getElementById(
+      "withdrawalsBody"
+    );
 
   body.innerHTML = `
     <tr>
@@ -469,7 +521,8 @@ async function carregarLevantamentos() {
       return;
     }
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     if (!response.ok || !data.success) {
 
@@ -500,9 +553,10 @@ async function carregarLevantamentos() {
       return;
     }
 
-    body.innerHTML = withdrawals
-      .map(criarLinha)
-      .join("");
+    body.innerHTML =
+      withdrawals
+        .map(criarLinha)
+        .join("");
 
   } catch (error) {
 
@@ -515,7 +569,6 @@ async function carregarLevantamentos() {
         </td>
       </tr>
     `;
-
   }
 
 }
@@ -571,20 +624,25 @@ function atualizarContadores(withdrawals) {
 
   });
 
-  document.getElementById("pendentes").textContent =
-    pendentes;
+  document.getElementById(
+    "pendentes"
+  ).textContent = pendentes;
 
-  document.getElementById("autorizados").textContent =
-    autorizados;
+  document.getElementById(
+    "autorizados"
+  ).textContent = autorizados;
 
-  document.getElementById("processando").textContent =
-    processando;
+  document.getElementById(
+    "processando"
+  ).textContent = processando;
 
-  document.getElementById("concluidos").textContent =
-    concluidos;
+  document.getElementById(
+    "concluidos"
+  ).textContent = concluidos;
 
-  document.getElementById("rejeitados").textContent =
-    rejeitados;
+  document.getElementById(
+    "rejeitados"
+  ).textContent = rejeitados;
 
 }
 
@@ -643,35 +701,67 @@ function criarLinha(item) {
 
   }
 
+  else if (
+    status === "PROCESSING" ||
+    status === "PROCESSANDO"
+  ) {
+
+    acoes = `
+
+      <button
+        class="action-button complete"
+        onclick="concluir('${escaparHTML(item.withdrawal_id)}')"
+      >
+        ✅ Concluir
+      </button>
+
+    `;
+
+  }
+
   return `
 
     <tr>
 
       <td>
-        ${escaparHTML(item.withdrawal_id || item.id)}
+        ${escaparHTML(
+          item.withdrawal_id || item.id
+        )}
       </td>
 
       <td>
-        ${escaparHTML(item.user_id || "-")}
+        ${escaparHTML(
+          item.user_id || "-"
+        )}
       </td>
 
       <td>
         <strong>
-          ${escaparHTML(item.amount ?? "-")}
-          ${escaparHTML(item.asset || "USDT")}
+          ${escaparHTML(
+            item.amount ?? "-"
+          )}
+          ${escaparHTML(
+            item.asset || "USDT"
+          )}
         </strong>
       </td>
 
       <td class="address">
-        ${escaparHTML(item.destination_address || "-")}
+        ${escaparHTML(
+          item.destination_address || "-"
+        )}
       </td>
 
       <td>
-        ${escaparHTML(item.network || "-")}
+        ${escaparHTML(
+          item.network || "-"
+        )}
       </td>
 
       <td>
-        ${escaparHTML(formatarData(item.created_at))}
+        ${escaparHTML(
+          formatarData(item.created_at)
+        )}
       </td>
 
       <td>
@@ -679,13 +769,17 @@ function criarLinha(item) {
         <span
           class="status ${statusClasse(status)}"
         >
-          ${escaparHTML(statusTexto(status))}
+          ${escaparHTML(
+            statusTexto(status)
+          )}
         </span>
 
       </td>
 
       <td class="hash">
-        ${escaparHTML(item.tx_hash || "-")}
+        ${escaparHTML(
+          item.tx_hash || "-"
+        )}
       </td>
 
       <td>
@@ -742,7 +836,6 @@ async function autorizar(withdrawalId) {
         data.message ||
         "Erro ao autorizar."
       );
-
     }
 
     alert(
@@ -762,11 +855,15 @@ async function autorizar(withdrawalId) {
 
 async function rejeitar(withdrawalId) {
 
-  const motivo = prompt(
-    "Informe o motivo da rejeição:"
-  );
+  const motivo =
+    prompt(
+      "Informe o motivo da rejeição:"
+    );
 
-  if (!motivo || motivo.trim().length < 3) {
+  if (
+    !motivo ||
+    motivo.trim().length < 3
+  ) {
 
     alert(
       "Informe um motivo válido."
@@ -791,7 +888,8 @@ async function rejeitar(withdrawalId) {
         body: JSON.stringify({
           withdrawal_id: withdrawalId,
           action: "REJECT",
-          rejection_reason: motivo.trim()
+          rejection_reason:
+            motivo.trim()
         })
       }
     );
@@ -805,7 +903,6 @@ async function rejeitar(withdrawalId) {
         data.message ||
         "Erro ao rejeitar."
       );
-
     }
 
     alert(
@@ -861,11 +958,83 @@ async function processar(withdrawalId) {
         data.message ||
         "Erro ao colocar em processamento."
       );
-
     }
 
     alert(
       "Levantamento colocado em processamento."
+    );
+
+    await carregarLevantamentos();
+
+  } catch (error) {
+
+    alert(error.message);
+
+  }
+
+}
+
+
+async function concluir(withdrawalId) {
+
+  const txHash =
+    prompt(
+      "Digite o TX Hash real da transação TRON:"
+    );
+
+  if (
+    !txHash ||
+    txHash.trim().length < 10
+  ) {
+
+    alert(
+      "TX Hash inválido ou não informado."
+    );
+
+    return;
+  }
+
+  if (
+    !confirm(
+      "Confirma que esta transação foi realmente enviada e que o TX Hash está correto?"
+    )
+  ) {
+    return;
+  }
+
+  try {
+
+    const response = await fetch(
+      "/api/admin-withdrawal-complete",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        credentials: "include",
+
+        body: JSON.stringify({
+          withdrawal_id: withdrawalId,
+          tx_hash: txHash.trim()
+        })
+      }
+    );
+
+    const data =
+      await response.json();
+
+    if (!response.ok || !data.success) {
+
+      throw new Error(
+        data.message ||
+        "Erro ao concluir levantamento."
+      );
+    }
+
+    alert(
+      "Levantamento concluído com sucesso."
     );
 
     await carregarLevantamentos();
