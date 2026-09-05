@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>USDTMZ Admin - Levantamentos</title>
+  <title>USDTMZ Admin — Levantamentos</title>
 
   <style>
     * {
@@ -21,131 +20,184 @@
     header {
       background: #111827;
       color: white;
-      padding: 18px 20px;
+      padding: 18px 24px;
       display: flex;
-      align-items: center;
       justify-content: space-between;
+      align-items: center;
+      gap: 15px;
     }
 
     header h1 {
       margin: 0;
-      font-size: 20px;
+      font-size: 22px;
     }
 
-    header a {
+    .back-button {
+      border: none;
+      background: #374151;
       color: white;
-      text-decoration: none;
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
       font-size: 14px;
     }
 
+    .back-button:hover {
+      background: #4b5563;
+    }
+
     main {
-      max-width: 1200px;
-      margin: 30px auto;
-      padding: 0 16px;
-    }
-
-    .title {
-      margin-bottom: 25px;
-    }
-
-    .title h2 {
-      margin: 0 0 8px;
-    }
-
-    .title p {
-      margin: 0;
-      color: #6b7280;
+      padding: 25px;
+      max-width: 1400px;
+      margin: auto;
     }
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 15px;
-      margin-bottom: 30px;
+      margin-bottom: 25px;
     }
 
     .card {
       background: white;
-      padding: 20px;
       border-radius: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
 
-    .card span {
-      display: block;
-      color: #6b7280;
+    .card-title {
       font-size: 14px;
+      color: #6b7280;
       margin-bottom: 8px;
     }
 
-    .card strong {
+    .card-value {
       font-size: 28px;
+      font-weight: bold;
     }
 
-    .table-box {
+    .section {
       background: white;
       border-radius: 12px;
       padding: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .refresh-button {
+      border: none;
+      background: #2563eb;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .refresh-button:hover {
+      background: #1d4ed8;
+    }
+
+    .table-container {
+      width: 100%;
       overflow-x: auto;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 900px;
+      min-width: 950px;
     }
 
     th,
     td {
       padding: 13px 10px;
-      text-align: left;
       border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      vertical-align: middle;
       font-size: 14px;
     }
 
     th {
       background: #f9fafb;
-      font-weight: bold;
+      color: #374151;
+      font-weight: 600;
     }
 
     .status {
       display: inline-block;
-      padding: 5px 9px;
-      border-radius: 20px;
+      padding: 6px 10px;
+      border-radius: 999px;
       font-size: 12px;
       font-weight: bold;
+      text-transform: uppercase;
     }
 
-    .PENDING {
+    .status-pendente {
       background: #fef3c7;
       color: #92400e;
     }
 
-    .AUTHORIZED {
+    .status-authorized {
       background: #dbeafe;
       color: #1e40af;
     }
 
-    .PROCESSING {
+    .status-processing {
       background: #e0e7ff;
       color: #3730a3;
     }
 
-    .COMPLETED {
-      background: #d1fae5;
-      color: #065f46;
+    .status-completed {
+      background: #dcfce7;
+      color: #166534;
     }
 
-    .REJECTED,
-    .FAILED {
+    .status-rejected,
+    .status-failed {
       background: #fee2e2;
       color: #991b1b;
     }
 
+    .address {
+      max-width: 220px;
+      word-break: break-all;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .withdrawal-id {
+      font-weight: bold;
+      color: #111827;
+    }
+
+    .amount {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
     .empty {
       text-align: center;
-      padding: 50px 20px;
+      padding: 40px 20px;
+      color: #6b7280;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px 20px;
       color: #6b7280;
     }
 
@@ -158,25 +210,26 @@
       display: none;
     }
 
-    .security {
-      margin-top: 25px;
-      background: #fff7ed;
-      border-left: 4px solid #f97316;
-      padding: 16px;
-      border-radius: 8px;
-      color: #7c2d12;
-      font-size: 14px;
+    .small {
+      font-size: 12px;
+      color: #6b7280;
     }
 
-    @media (max-width: 900px) {
-      .cards {
-        grid-template-columns: repeat(2, 1fr);
+    @media (max-width: 600px) {
+      header {
+        padding: 15px;
       }
-    }
 
-    @media (max-width: 500px) {
-      .cards {
-        grid-template-columns: 1fr;
+      header h1 {
+        font-size: 18px;
+      }
+
+      main {
+        padding: 15px;
+      }
+
+      .section {
+        padding: 15px;
       }
     }
   </style>
@@ -184,291 +237,549 @@
 
 <body>
 
-<header>
-  <h1>USDTMZ Admin</h1>
-  <a href="/admin.html">← Voltar</a>
-</header>
+  <header>
+    <h1>USDTMZ Admin — Levantamentos</h1>
 
-<main>
+    <button
+      class="back-button"
+      onclick="window.location.href='/admin.html'"
+    >
+      ← Voltar
+    </button>
+  </header>
 
-  <div class="title">
-    <h2>💰 Levantamentos</h2>
-    <p>Gestão dos pedidos de levantamento dos utilizadores.</p>
-  </div>
+  <main>
 
-  <div id="errorBox" class="error"></div>
+    <div id="errorBox" class="error"></div>
 
-  <div class="cards">
+    <div class="cards">
 
-    <div class="card">
-      <span>Pendentes</span>
-      <strong id="pendingCount">0</strong>
+      <div class="card">
+        <div class="card-title">Pendentes</div>
+        <div id="pendingCount" class="card-value">0</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Autorizados</div>
+        <div id="authorizedCount" class="card-value">0</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Processando</div>
+        <div id="processingCount" class="card-value">0</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Concluídos</div>
+        <div id="completedCount" class="card-value">0</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Rejeitados</div>
+        <div id="rejectedCount" class="card-value">0</div>
+      </div>
+
     </div>
 
-    <div class="card">
-      <span>Autorizados</span>
-      <strong id="authorizedCount">0</strong>
+    <div class="section">
+
+      <div class="section-header">
+        <h2>Pedidos de levantamento</h2>
+
+        <button
+          class="refresh-button"
+          onclick="loadWithdrawals()"
+        >
+          ↻ Atualizar
+        </button>
+      </div>
+
+      <div class="table-container">
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Utilizador</th>
+              <th>Valor</th>
+              <th>Endereço TRON</th>
+              <th>Rede</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>TX Hash</th>
+            </tr>
+          </thead>
+
+          <tbody id="withdrawalsBody">
+
+            <tr>
+              <td colspan="8" class="loading">
+                A carregar levantamentos...
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
     </div>
 
-    <div class="card">
-      <span>Processando</span>
-      <strong id="processingCount">0</strong>
-    </div>
+  </main>
 
-    <div class="card">
-      <span>Concluídos</span>
-      <strong id="completedCount">0</strong>
-    </div>
+  <script>
 
-    <div class="card">
-      <span>Rejeitados</span>
-      <strong id="rejectedCount">0</strong>
-    </div>
+    async function checkSession() {
 
-  </div>
+      try {
 
-  <div class="table-box">
+        const response = await fetch("/api/admin-session", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        });
 
-    <h3>Pedidos de levantamento</h3>
+        if (!response.ok) {
+          window.location.href = "/admin-login.html";
+          return false;
+        }
 
-    <table>
+        const data = await response.json();
 
-      <thead>
+        if (!data.success || !data.authenticated) {
+          window.location.href = "/admin-login.html";
+          return false;
+        }
+
+        return true;
+
+      } catch (error) {
+
+        window.location.href = "/admin-login.html";
+        return false;
+
+      }
+
+    }
+
+
+    function normalizeStatus(status) {
+
+      if (!status) {
+        return "";
+      }
+
+      return String(status)
+        .trim()
+        .toUpperCase();
+
+    }
+
+
+    function statusClass(status) {
+
+      const normalized = normalizeStatus(status);
+
+      switch (normalized) {
+
+        case "PENDENTE":
+        case "PENDING":
+          return "status-pendente";
+
+        case "AUTHORIZED":
+        case "AUTORIZADO":
+          return "status-authorized";
+
+        case "PROCESSING":
+        case "PROCESSANDO":
+          return "status-processing";
+
+        case "COMPLETED":
+        case "CONCLUIDO":
+        case "CONCLUÍDO":
+          return "status-completed";
+
+        case "REJECTED":
+        case "REJEITADO":
+        case "FAILED":
+        case "FALHOU":
+          return "status-rejected";
+
+        default:
+          return "status-pendente";
+
+      }
+
+    }
+
+
+    function formatStatus(status) {
+
+      const normalized = normalizeStatus(status);
+
+      const names = {
+
+        "PENDING": "Pendente",
+        "PENDENTE": "Pendente",
+
+        "AUTHORIZED": "Autorizado",
+        "AUTORIZADO": "Autorizado",
+
+        "PROCESSING": "Processando",
+        "PROCESSANDO": "Processando",
+
+        "COMPLETED": "Concluído",
+        "CONCLUIDO": "Concluído",
+        "CONCLUÍDO": "Concluído",
+
+        "REJECTED": "Rejeitado",
+        "REJEITADO": "Rejeitado",
+
+        "FAILED": "Falhou",
+        "FALHOU": "Falhou"
+
+      };
+
+      return names[normalized] || status || "Desconhecido";
+
+    }
+
+
+    function formatDate(dateValue) {
+
+      if (!dateValue) {
+        return "-";
+      }
+
+      try {
+
+        const date = new Date(dateValue);
+
+        if (isNaN(date.getTime())) {
+          return dateValue;
+        }
+
+        return date.toLocaleString("pt-MZ", {
+          dateStyle: "short",
+          timeStyle: "short"
+        });
+
+      } catch {
+
+        return dateValue;
+
+      }
+
+    }
+
+
+    function formatAmount(amount) {
+
+      if (amount === null || amount === undefined || amount === "") {
+        return "0 USDT";
+      }
+
+      const number = Number(amount);
+
+      if (isNaN(number)) {
+        return `${amount} USDT`;
+      }
+
+      return `${number.toLocaleString("pt-MZ", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 8
+      })} USDT`;
+
+    }
+
+
+    function updateCounters(withdrawals) {
+
+      let pending = 0;
+      let authorized = 0;
+      let processing = 0;
+      let completed = 0;
+      let rejected = 0;
+
+      withdrawals.forEach(withdrawal => {
+
+        const status = normalizeStatus(withdrawal.status);
+
+        if (status === "PENDING" || status === "PENDENTE") {
+          pending++;
+        }
+
+        else if (
+          status === "AUTHORIZED" ||
+          status === "AUTORIZADO"
+        ) {
+          authorized++;
+        }
+
+        else if (
+          status === "PROCESSING" ||
+          status === "PROCESSANDO"
+        ) {
+          processing++;
+        }
+
+        else if (
+          status === "COMPLETED" ||
+          status === "CONCLUIDO" ||
+          status === "CONCLUÍDO"
+        ) {
+          completed++;
+        }
+
+        else if (
+          status === "REJECTED" ||
+          status === "REJEITADO" ||
+          status === "FAILED" ||
+          status === "FALHOU"
+        ) {
+          rejected++;
+        }
+
+      });
+
+      document.getElementById("pendingCount").textContent = pending;
+      document.getElementById("authorizedCount").textContent = authorized;
+      document.getElementById("processingCount").textContent = processing;
+      document.getElementById("completedCount").textContent = completed;
+      document.getElementById("rejectedCount").textContent = rejected;
+
+    }
+
+
+    function renderWithdrawals(withdrawals) {
+
+      const body = document.getElementById("withdrawalsBody");
+
+      updateCounters(withdrawals);
+
+      if (!withdrawals || withdrawals.length === 0) {
+
+        body.innerHTML = `
+          <tr>
+            <td colspan="8" class="empty">
+              Nenhum levantamento encontrado.
+            </td>
+          </tr>
+        `;
+
+        return;
+      }
+
+
+      body.innerHTML = withdrawals.map(withdrawal => {
+
+        const withdrawalId =
+          withdrawal.withdrawal_id ||
+          withdrawal.id ||
+          "-";
+
+        const userId =
+          withdrawal.user_id ||
+          "Não associado";
+
+        const amount =
+          withdrawal.amount;
+
+        const address =
+          withdrawal.destination_address ||
+          "-";
+
+        const network =
+          withdrawal.network ||
+          "-";
+
+        const date =
+          formatDate(withdrawal.created_at);
+
+        const status =
+          withdrawal.status ||
+          "PENDENTE";
+
+        const txHash =
+          withdrawal.tx_hash ||
+          "-";
+
+
+        return `
+          <tr>
+
+            <td>
+              <div class="withdrawal-id">
+                ${escapeHtml(withdrawalId)}
+              </div>
+
+              ${
+                withdrawal.order_id
+                  ? `<div class="small">
+                      Ordem: ${escapeHtml(withdrawal.order_id)}
+                     </div>`
+                  : ""
+              }
+            </td>
+
+            <td>
+              ${escapeHtml(String(userId))}
+            </td>
+
+            <td>
+              <span class="amount">
+                ${escapeHtml(formatAmount(amount))}
+              </span>
+            </td>
+
+            <td>
+              <div class="address">
+                ${escapeHtml(address)}
+              </div>
+            </td>
+
+            <td>
+              ${escapeHtml(network)}
+            </td>
+
+            <td>
+              ${escapeHtml(date)}
+            </td>
+
+            <td>
+              <span class="status ${statusClass(status)}">
+                ${escapeHtml(formatStatus(status))}
+              </span>
+            </td>
+
+            <td>
+              <div class="address">
+                ${escapeHtml(txHash)}
+              </div>
+            </td>
+
+          </tr>
+        `;
+
+      }).join("");
+
+    }
+
+
+    function escapeHtml(value) {
+
+      if (value === null || value === undefined) {
+        return "";
+      }
+
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    }
+
+
+    async function loadWithdrawals() {
+
+      const body = document.getElementById("withdrawalsBody");
+      const errorBox = document.getElementById("errorBox");
+
+      errorBox.style.display = "none";
+      errorBox.textContent = "";
+
+      body.innerHTML = `
         <tr>
-          <th>ID</th>
-          <th>Utilizador</th>
-          <th>Valor USDT</th>
-          <th>Endereço TRON</th>
-          <th>Rede</th>
-          <th>Data</th>
-          <th>Status</th>
+          <td colspan="8" class="loading">
+            A carregar levantamentos...
+          </td>
         </tr>
-      </thead>
+      `;
 
-      <tbody id="withdrawalsTable">
-      </tbody>
 
-    </table>
+      try {
 
-    <div id="emptyMessage" class="empty">
-      💰<br><br>
-      <strong>Nenhum levantamento encontrado</strong>
-      <br><br>
-      Quando um utilizador solicitar um levantamento,
-      o pedido aparecerá aqui.
-    </div>
+        const response = await fetch("/api/admin-withdrawals", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        });
 
-  </div>
 
-  <div class="security">
-    <strong>Segurança</strong><br><br>
-    Esta área é exclusiva para administradores.
-    Os levantamentos reais serão processados somente depois
-    de implementarmos a autorização segura, validação do endereço
-    TRON e processamento da transferência USDT TRC-20.
-  </div>
+        if (response.status === 401) {
 
-</main>
+          window.location.href = "/admin-login.html";
+          return;
 
-<script>
+        }
 
-async function checkSession() {
 
-  try {
+        const data = await response.json();
 
-    const response = await fetch("/api/admin-session", {
-      method: "GET",
-      credentials: "include"
-    });
 
-    if (!response.ok) {
-      window.location.href = "/admin-login.html";
-      return false;
-    }
+        if (!response.ok || !data.success) {
 
-    const data = await response.json();
+          throw new Error(
+            data.message ||
+            "Não foi possível carregar os levantamentos."
+          );
 
-    if (!data.authenticated) {
-      window.location.href = "/admin-login.html";
-      return false;
-    }
+        }
 
-    return true;
 
-  } catch (error) {
+        renderWithdrawals(
+          Array.isArray(data.withdrawals)
+            ? data.withdrawals
+            : []
+        );
 
-    window.location.href = "/admin-login.html";
-    return false;
 
-  }
+      } catch (error) {
 
-}
+        console.error(
+          "Erro ao carregar levantamentos:",
+          error
+        );
 
+        body.innerHTML = `
+          <tr>
+            <td colspan="8" class="empty">
+              Erro ao carregar os levantamentos.
+            </td>
+          </tr>
+        `;
 
-function formatDate(date) {
+        errorBox.textContent =
+          error.message ||
+          "Ocorreu um erro ao consultar os levantamentos.";
 
-  if (!date) {
-    return "-";
-  }
+        errorBox.style.display = "block";
 
-  return new Date(date).toLocaleString("pt-PT");
-
-}
-
-
-function updateCounters(withdrawals) {
-
-  const counts = {
-    PENDING: 0,
-    AUTHORIZED: 0,
-    PROCESSING: 0,
-    COMPLETED: 0,
-    REJECTED: 0
-  };
-
-  withdrawals.forEach(withdrawal => {
-
-    if (counts[withdrawal.status] !== undefined) {
-      counts[withdrawal.status]++;
-    }
-
-  });
-
-  document.getElementById("pendingCount").textContent =
-    counts.PENDING;
-
-  document.getElementById("authorizedCount").textContent =
-    counts.AUTHORIZED;
-
-  document.getElementById("processingCount").textContent =
-    counts.PROCESSING;
-
-  document.getElementById("completedCount").textContent =
-    counts.COMPLETED;
-
-  document.getElementById("rejectedCount").textContent =
-    counts.REJECTED;
-
-}
-
-
-function renderWithdrawals(withdrawals) {
-
-  const table = document.getElementById("withdrawalsTable");
-  const emptyMessage = document.getElementById("emptyMessage");
-
-  table.innerHTML = "";
-
-  updateCounters(withdrawals);
-
-  if (!withdrawals.length) {
-
-    emptyMessage.style.display = "block";
-    return;
-
-  }
-
-  emptyMessage.style.display = "none";
-
-  withdrawals.forEach(withdrawal => {
-
-    const row = document.createElement("tr");
-
-    const status = withdrawal.status || "PENDING";
-
-    row.innerHTML = `
-      <td>${withdrawal.id}</td>
-
-      <td>
-        ${withdrawal.user_id}
-      </td>
-
-      <td>
-        ${withdrawal.amount_usdt} USDT
-      </td>
-
-      <td>
-        ${withdrawal.wallet_address}
-      </td>
-
-      <td>
-        ${withdrawal.network || "TRC20"}
-      </td>
-
-      <td>
-        ${formatDate(withdrawal.created_at)}
-      </td>
-
-      <td>
-        <span class="status ${status}">
-          ${status}
-        </span>
-      </td>
-    `;
-
-    table.appendChild(row);
-
-  });
-
-}
-
-
-async function loadWithdrawals() {
-
-  const errorBox = document.getElementById("errorBox");
-
-  errorBox.style.display = "none";
-
-  try {
-
-    const response = await fetch("/api/admin-withdrawals", {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store"
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-
-      throw new Error(
-        data.message || "Não foi possível carregar os levantamentos."
-      );
+      }
 
     }
 
-    renderWithdrawals(data.withdrawals || []);
 
-  } catch (error) {
+    async function initialize() {
 
-    console.error(error);
+      const authenticated = await checkSession();
 
-    errorBox.textContent =
-      "Erro ao carregar os levantamentos: " + error.message;
+      if (!authenticated) {
+        return;
+      }
 
-    errorBox.style.display = "block";
+      await loadWithdrawals();
 
-  }
-
-}
+    }
 
 
-async function start() {
+    initialize();
 
-  const authenticated = await checkSession();
-
-  if (!authenticated) {
-    return;
-  }
-
-  await loadWithdrawals();
-
-}
-
-
-start();
-
-</script>
+  </script>
 
 </body>
 </html>
