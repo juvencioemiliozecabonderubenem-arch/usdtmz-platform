@@ -78,12 +78,27 @@ export default async function handler(req, res) {
   }
 
   const secret = process.env.ADMIN_SESSION_SECRET;
-  const databaseUrl = process.env.URL_DO_BANCO_DE_DADOS;
 
-  if (!secret || !databaseUrl) {
+  // Aceita a variável que criamos e também variáveis padrão
+  // que podem ter sido criadas pela integração Neon/Vercel.
+  const databaseUrl =
+    process.env.URL_DO_BANCO_DE_DADOS ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL_UNPOOLED;
+
+  if (!secret) {
     return res.status(500).json({
       success: false,
-      message: "Configuração do servidor incompleta."
+      message: "Configuração do administrador incompleta."
+    });
+  }
+
+  if (!databaseUrl) {
+    return res.status(500).json({
+      success: false,
+      message: "Configuração do banco de dados incompleta."
     });
   }
 
