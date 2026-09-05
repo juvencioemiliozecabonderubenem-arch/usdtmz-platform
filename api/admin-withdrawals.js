@@ -1,4 +1,4 @@
-import { Client } from "pg";
+import { neon } from "@neondatabase/serverless";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const COOKIE_NAME = "usdtmz_admin_session";
@@ -98,17 +98,10 @@ export default async function handler(req, res) {
     });
   }
 
-  const client = new Client({
-    connectionString: databaseUrl,
-    ssl: {
-      rejectUnauthorized: false
-    }
-  });
-
   try {
-    await client.connect();
+    const sql = neon(databaseUrl);
 
-    const result = await client.query(`
+    const withdrawals = await sql`
       SELECT
         w.id,
         w.user_id,
@@ -125,24 +118,19 @@ export default async function handler(req, res) {
         w.updated_at
       FROM withdrawals AS w
       ORDER BY w.created_at DESC
-    `);
+    `;
 
     return res.status(200).json({
       success: true,
-      withdrawals: result.rows
+      withdrawals
     });
 
   } catch (error) {
-    console.error("Erro ao carregar levantamentos:", error);
+    console.error("Erro ao consultar levantamentos:", error);
 
     return res.status(500).json({
       success: false,
       message: "Erro ao consultar os levantamentos."
     });
-
-  } finally {
-    try {
-      await client.end();
-    } catch {}
   }
 }
