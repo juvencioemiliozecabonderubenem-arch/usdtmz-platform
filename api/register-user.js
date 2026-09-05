@@ -64,22 +64,46 @@ export default async function handler(req, res) {
     const normalizedEmail =
       email.trim().toLowerCase();
 
-    const existingUser = await sql`
+    const normalizedPhone =
+      phone ? phone.trim() : null;
+
+
+    const existingEmail = await sql`
       SELECT id
       FROM users
       WHERE email = ${normalizedEmail}
       LIMIT 1
     `;
 
-    if (existingUser.length > 0) {
+    if (existingEmail.length > 0) {
       return res.status(409).json({
         success: false,
         message: "Este email já está cadastrado."
       });
     }
 
+
+    if (normalizedPhone) {
+
+      const existingPhone = await sql`
+        SELECT id
+        FROM users
+        WHERE phone = ${normalizedPhone}
+        LIMIT 1
+      `;
+
+      if (existingPhone.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: "Este telefone já está cadastrado."
+        });
+      }
+    }
+
+
     const passwordHash =
       hashPassword(password);
+
 
     const result = await sql`
       INSERT INTO users (
@@ -92,7 +116,7 @@ export default async function handler(req, res) {
       VALUES (
         ${name.trim()},
         ${normalizedEmail},
-        ${phone ? phone.trim() : null},
+        ${normalizedPhone},
         ${passwordHash},
         'ACTIVE'
       )
@@ -105,26 +129,38 @@ export default async function handler(req, res) {
         created_at
     `;
 
+
     const user = result[0];
+
 
     await sql`
       INSERT INTO wallets (
         user_id,
-        usdt_balance
+        wallet_address,
+        network,
+        asset,
+        balance,
+        status
       )
       VALUES (
         ${user.id},
-        0
+        NULL,
+        'TRON',
+        'USDT',
+        0,
+        'ACTIVE'
       )
       ON CONFLICT (user_id)
       DO NOTHING
     `;
+
 
     return res.status(201).json({
       success: true,
       message: "Utilizador criado com sucesso.",
       user
     });
+
 
   } catch (error) {
 
