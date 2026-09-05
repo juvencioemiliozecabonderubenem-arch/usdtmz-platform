@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Login - USDTMZ</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .box {
+      width: 100%;
+      max-width: 420px;
+      background: white;
+      padding: 28px;
+      border-radius: 14px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #6b7280;
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 22px;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      background: #16a34a;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .message {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .success {
+      color: #16a34a;
+    }
+
+    .error {
+      color: #dc2626;
+    }
+
+    .register {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 14px;
+      color: #6b7280;
+    }
+
+    .register a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="box">
+
+  <h1>USDTMZ</h1>
+
+  <div class="subtitle">
+    Entrar na sua conta
+  </div>
+
+  <form id="loginForm">
+
+    <label for="email">
+      Email
+    </label>
+
+    <input
+      id="email"
+      type="email"
+      placeholder="Digite seu email"
+      required
+    >
+
+    <label for="password">
+      Senha
+    </label>
+
+    <input
+      id="password"
+      type="password"
+      placeholder="Digite sua senha"
+      required
+    >
+
+    <button
+      id="submitButton"
+      type="submit"
+    >
+      Entrar
+    </button>
+
+  </form>
+
+  <div
+    id="message"
+    class="message"
+  ></div>
+
+  <div class="register">
+    Ainda não tem conta?
+    <a href="/register.html">
+      Criar conta
+    </a>
+  </div>
+
+</div>
+
+<script>
+
+  const form =
+    document.getElementById(
+      "loginForm"
+    );
+
+  const message =
+    document.getElementById(
+      "message"
+    );
+
+  const button =
+    document.getElementById(
+      "submitButton"
+    );
+
+
+  form.addEventListener(
+    "submit",
+    async function(event) {
+
+      event.preventDefault();
+
+      message.textContent = "";
+
+      message.className =
+        "message";
+
+      const email =
+        document
+          .getElementById("email")
+          .value
+          .trim();
+
+      const password =
+        document
+          .getElementById("password")
+          .value;
+
+
+      button.disabled = true;
+
+      button.textContent =
+        "Entrando...";
+
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/user-login",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              credentials:
+                "include",
+
+              body:
+                JSON.stringify({
+                  email,
+                  password
+                })
+            }
+          );
+
+
+        const data =
+          await response.json();
+
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+
+          throw new Error(
+            data.message ||
+            "Email ou senha incorretos."
+          );
+        }
+
+
+        message.textContent =
+          "✓ Login realizado com sucesso!";
+
+        message.classList.add(
+          "success"
+        );
+
+
+        setTimeout(
+          function() {
+
+            window.location.href =
+              "/dashboard.html";
+
+          },
+          500
+        );
+
+
+      } catch (error) {
+
+        message.textContent =
+          error.message;
+
+        message.classList.add(
+          "error"
+        );
+
+      } finally {
+
+        button.disabled = false;
+
+        button.textContent =
+          "Entrar";
+      }
+
+    }
+  );
+
+</script>
+
+</body>
+</html>
