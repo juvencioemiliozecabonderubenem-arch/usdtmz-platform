@@ -345,13 +345,15 @@
       address.textContent =
         data.wallet_address;
 
+      // USDT: 2 casas decimais
       usdt.textContent =
         Number(data.balances.USDT || 0)
           .toFixed(2);
 
+      // TRX: 2 casas decimais
       trx.textContent =
         Number(data.balances.TRX || 0)
-          .toFixed(6);
+          .toFixed(2);
 
       status.textContent =
         "✓ Saldo atualizado com sucesso.";
