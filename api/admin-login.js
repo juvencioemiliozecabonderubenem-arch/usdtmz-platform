@@ -7,7 +7,9 @@ function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
 
-  if (A.length !== B.length) return false;
+  if (A.length !== B.length) {
+    return false;
+  }
 
   return timingSafeEqual(A, B);
 }
@@ -58,10 +60,17 @@ export default function handler(req, res) {
     });
   }
 
-  if (
-    !safeCompare(email.trim().toLowerCase(), ADMIN_EMAIL.trim().toLowerCase()) ||
-    !safeCompare(password, ADMIN_PASSWORD)
-  ) {
+  const validEmail = safeCompare(
+    email.trim().toLowerCase(),
+    ADMIN_EMAIL.trim().toLowerCase()
+  );
+
+  const validPassword = safeCompare(
+    password,
+    ADMIN_PASSWORD
+  );
+
+  if (!validEmail || !validPassword) {
     return res.status(401).json({
       success: false,
       message: "Email ou senha incorretos."
@@ -75,7 +84,7 @@ export default function handler(req, res) {
 
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=43200`
+    `${COOKIE_NAME}=${session}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=43200`
   );
 
   return res.status(200).json({
