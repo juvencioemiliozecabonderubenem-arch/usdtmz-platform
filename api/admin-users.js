@@ -124,19 +124,30 @@ export default async function handler(req, res) {
 
     const users = await sql`
       SELECT
-        id,
-        name,
-        email,
-        phone,
-        status,
-        created_at
-      FROM users
-      ORDER BY created_at DESC
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.status,
+        u.created_at,
+        COALESCE(w.balance, 0) AS usdt_balance
+      FROM users u
+      LEFT JOIN wallets w
+        ON w.user_id = u.id
+        AND w.asset = 'USDT'
+      ORDER BY u.created_at DESC
     `;
+
+    const formattedUsers =
+      users.map(user => ({
+        ...user,
+        usdt_balance:
+          Number(user.usdt_balance || 0)
+      }));
 
     return res.status(200).json({
       success: true,
-      users
+      users: formattedUsers
     });
 
   } catch (error) {
