@@ -47,7 +47,8 @@
       padding: 0 15px;
     }
 
-    .wallet {
+    .wallet,
+    .users-section {
       background: white;
       border-radius: 12px;
       padding: 22px;
@@ -55,7 +56,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
 
-    .wallet h2 {
+    .wallet h2,
+    .users-section h2 {
       margin-bottom: 18px;
       font-size: 20px;
     }
@@ -142,6 +144,65 @@
       color: white;
       font-size: 17px;
       cursor: pointer;
+      margin-bottom: 15px;
+    }
+
+    .users-count {
+      background: #f3f4f6;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 15px;
+    }
+
+    .users-table-container {
+      overflow-x: auto;
+    }
+
+    .users-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 700px;
+    }
+
+    .users-table th,
+    .users-table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .users-table th {
+      background: #f9fafb;
+      color: #4b5563;
+    }
+
+    .status-active {
+      color: #16a34a;
+      font-weight: bold;
+    }
+
+    .status-blocked {
+      color: #dc2626;
+      font-weight: bold;
+    }
+
+    .status-suspended {
+      color: #d97706;
+      font-weight: bold;
+    }
+
+    .empty {
+      text-align: center;
+      padding: 25px;
+      color: #6b7280;
+    }
+
+    .error {
+      text-align: center;
+      padding: 20px;
+      color: #dc2626;
     }
 
     @media (max-width: 700px) {
@@ -220,7 +281,7 @@
         Utilizadores
       </div>
 
-      <div class="card-value">
+      <div class="card-value" id="usersCount">
         0
       </div>
     </div>
@@ -253,6 +314,51 @@
       <div class="card-value">
         Online
       </div>
+    </div>
+
+  </div>
+
+  <!-- UTILIZADORES -->
+  <div class="users-section">
+
+    <h2>👤 Utilizadores</h2>
+
+    <div class="users-count">
+      Total de utilizadores:
+      <strong id="usersTotal">0</strong>
+    </div>
+
+    <div class="users-table-container">
+
+      <table class="users-table">
+
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Email</th>
+            <th>Telefone</th>
+            <th>Estado</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+
+        <tbody id="usersTableBody">
+
+          <tr>
+            <td colspan="6" class="empty">
+              Carregando utilizadores...
+            </td>
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+    <div class="status" id="usersStatus">
+      Consultando utilizadores...
     </div>
 
   </div>
@@ -345,12 +451,10 @@
       address.textContent =
         data.wallet_address;
 
-      // USDT: 2 casas decimais
       usdt.textContent =
         Number(data.balances.USDT || 0)
           .toFixed(2);
 
-      // TRX: 2 casas decimais
       trx.textContent =
         Number(data.balances.TRX || 0)
           .toFixed(2);
@@ -366,6 +470,158 @@
       status.textContent =
         "Erro: " + error.message;
     }
+  }
+
+
+  async function loadUsers() {
+
+    const tableBody =
+      document.getElementById("usersTableBody");
+
+    const usersCount =
+      document.getElementById("usersCount");
+
+    const usersTotal =
+      document.getElementById("usersTotal");
+
+    const status =
+      document.getElementById("usersStatus");
+
+    status.textContent =
+      "Consultando utilizadores...";
+
+    try {
+
+      const response = await fetch(
+        "/api/admin-users",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+
+        throw new Error(
+          data.message ||
+          "Erro ao consultar utilizadores."
+        );
+      }
+
+      const users =
+        Array.isArray(data.users)
+          ? data.users
+          : [];
+
+      usersCount.textContent =
+        users.length;
+
+      usersTotal.textContent =
+        users.length;
+
+      if (users.length === 0) {
+
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="empty">
+              Nenhum utilizador cadastrado.
+            </td>
+          </tr>
+        `;
+
+        status.textContent =
+          "✓ Consulta concluída. Nenhum utilizador encontrado.";
+
+        return;
+      }
+
+      tableBody.innerHTML =
+        users.map(user => {
+
+          const userStatus =
+            String(user.status || "")
+              .toUpperCase();
+
+          let statusClass =
+            "";
+
+          if (userStatus === "ACTIVE") {
+            statusClass =
+              "status-active";
+          }
+
+          if (userStatus === "BLOCKED") {
+            statusClass =
+              "status-blocked";
+          }
+
+          if (userStatus === "SUSPENDED") {
+            statusClass =
+              "status-suspended";
+          }
+
+          const date =
+            user.created_at
+              ? new Date(user.created_at)
+                  .toLocaleDateString("pt-PT")
+              : "—";
+
+          return `
+            <tr>
+              <td>${escapeHtml(user.id)}</td>
+
+              <td>${escapeHtml(user.name)}</td>
+
+              <td>${escapeHtml(user.email)}</td>
+
+              <td>${escapeHtml(user.phone || "—")}</td>
+
+              <td class="${statusClass}">
+                ${escapeHtml(user.status || "—")}
+              </td>
+
+              <td>${escapeHtml(date)}</td>
+            </tr>
+          `;
+
+        }).join("");
+
+      status.textContent =
+        "✓ Utilizadores atualizados com sucesso.";
+
+    } catch (error) {
+
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="error">
+            Erro ao carregar utilizadores.
+          </td>
+        </tr>
+      `;
+
+      usersCount.textContent =
+        "—";
+
+      usersTotal.textContent =
+        "—";
+
+      status.textContent =
+        "Erro: " + error.message;
+    }
+  }
+
+
+  function escapeHtml(value) {
+
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
 
@@ -386,6 +642,8 @@
     }
 
     await loadWalletBalance();
+
+    await loadUsers();
   }
 
 
