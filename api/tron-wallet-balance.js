@@ -11,9 +11,19 @@ const TRON_GRID =
 
 const USDT_DECIMALS = 6;
 
+
+/* =========================================================
+   JSON
+   ========================================================= */
+
 function json(res, status, body) {
   return res.status(status).json(body);
 }
+
+
+/* =========================================================
+   COMPARAÇÃO SEGURA
+   ========================================================= */
 
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
@@ -25,6 +35,11 @@ function safeCompare(a, b) {
 
   return timingSafeEqual(A, B);
 }
+
+
+/* =========================================================
+   COOKIE
+   ========================================================= */
 
 function getCookie(req, name) {
   const cookies = req.headers.cookie || "";
@@ -43,44 +58,80 @@ function getCookie(req, name) {
   return cookie.substring(name.length + 1);
 }
 
+
+/* =========================================================
+   ADMIN SESSION
+   ========================================================= */
+
 function verifyAdminSession(req) {
-  const token = getCookie(req, COOKIE_NAME);
-  const secret = process.env.ADMIN_SESSION_SECRET;
+  const token =
+    getCookie(
+      req,
+      COOKIE_NAME
+    );
+
+  const secret =
+    process.env.ADMIN_SESSION_SECRET;
 
   if (!token || !secret) {
     return null;
   }
 
-  const parts = token.split(".");
+  const parts =
+    token.split(".");
 
   if (parts.length !== 2) {
     return null;
   }
 
-  const [data, signature] = parts;
+  const [data, signature] =
+    parts;
 
-  const expected = createHmac("sha256", secret)
-    .update(data)
-    .digest("base64url");
+  const expected =
+    createHmac(
+      "sha256",
+      secret
+    )
+      .update(data)
+      .digest("base64url");
 
-  if (!safeCompare(signature, expected)) {
+  if (
+    !safeCompare(
+      signature,
+      expected
+    )
+  ) {
     return null;
   }
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(data, "base64url").toString("utf8")
-    );
 
-    if (!payload.exp || Date.now() > Number(payload.exp)) {
+    const payload =
+      JSON.parse(
+        Buffer
+          .from(
+            data,
+            "base64url"
+          )
+          .toString("utf8")
+      );
+
+    if (
+      !payload.exp ||
+      Date.now() >
+        Number(payload.exp)
+    ) {
       return null;
     }
 
-    if (payload.id !== "admin") {
+    if (
+      payload.id !== "admin"
+    ) {
       return null;
     }
 
     return payload;
+
   } catch {
     return null;
   }
@@ -88,80 +139,19 @@ function verifyAdminSession(req) {
 
 
 /* =========================================================
-   TRON GRID
-   ========================================================= */
-
-async function tronRequest(path, body, apiKey) {
-  const headers = {
-    "Content-Type": "application/json",
-    Accept: "application/json"
-  };
-
-  /*
-   * Mantém a API KEY que já está configurada
-   * no Vercel.
-   */
-  if (apiKey) {
-    headers["TRON-PRO-API-KEY"] = apiKey;
-  }
-
-  const response = await fetch(
-    `${TRON_GRID}${path}`,
-    {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body)
-    }
-  );
-
-  const text = await response.text();
-
-  let data = {};
-
-  try {
-    data = text
-      ? JSON.parse(text)
-      : {};
-  } catch {
-    data = {
-      message: text
-    };
-  }
-
-  if (!response.ok) {
-    const apiMessage =
-      data?.Error ||
-      data?.error ||
-      data?.message ||
-      text ||
-      "Resposta inválida da TRON.";
-
-    throw new Error(
-      `TRON API HTTP ${response.status}: ${apiMessage}`
-    );
-  }
-
-  if (data?.success === false) {
-    throw new Error(
-      data?.Error ||
-      data?.error ||
-      data?.message ||
-      "TRON API recusou a consulta."
-    );
-  }
-
-  return data;
-}
-
-
-/* =========================================================
-   CONVERTER SUN → TRX
+   SUN → TRX
    ========================================================= */
 
 function sunToTrx(value) {
-  const sun = BigInt(value || 0);
 
-  const whole = sun / 1_000_000n;
+  const sun =
+    BigInt(
+      value || 0
+    );
+
+  const whole =
+    sun / 1_000_000n;
+
   const fraction =
     (sun % 1_000_000n)
       .toString()
@@ -174,19 +164,23 @@ function sunToTrx(value) {
 
 
 /* =========================================================
-   CONVERTER HEX → USDT
+   USDT BASE UNITS → USDT
    ========================================================= */
 
-function hexToUsdt(hex) {
-  const value = BigInt(
-    `0x${hex}`
-  );
+function baseUnitsToUsdt(
+  value
+) {
+
+  const units =
+    BigInt(
+      value || 0
+    );
 
   const whole =
-    value / 1_000_000n;
+    units / 1_000_000n;
 
   const fraction =
-    (value % 1_000_000n)
+    (units % 1_000_000n)
       .toString()
       .padStart(6, "0");
 
@@ -200,74 +194,101 @@ function hexToUsdt(hex) {
    HANDLER
    ========================================================= */
 
-export default async function handler(req, res) {
+export default async function handler(
+  req,
+  res
+) {
 
-  if (req.method !== "GET") {
-    return json(res, 405, {
-      success: false,
-      message: "Método não permitido."
-    });
+  /* =======================================================
+     MÉTODO
+     ======================================================= */
+
+  if (
+    req.method !== "GET"
+  ) {
+    return json(
+      res,
+      405,
+      {
+        success: false,
+        message:
+          "Método não permitido."
+      }
+    );
   }
 
 
   /* =======================================================
-     ADMIN SESSION
+     ADMIN
      ======================================================= */
 
   const session =
     verifyAdminSession(req);
 
   if (!session) {
-    return json(res, 401, {
-      success: false,
-      authenticated: false,
-      message:
-        "Sessão Admin inválida ou expirada."
-    });
+    return json(
+      res,
+      401,
+      {
+        success: false,
+        authenticated: false,
+        message:
+          "Sessão Admin inválida ou expirada."
+      }
+    );
   }
 
 
   /* =======================================================
-     CONFIGURAÇÃO
+     VARIÁVEIS
      ======================================================= */
 
   const walletAddress =
     String(
-      process.env.USDTMZ_TRON_WALLET_ADDRESS ||
-      ""
+      process.env
+        .USDTMZ_TRON_WALLET_ADDRESS ||
+        ""
     ).trim();
 
   const apiKey =
     String(
       process.env.TRON_PRO_API_KEY ||
-      ""
+        ""
     ).trim();
 
 
   if (!walletAddress) {
-    return json(res, 500, {
-      success: false,
-      ready: false,
-      message:
-        "USDTMZ_TRON_WALLET_ADDRESS não configurado."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        ready: false,
+        message:
+          "USDTMZ_TRON_WALLET_ADDRESS não configurado."
+      }
+    );
   }
 
 
   if (!apiKey) {
-    return json(res, 500, {
-      success: false,
-      ready: false,
-      message:
-        "TRON_PRO_API_KEY não configurada."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        ready: false,
+        message:
+          "TRON_PRO_API_KEY não configurada."
+      }
+    );
   }
 
 
   try {
 
     /* =====================================================
-       VALIDAR CARTEIRA
+       VALIDAR ENDEREÇO
        ===================================================== */
 
     if (
@@ -275,121 +296,147 @@ export default async function handler(req, res) {
         walletAddress
       )
     ) {
-      return json(res, 500, {
-        success: false,
-        ready: false,
-        message:
-          "O endereço USDTMZ_TRON_WALLET_ADDRESS não é válido."
-      });
+      return json(
+        res,
+        500,
+        {
+          success: false,
+          ready: false,
+          message:
+            "O endereço USDTMZ_TRON_WALLET_ADDRESS não é válido."
+        }
+      );
     }
 
 
     /* =====================================================
-       ENDEREÇOS HEX
+       TRONWEB
        ===================================================== */
 
-    const walletHex =
-      TronWeb.address.toHex(
-        walletAddress
-      );
+    const tronWeb =
+      new TronWeb({
+        fullHost:
+          TRON_GRID,
 
-    const contractHex =
-      TronWeb.address.toHex(
-        USDT_CONTRACT
-      );
+        headers: {
+          "TRON-PRO-API-KEY":
+            apiKey
+        }
+      });
 
 
     /* =====================================================
        1. SALDO TRX
        ===================================================== */
 
-    const account =
-      await tronRequest(
-        "/wallet/getaccount",
-        {
-          address:
-            walletAddress,
-          visible: true
-        },
-        apiKey
-      );
-
     const trxSun =
-      BigInt(
-        account?.balance || 0
+      await tronWeb.trx.getBalance(
+        walletAddress
       );
 
     const trxBalance =
-      sunToTrx(trxSun);
-
-
-    /* =====================================================
-       2. SALDO USDT TRC-20
-       ===================================================== */
-
-    /*
-     * ABI:
-     *
-     * balanceOf(address)
-     *
-     * selector:
-     * 70a08231
-     */
-
-    const ownerHex =
-      walletHex
-        .replace(/^41/, "")
-        .padStart(64, "0");
-
-
-    const constantResult =
-      await tronRequest(
-        "/wallet/triggerconstantcontract",
-        {
-          owner_address:
-            walletHex,
-
-          contract_address:
-            contractHex,
-
-          function_selector:
-            "balanceOf(address)",
-
-          parameter:
-            ownerHex,
-
-          visible: true
-        },
-        apiKey
+      sunToTrx(
+        trxSun
       );
 
 
-    const rawBalance =
-      constantResult
-        ?.constant_result?.[0];
+    /* =====================================================
+       2. CONTRATO USDT
+       ===================================================== */
+
+    const contract =
+      await tronWeb.contract().at(
+        USDT_CONTRACT
+      );
+
+
+    /* =====================================================
+       3. BALANCE OF
+       ===================================================== */
+
+    const usdtRaw =
+      await contract
+        .balanceOf(
+          walletAddress
+        )
+        .call();
+
+
+    /*
+     * Dependendo da versão do TronWeb,
+     * o retorno pode ser:
+     *
+     * bigint
+     * number
+     * string
+     * Uint8Array
+     * objeto wrapper
+     */
+
+    let usdtBaseUnits;
 
 
     if (
-      !rawBalance ||
-      !/^[0-9a-fA-F]+$/.test(
-        rawBalance
-      )
+      typeof usdtRaw ===
+      "bigint"
     ) {
+
+      usdtBaseUnits =
+        usdtRaw;
+
+    } else if (
+      typeof usdtRaw ===
+      "number"
+    ) {
+
+      usdtBaseUnits =
+        BigInt(
+          Math.trunc(
+            usdtRaw
+          )
+        );
+
+    } else if (
+      typeof usdtRaw ===
+      "string"
+    ) {
+
+      /*
+       * Normalmente o TronWeb
+       * devolve o valor decimal.
+       */
+      usdtBaseUnits =
+        BigInt(
+          usdtRaw
+        );
+
+    } else if (
+      usdtRaw &&
+      typeof usdtRaw ===
+      "object" &&
+      "toString" in usdtRaw
+    ) {
+
+      usdtBaseUnits =
+        BigInt(
+          usdtRaw.toString()
+        );
+
+    } else {
+
       throw new Error(
-        "TRON não retornou um saldo USDT válido."
+        "O contrato USDT retornou um formato de saldo não reconhecido."
       );
     }
 
 
-    const usdtBaseUnits =
-      BigInt(
-        `0x${rawBalance}`
-      );
-
+    /* =====================================================
+       4. SALDO USDT
+       ===================================================== */
 
     const usdtBalance =
-      hexToUsdt(
-        rawBalance
+      baseUnitsToUsdt(
+        usdtBaseUnits
       );
 
 
@@ -397,46 +444,49 @@ export default async function handler(req, res) {
        RESULTADO
        ===================================================== */
 
-    return json(res, 200, {
+    return json(
+      res,
+      200,
+      {
+        success: true,
 
-      success: true,
+        ready: true,
 
-      ready: true,
+        network:
+          "TRON",
 
-      network: "TRON",
+        asset:
+          "USDT",
 
-      asset: "USDT",
+        wallet_address:
+          walletAddress,
 
-      wallet_address:
-        walletAddress,
+        usdt: {
+          balance:
+            usdtBalance,
 
-      usdt: {
+          base_units:
+            usdtBaseUnits.toString(),
 
-        balance:
-          usdtBalance,
+          decimals:
+            USDT_DECIMALS,
 
-        base_units:
-          usdtBaseUnits.toString(),
+          contract:
+            USDT_CONTRACT
+        },
 
-        decimals:
-          USDT_DECIMALS,
+        trx: {
+          balance:
+            trxBalance,
 
-        contract:
-          USDT_CONTRACT
-      },
+          sun:
+            String(trxSun)
+        },
 
-      trx: {
-
-        balance:
-          trxBalance,
-
-        sun:
-          trxSun.toString()
-      },
-
-      updated_at:
-        new Date().toISOString()
-    });
+        updated_at:
+          new Date().toISOString()
+      }
+    );
 
 
   } catch (error) {
@@ -446,23 +496,21 @@ export default async function handler(req, res) {
       error
     );
 
+    return json(
+      res,
+      502,
+      {
+        success: false,
 
-    /*
-     * Nunca devolvemos a API key.
-     */
+        ready: false,
 
-    return json(res, 502, {
+        message:
+          "Erro ao consultar saldo da carteira TRON.",
 
-      success: false,
-
-      ready: false,
-
-      message:
-        "Erro ao consultar saldo da carteira TRON.",
-
-      detail:
-        error?.message ||
-        "Erro desconhecido."
-    });
+        detail:
+          error?.message ||
+          "Erro desconhecido."
+      }
+    );
   }
 }
