@@ -12,6 +12,9 @@ const USDT_DECIMALS = 6;
 // 100 TRX em sun.
 const DEFAULT_FEE_LIMIT = 100_000_000;
 
+const TRON_API_BASE =
+  "https://api.trongrid.io";
+
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
@@ -140,8 +143,7 @@ function getTronWeb(
   apiKey
 ) {
   const options = {
-    fullHost:
-      "https://api.trongrid.io",
+    fullHost: TRON_API_BASE,
     privateKey
   };
 
@@ -172,6 +174,230 @@ function getErrorMessage(error) {
   } catch {
     return "Erro desconhecido.";
   }
+}
+
+/*
+ * =========================================================
+ * LEITURA DIRETA DO SALDO USDT TRC-20
+ * =========================================================
+ *
+ * Esta função NÃO usa:
+ *
+ * tronWeb.contract().at(...).balanceOf(...).call()
+ *
+ * porque essa chamada estava causando:
+ *
+ * owner_address isn't set
+ *
+ * Em vez disso, usamos diretamente:
+ *
+ * /wallet/triggerconstantcontract
+ *
+ * informando explicitamente:
+ *
+ * owner_address
+ * contract_address
+ * function_selector
+ * parameter
+ *
+ * balanceOf(address)
+ */
+
+async function getUsdtBalanceBaseUnits(
+  ownerAddress,
+  tronApiKey
+) {
+  if (!ownerAddress) {
+    throw new Error(
+      "Endereço da carteira USDTMZ não informado."
+    );
+  }
+
+  if (!tronApiKey) {
+    throw new Error(
+      "TRON_PRO_API_KEY não configurada."
+    );
+  }
+
+  const tronWeb =
+    new TronWeb({
+      fullHost: TRON_API_BASE
+    });
+
+  if (
+    !tronWeb.isAddress(
+      ownerAddress
+    )
+  ) {
+    throw new Error(
+      "Endereço da carteira USDTMZ inválido."
+    );
+  }
+
+  /*
+   * Endereço TRON em hexadecimal:
+   *
+   * 41 + 20 bytes
+   *
+   * Para ABI precisamos somente dos
+   * 20 bytes sem o prefixo 41.
+   */
+  const ownerHex =
+    tronWeb.address
+      .toHex(ownerAddress)
+      .replace(/^41/, "");
+
+  /*
+   * ABI:
+   *
+   * balanceOf(address)
+   *
+   * O endereço precisa ocupar 32 bytes,
+   * portanto adicionamos zeros à esquerda.
+   */
+  const parameter =
+    ownerHex.padStart(64, "0");
+
+  const response =
+    await fetch(
+      `${TRON_API_BASE}/wallet/triggerconstantcontract`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "TRON-PRO-API-KEY":
+            tronApiKey
+        },
+        body: JSON.stringify({
+          owner_address:
+            ownerAddress,
+          contract_address:
+            USDT_CONTRACT,
+          function_selector:
+            "balanceOf(address)",
+          parameter,
+          call_value: 0,
+          visible: true
+        })
+      }
+    );
+
+  const responseText =
+    await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `TRON API HTTP ${response.status}: ${responseText}`
+    );
+  }
+
+  let data;
+
+  try {
+    data =
+      JSON.parse(
+        responseText
+      );
+  } catch {
+    throw new Error(
+      "A resposta da TRON não é JSON válido."
+    );
+  }
+
+  if (
+    data &&
+    data.result &&
+    data.result.result === false
+  ) {
+    throw new Error(
+      data.result.message ||
+      "A TRON recusou a consulta do saldo USDT."
+    );
+  }
+
+  const constantResult =
+    data?.constant_result?.[0];
+
+  if (
+    !constantResult ||
+    !/^[0-9a-fA-F]+$/.test(
+      constantResult
+    )
+  ) {
+    throw new Error(
+      "TRON não retornou um saldo USDT válido."
+    );
+  }
+
+  try {
+    return BigInt(
+      `0x${constantResult}`
+    );
+  } catch {
+    throw new Error(
+      "Não foi possível converter o saldo USDT retornado pela TRON."
+    );
+  }
+}
+
+/*
+ * =========================================================
+ * LEITURA DO SALDO TRX
+ * =========================================================
+ */
+
+async function getTrxBalanceSun(
+  ownerAddress,
+  tronApiKey
+) {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
+  if (tronApiKey) {
+    headers["TRON-PRO-API-KEY"] =
+      tronApiKey;
+  }
+
+  const response =
+    await fetch(
+      `${TRON_API_BASE}/wallet/getaccount`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          address:
+            ownerAddress,
+          visible: true
+        })
+      }
+    );
+
+  const responseText =
+    await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `TRON API HTTP ${response.status}: ${responseText}`
+    );
+  }
+
+  let data;
+
+  try {
+    data =
+      JSON.parse(
+        responseText
+      );
+  } catch {
+    throw new Error(
+      "A resposta da TRON não é JSON válido."
+    );
+  }
+
+  return BigInt(
+    data?.balance || 0
+  );
 }
 
 async function restoreAuthorized(
@@ -673,20 +899,39 @@ async function processNormalWithdrawal(
     };
   }
 
-  const contract =
-    await tronWeb.contract().at(
-      USDT_CONTRACT
+  /*
+   * =======================================================
+   * SALDO USDT
+   * =======================================================
+   */
+
+  let usdtBalance;
+
+  try {
+    usdtBalance =
+      await getUsdtBalanceBaseUnits(
+        senderAddress,
+        tronApiKey
+      );
+  } catch (balanceError) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
     );
 
-  const usdtBalanceRaw =
-    await contract
-      .balanceOf(senderAddress)
-      .call();
-
-  const usdtBalance =
-    BigInt(
-      usdtBalanceRaw.toString()
-    );
+    return {
+      status: 503,
+      body: {
+        success: false,
+        message:
+          "Não foi possível consultar o saldo USDT na rede TRON.",
+        error:
+          getErrorMessage(
+            balanceError
+          )
+      }
+    };
+  }
 
   if (
     usdtBalance <
@@ -702,21 +947,31 @@ async function processNormalWithdrawal(
       body: {
         success: false,
         message:
-          "Saldo USDT insuficiente para esta retirada."
+          "Saldo USDT insuficiente para esta retirada.",
+        balance_usdt:
+          (
+            Number(usdtBalance) /
+            1_000_000
+          ).toFixed(6)
       }
     };
   }
 
-  const trxBalance =
-    await tronWeb.trx.getBalance(
-      senderAddress
-    );
+  /*
+   * =======================================================
+   * SALDO TRX
+   * =======================================================
+   */
 
-  if (
-    !Number.isFinite(
-      Number(trxBalance)
-    )
-  ) {
+  let trxBalance;
+
+  try {
+    trxBalance =
+      await getTrxBalanceSun(
+        senderAddress,
+        tronApiKey
+      );
+  } catch (trxError) {
     await restoreAuthorized(
       sql,
       withdrawalIdText
@@ -727,13 +982,17 @@ async function processNormalWithdrawal(
       body: {
         success: false,
         message:
-          "Não foi possível verificar o saldo TRX."
+          "Não foi possível verificar o saldo TRX.",
+        error:
+          getErrorMessage(
+            trxError
+          )
       }
     };
   }
 
   if (
-    Number(trxBalance) <= 0
+    trxBalance <= 0n
   ) {
     await restoreAuthorized(
       sql,
@@ -787,6 +1046,13 @@ async function processNormalWithdrawal(
   let txHash;
 
   try {
+    const contract =
+      await tronWeb
+        .contract()
+        .at(
+          USDT_CONTRACT
+        );
+
     txHash =
       await contract
         .transfer(
@@ -1075,10 +1341,7 @@ async function processAdminPurchaseToBinance(
   }
 
   /*
-   * Somente PAID pode iniciar uma transferência.
-   *
-   * PROCESSING só é aceito quando já existe processamento
-   * em andamento; não inicia um segundo envio.
+   * Somente PAID ou PROCESSING.
    */
   if (
     orderStatus !== "PAID" &&
@@ -1179,11 +1442,8 @@ async function processAdminPurchaseToBinance(
    * =======================================================
    * PROTEÇÃO CONTRA DOUBLE-SEND
    * =======================================================
-   *
-   * Somente PAID → PROCESSING pode reivindicar a ordem.
-   *
-   * Se outra chamada já fez isso, não haverá segundo envio.
    */
+
   if (orderStatus === "PAID") {
     const claimed =
       await sql`
@@ -1264,10 +1524,9 @@ async function processAdminPurchaseToBinance(
     }
   } else {
     /*
-     * Se já está PROCESSING sem TX Hash, não iniciamos
-     * uma nova transferência.
+     * PROCESSING sem TX Hash:
      *
-     * Isso evita double-send em caso de timeout/repetição.
+     * NÃO fazemos um segundo envio.
      */
     return {
       status: 202,
@@ -1288,20 +1547,41 @@ async function processAdminPurchaseToBinance(
    * =======================================================
    */
 
-  const contract =
-    await tronWeb.contract().at(
-      USDT_CONTRACT
-    );
+  let usdtBalance;
 
-  const usdtBalanceRaw =
-    await contract
-      .balanceOf(senderAddress)
-      .call();
+  try {
+    usdtBalance =
+      await getUsdtBalanceBaseUnits(
+        senderAddress,
+        tronApiKey
+      );
+  } catch (balanceError) {
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
 
-  const usdtBalance =
-    BigInt(
-      usdtBalanceRaw.toString()
-    );
+    return {
+      status: 503,
+      body: {
+        success: false,
+        message:
+          "Não foi possível consultar o saldo USDT da carteira USDTMZ.",
+        error:
+          getErrorMessage(
+            balanceError
+          )
+      }
+    };
+  }
 
   if (
     usdtBalance <
@@ -1326,6 +1606,11 @@ async function processAdminPurchaseToBinance(
         success: false,
         message:
           "Saldo USDT insuficiente na carteira USDTMZ.",
+        balance_usdt:
+          (
+            Number(usdtBalance) /
+            1_000_000
+          ).toFixed(6),
         amount_usdt:
           amount.display
       }
@@ -1338,16 +1623,15 @@ async function processAdminPurchaseToBinance(
    * =======================================================
    */
 
-  const trxBalance =
-    await tronWeb.trx.getBalance(
-      senderAddress
-    );
+  let trxBalance;
 
-  if (
-    !Number.isFinite(
-      Number(trxBalance)
-    )
-  ) {
+  try {
+    trxBalance =
+      await getTrxBalanceSun(
+        senderAddress,
+        tronApiKey
+      );
+  } catch (trxError) {
     await sql`
       UPDATE orders
       SET
@@ -1366,13 +1650,17 @@ async function processAdminPurchaseToBinance(
       body: {
         success: false,
         message:
-          "Não foi possível verificar o saldo TRX da carteira."
+          "Não foi possível verificar o saldo TRX da carteira.",
+        error:
+          getErrorMessage(
+            trxError
+          )
       }
     };
   }
 
   if (
-    Number(trxBalance) <= 0
+    trxBalance <= 0n
   ) {
     await sql`
       UPDATE orders
@@ -1406,6 +1694,13 @@ async function processAdminPurchaseToBinance(
   let txHash;
 
   try {
+    const contract =
+      await tronWeb
+        .contract()
+        .at(
+          USDT_CONTRACT
+        );
+
     txHash =
       await contract
         .transfer(
@@ -1419,10 +1714,6 @@ async function processAdminPurchaseToBinance(
           shouldPollResponse: false
         });
   } catch (sendError) {
-    /*
-     * Não existe TX Hash conhecido.
-     * Podemos voltar para PAID.
-     */
     await sql`
       UPDATE orders
       SET
@@ -1503,10 +1794,6 @@ async function processAdminPurchaseToBinance(
     `;
 
   if (saved.length === 0) {
-    /*
-     * A transferência já aconteceu.
-     * NÃO fazer nova tentativa.
-     */
     return {
       status: 500,
       body: {
@@ -1684,8 +1971,6 @@ async function processAdminPurchaseToBinance(
  * FUNÇÃO INTERNA
  *
  * NÃO É UMA API NOVA.
- *
- * O criar-compra.js poderá chamar esta função diretamente.
  * =========================================================
  */
 
