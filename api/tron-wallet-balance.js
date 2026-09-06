@@ -86,26 +86,42 @@ function verifyAdminSession(req) {
   }
 }
 
+
+/* =========================================================
+   TRON GRID
+   ========================================================= */
+
 async function tronRequest(path, body, apiKey) {
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json"
+  };
+
+  /*
+   * Mantém a API KEY que já está configurada
+   * no Vercel.
+   */
+  if (apiKey) {
+    headers["TRON-PRO-API-KEY"] = apiKey;
+  }
+
   const response = await fetch(
     `${TRON_GRID}${path}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "TRON-PRO-API-KEY": apiKey
-      },
+      headers,
       body: JSON.stringify(body)
     }
   );
 
   const text = await response.text();
 
-  let data;
+  let data = {};
 
   try {
-    data = text ? JSON.parse(text) : {};
+    data = text
+      ? JSON.parse(text)
+      : {};
   } catch {
     data = {
       message: text
@@ -113,20 +129,22 @@ async function tronRequest(path, body, apiKey) {
   }
 
   if (!response.ok) {
+    const apiMessage =
+      data?.Error ||
+      data?.error ||
+      data?.message ||
+      text ||
+      "Resposta inválida da TRON.";
+
     throw new Error(
-      `TRON API HTTP ${response.status}: ${
-        data?.message ||
-        data?.error ||
-        text ||
-        "Resposta inválida."
-      }`
+      `TRON API HTTP ${response.status}: ${apiMessage}`
     );
   }
 
-  if (
-    data?.success === false
-  ) {
+  if (data?.success === false) {
     throw new Error(
+      data?.Error ||
+      data?.error ||
       data?.message ||
       "TRON API recusou a consulta."
     );
@@ -135,13 +153,66 @@ async function tronRequest(path, body, apiKey) {
   return data;
 }
 
+
+/* =========================================================
+   CONVERTER SUN → TRX
+   ========================================================= */
+
+function sunToTrx(value) {
+  const sun = BigInt(value || 0);
+
+  const whole = sun / 1_000_000n;
+  const fraction =
+    (sun % 1_000_000n)
+      .toString()
+      .padStart(6, "0");
+
+  return Number(
+    `${whole}.${fraction}`
+  );
+}
+
+
+/* =========================================================
+   CONVERTER HEX → USDT
+   ========================================================= */
+
+function hexToUsdt(hex) {
+  const value = BigInt(
+    `0x${hex}`
+  );
+
+  const whole =
+    value / 1_000_000n;
+
+  const fraction =
+    (value % 1_000_000n)
+      .toString()
+      .padStart(6, "0");
+
+  return Number(
+    `${whole}.${fraction}`
+  );
+}
+
+
+/* =========================================================
+   HANDLER
+   ========================================================= */
+
 export default async function handler(req, res) {
+
   if (req.method !== "GET") {
     return json(res, 405, {
       success: false,
       message: "Método não permitido."
     });
   }
+
+
+  /* =======================================================
+     ADMIN SESSION
+     ======================================================= */
 
   const session =
     verifyAdminSession(req);
@@ -155,6 +226,11 @@ export default async function handler(req, res) {
     });
   }
 
+
+  /* =======================================================
+     CONFIGURAÇÃO
+     ======================================================= */
+
   const walletAddress =
     String(
       process.env.USDTMZ_TRON_WALLET_ADDRESS ||
@@ -167,6 +243,7 @@ export default async function handler(req, res) {
       ""
     ).trim();
 
+
   if (!walletAddress) {
     return json(res, 500, {
       success: false,
@@ -175,6 +252,7 @@ export default async function handler(req, res) {
         "USDTMZ_TRON_WALLET_ADDRESS não configurado."
     });
   }
+
 
   if (!apiKey) {
     return json(res, 500, {
@@ -185,10 +263,13 @@ export default async function handler(req, res) {
     });
   }
 
+
   try {
-    /*
-     * Verifica se o endereço é TRON válido.
-     */
+
+    /* =====================================================
+       VALIDAR CARTEIRA
+       ===================================================== */
+
     if (
       !TronWeb.isAddress(
         walletAddress
@@ -202,19 +283,25 @@ export default async function handler(req, res) {
       });
     }
 
-    /*
-     * Converte o endereço Base58 para hexadecimal
-     * no formato usado pelo TRON API.
-     */
-    const walletHex =
-      TronWeb.address
-        .toHex(walletAddress);
 
-    /*
-     * =====================================================
-     * 1. SALDO TRX
-     * =====================================================
-     */
+    /* =====================================================
+       ENDEREÇOS HEX
+       ===================================================== */
+
+    const walletHex =
+      TronWeb.address.toHex(
+        walletAddress
+      );
+
+    const contractHex =
+      TronWeb.address.toHex(
+        USDT_CONTRACT
+      );
+
+
+    /* =====================================================
+       1. SALDO TRX
+       ===================================================== */
 
     const account =
       await tronRequest(
@@ -229,22 +316,23 @@ export default async function handler(req, res) {
 
     const trxSun =
       BigInt(
-        account?.balance ||
-        0
+        account?.balance || 0
       );
 
     const trxBalance =
-      Number(trxSun) /
-      1_000_000;
+      sunToTrx(trxSun);
+
+
+    /* =====================================================
+       2. SALDO USDT TRC-20
+       ===================================================== */
 
     /*
-     * =====================================================
-     * 2. SALDO USDT TRC-20
-     * =====================================================
+     * ABI:
      *
      * balanceOf(address)
      *
-     * function selector:
+     * selector:
      * 70a08231
      */
 
@@ -252,6 +340,7 @@ export default async function handler(req, res) {
       walletHex
         .replace(/^41/, "")
         .padStart(64, "0");
+
 
     const constantResult =
       await tronRequest(
@@ -261,9 +350,7 @@ export default async function handler(req, res) {
             walletHex,
 
           contract_address:
-            TronWeb.address.toHex(
-              USDT_CONTRACT
-            ),
+            contractHex,
 
           function_selector:
             "balanceOf(address)",
@@ -276,9 +363,11 @@ export default async function handler(req, res) {
         apiKey
       );
 
+
     const rawBalance =
       constantResult
         ?.constant_result?.[0];
+
 
     if (
       !rawBalance ||
@@ -287,29 +376,32 @@ export default async function handler(req, res) {
       )
     ) {
       throw new Error(
-        "TRON não retornou o saldo USDT."
+        "TRON não retornou um saldo USDT válido."
       );
     }
+
 
     const usdtBaseUnits =
       BigInt(
         `0x${rawBalance}`
       );
 
-    const usdtBalance =
-      Number(
-        usdtBaseUnits
-      ) /
-      10 ** USDT_DECIMALS;
 
-    /*
-     * =====================================================
-     * RESULTADO
-     * =====================================================
-     */
+    const usdtBalance =
+      hexToUsdt(
+        rawBalance
+      );
+
+
+    /* =====================================================
+       RESULTADO
+       ===================================================== */
 
     return json(res, 200, {
+
       success: true,
+
+      ready: true,
 
       network: "TRON",
 
@@ -319,6 +411,7 @@ export default async function handler(req, res) {
         walletAddress,
 
       usdt: {
+
         balance:
           usdtBalance,
 
@@ -333,6 +426,7 @@ export default async function handler(req, res) {
       },
 
       trx: {
+
         balance:
           trxBalance,
 
@@ -344,20 +438,28 @@ export default async function handler(req, res) {
         new Date().toISOString()
     });
 
+
   } catch (error) {
+
     console.error(
       "TRON WALLET BALANCE ERROR:",
       error
     );
 
+
     /*
-     * Retornamos o erro real para o Admin,
-     * sem revelar nenhuma chave ou segredo.
+     * Nunca devolvemos a API key.
      */
+
     return json(res, 502, {
+
       success: false,
+
+      ready: false,
+
       message:
         "Erro ao consultar saldo da carteira TRON.",
+
       detail:
         error?.message ||
         "Erro desconhecido."
