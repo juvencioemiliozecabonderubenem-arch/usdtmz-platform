@@ -49,7 +49,7 @@ function verifySession(token, secret) {
       Buffer.from(data, "base64url").toString("utf8")
     );
 
-    if (!payload.exp || Date.now() > payload.exp) {
+    if (!payload.exp || Date.now() > Number(payload.exp)) {
       return null;
     }
 
@@ -68,8 +68,8 @@ function getSessionToken(req) {
 
   const cookie = cookies
     .split(";")
-    .map(item => item.trim())
-    .find(item =>
+    .map((item) => item.trim())
+    .find((item) =>
       item.startsWith(`${COOKIE_NAME}=`)
     );
 
@@ -113,7 +113,6 @@ function normalizeAmount(value) {
   }
 
   const parts = text.split(".");
-
   const whole = parts[0];
 
   const decimal = (parts[1] || "")
@@ -225,7 +224,7 @@ async function waitForTransaction(
       return info;
     }
 
-    await new Promise(resolve =>
+    await new Promise((resolve) =>
       setTimeout(resolve, delayMs)
     );
   }
@@ -252,9 +251,7 @@ function transactionSucceeded(
       receipt.result || ""
     ).toUpperCase();
 
-  return (
-    result === "SUCCESS"
-  );
+  return result === "SUCCESS";
 }
 
 async function verifyUsdtTransfer(
@@ -332,15 +329,6 @@ async function verifyUsdtTransfer(
     const data =
       String(parameter.data || "");
 
-    /*
-     * transfer(address,uint256)
-     *
-     * 4 bytes de selector +
-     * 32 bytes endereço +
-     * 32 bytes quantidade
-     *
-     * Total: 138 caracteres hex.
-     */
     if (
       !/^a9059cbb[a-fA-F0-9]{128}$/.test(
         data
@@ -355,7 +343,10 @@ async function verifyUsdtTransfer(
 
     const destinationHex =
       "41" +
-      data.substring(8 + 24, 8 + 64);
+      data.substring(
+        8 + 24,
+        8 + 64
+      );
 
     const decodedDestination =
       tronWeb.address.fromHex(
@@ -950,14 +941,6 @@ async function processNormalWithdrawal(
  * =========================================================
  * MODO 2
  * COMPRA USDTMZ → BINANCE
- *
- * A ordem vem da tabela orders.
- * O navegador NÃO define:
- * - quantidade de USDT
- * - endereço Binance
- * - valor da ordem
- *
- * Tudo é obtido do servidor/banco.
  * =========================================================
  */
 
@@ -984,9 +967,6 @@ async function processAdminPurchaseToBinance(
     };
   }
 
-  /*
-   * O endereço Binance fica SOMENTE no servidor.
-   */
   const binanceAddress =
     String(
       process.env.BINANCE_USDT_TRON_ADDRESS ||
@@ -1064,12 +1044,6 @@ async function processAdminPurchaseToBinance(
     };
   }
 
-  /*
-   * PAID é obrigatório.
-   *
-   * Nunca enviamos USDT somente porque o pagamento
-   * foi criado ou aceito pelo Pagar.
-   */
   const orderStatus =
     String(
       order.status || ""
@@ -1078,7 +1052,7 @@ async function processAdminPurchaseToBinance(
       .toUpperCase();
 
   /*
-   * Se já existe TX Hash, nunca enviamos novamente.
+   * Nunca enviar novamente se já existe TX Hash.
    */
   if (
     order.blockchain_tx_hash
@@ -1100,6 +1074,12 @@ async function processAdminPurchaseToBinance(
     };
   }
 
+  /*
+   * Somente PAID pode iniciar uma transferência.
+   *
+   * PROCESSING só é aceito quando já existe processamento
+   * em andamento; não inicia um segundo envio.
+   */
   if (
     orderStatus !== "PAID" &&
     orderStatus !== "PROCESSING"
@@ -1114,9 +1094,6 @@ async function processAdminPurchaseToBinance(
     };
   }
 
-  /*
-   * Quantidade retirada DO BANCO.
-   */
   const amount =
     normalizeAmount(
       order.usdt_amount
@@ -1201,86 +1178,78 @@ async function processAdminPurchaseToBinance(
   /*
    * =======================================================
    * PROTEÇÃO CONTRA DOUBLE-SEND
-   *
-   * PAID → PROCESSING somente se:
-   * - ainda não existe TX Hash
-   *
-   * Apenas uma chamada consegue fazer essa mudança.
    * =======================================================
+   *
+   * Somente PAID → PROCESSING pode reivindicar a ordem.
+   *
+   * Se outra chamada já fez isso, não haverá segundo envio.
    */
-  const claimed =
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PROCESSING',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND operation = 'BUY_USDT_ADMIN'
-        AND UPPER(status) = 'PAID'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-      RETURNING
-        id,
-        order_id,
-        usdt_amount,
-        amount,
-        rate,
-        status,
-        blockchain_tx_hash
-    `;
-
-  if (claimed.length === 0) {
-    const current =
+  if (orderStatus === "PAID") {
+    const claimed =
       await sql`
-        SELECT
-          order_id,
-          status,
-          blockchain_tx_hash,
-          usdt_amount
-        FROM orders
+        UPDATE orders
+        SET
+          status = 'PROCESSING',
+          updated_at = NOW()
         WHERE order_id = ${orderId}
-        LIMIT 1
+          AND operation = 'BUY_USDT_ADMIN'
+          AND UPPER(status) = 'PAID'
+          AND (
+            blockchain_tx_hash IS NULL
+            OR blockchain_tx_hash = ''
+          )
+        RETURNING
+          id,
+          order_id,
+          usdt_amount,
+          amount,
+          rate,
+          status,
+          blockchain_tx_hash
       `;
 
-    if (
-      current.length === 0
-    ) {
-      return {
-        status: 404,
-        body: {
-          success: false,
-          message:
-            "Ordem não encontrada."
-        }
-      };
-    }
+    if (claimed.length === 0) {
+      const current =
+        await sql`
+          SELECT
+            order_id,
+            status,
+            blockchain_tx_hash,
+            usdt_amount
+          FROM orders
+          WHERE order_id = ${orderId}
+          LIMIT 1
+        `;
 
-    if (
-      current[0].blockchain_tx_hash
-    ) {
-      return {
-        status: 200,
-        body: {
-          success: true,
-          already_sent: true,
-          status:
-            current[0].status,
-          order_id:
-            current[0].order_id,
-          tx_hash:
-            current[0].blockchain_tx_hash
-        }
-      };
-    }
+      if (current.length === 0) {
+        return {
+          status: 404,
+          body: {
+            success: false,
+            message:
+              "Ordem não encontrada."
+          }
+        };
+      }
 
-    if (
-      String(
-        current[0].status || ""
-      ).toUpperCase() ===
-      "PROCESSING"
-    ) {
+      if (
+        current[0].blockchain_tx_hash
+      ) {
+        return {
+          status: 200,
+          body: {
+            success: true,
+            already_sent: true,
+            status:
+              current[0].status,
+            order_id:
+              current[0].order_id,
+            tx_hash:
+              current[0].blockchain_tx_hash
+          }
+        };
+      }
+
       return {
         status: 202,
         body: {
@@ -1293,21 +1262,32 @@ async function processAdminPurchaseToBinance(
         }
       };
     }
-
+  } else {
+    /*
+     * Se já está PROCESSING sem TX Hash, não iniciamos
+     * uma nova transferência.
+     *
+     * Isso evita double-send em caso de timeout/repetição.
+     */
     return {
-      status: 409,
+      status: 202,
       body: {
-        success: false,
+        success: true,
+        status: "PROCESSING",
         message:
-          `A compra não está disponível para envio. Estado atual: ${current[0].status}.`
+          "Esta compra já está em processamento. Nenhum segundo envio foi realizado.",
+        order_id:
+          orderId
       }
     };
   }
 
   /*
-   * Depois da proteção de concorrência,
-   * verificamos o saldo real.
+   * =======================================================
+   * SALDO USDT
+   * =======================================================
    */
+
   const contract =
     await tronWeb.contract().at(
       USDT_CONTRACT
@@ -1327,10 +1307,6 @@ async function processAdminPurchaseToBinance(
     usdtBalance <
     amount.baseUnits
   ) {
-    /*
-     * Ainda não houve TX.
-     * Podemos devolver a ordem para PAID.
-     */
     await sql`
       UPDATE orders
       SET
@@ -1355,6 +1331,12 @@ async function processAdminPurchaseToBinance(
       }
     };
   }
+
+  /*
+   * =======================================================
+   * SALDO TRX
+   * =======================================================
+   */
 
   const trxBalance =
     await tronWeb.trx.getBalance(
@@ -1420,6 +1402,7 @@ async function processAdminPurchaseToBinance(
    * ENVIO REAL PARA BINANCE
    * =======================================================
    */
+
   let txHash;
 
   try {
@@ -1438,7 +1421,7 @@ async function processAdminPurchaseToBinance(
   } catch (sendError) {
     /*
      * Não existe TX Hash conhecido.
-     * Portanto podemos voltar para PAID.
+     * Podemos voltar para PAID.
      */
     await sql`
       UPDATE orders
@@ -1496,11 +1479,10 @@ async function processAdminPurchaseToBinance(
 
   /*
    * =======================================================
-   * GUARDA TX HASH IMEDIATAMENTE
-   *
-   * Depois deste ponto NÃO fazemos retry automático.
+   * GUARDAR TX HASH IMEDIATAMENTE
    * =======================================================
    */
+
   const saved =
     await sql`
       UPDATE orders
@@ -1522,10 +1504,8 @@ async function processAdminPurchaseToBinance(
 
   if (saved.length === 0) {
     /*
-     * Muito importante:
-     * a transferência já aconteceu.
-     *
-     * NÃO tentar outra transferência.
+     * A transferência já aconteceu.
+     * NÃO fazer nova tentativa.
      */
     return {
       status: 500,
@@ -1543,9 +1523,10 @@ async function processAdminPurchaseToBinance(
 
   /*
    * =======================================================
-   * AGUARDA CONFIRMAÇÃO DA TRON
+   * AGUARDAR CONFIRMAÇÃO
    * =======================================================
    */
+
   const transactionInfo =
     await waitForTransaction(
       tronWeb,
@@ -1597,9 +1578,14 @@ async function processAdminPurchaseToBinance(
   }
 
   /*
-   * Verificação adicional do contrato,
-   * destino e quantidade.
+   * =======================================================
+   * VALIDAR:
+   * - contrato USDT
+   * - destino Binance
+   * - quantidade USDT
+   * =======================================================
    */
+
   const transferVerification =
     await verifyUsdtTransfer(
       tronWeb,
@@ -1617,7 +1603,7 @@ async function processAdminPurchaseToBinance(
         success: true,
         status: "PROCESSING",
         message:
-          "A transação foi confirmada pela rede, mas a validação do conteúdo da transferência ainda requer reconciliação.",
+          "A transação foi confirmada pela rede, mas a validação do conteúdo da transferência requer reconciliação.",
         order_id:
           orderId,
         tx_hash:
@@ -1632,11 +1618,10 @@ async function processAdminPurchaseToBinance(
 
   /*
    * =======================================================
-   * CONCLUSÃO FINAL
-   *
-   * Só agora marcamos COMPLETED.
+   * COMPLETED
    * =======================================================
    */
+
   const completed =
     await sql`
       UPDATE orders
@@ -1696,6 +1681,64 @@ async function processAdminPurchaseToBinance(
 
 /*
  * =========================================================
+ * FUNÇÃO INTERNA
+ *
+ * NÃO É UMA API NOVA.
+ *
+ * O criar-compra.js poderá chamar esta função diretamente.
+ * =========================================================
+ */
+
+export async function processAdminPurchaseToBinanceInternal(
+  orderId
+) {
+  const databaseUrl =
+    getDatabaseUrl();
+
+  const privateKey =
+    process.env.TRON_PRIVATE_KEY;
+
+  const configuredWallet =
+    process.env.USDTMZ_TRON_WALLET_ADDRESS;
+
+  const tronApiKey =
+    process.env.TRON_PRO_API_KEY;
+
+  if (!databaseUrl) {
+    throw new Error(
+      "Banco de dados não configurado."
+    );
+  }
+
+  if (
+    !privateKey ||
+    !isValidPrivateKey(privateKey)
+  ) {
+    throw new Error(
+      "TRON_PRIVATE_KEY inválida ou não configurada."
+    );
+  }
+
+  if (!configuredWallet) {
+    throw new Error(
+      "USDTMZ_TRON_WALLET_ADDRESS não configurado."
+    );
+  }
+
+  const sql =
+    neon(databaseUrl);
+
+  return processAdminPurchaseToBinance(
+    sql,
+    String(orderId || "").trim(),
+    privateKey,
+    configuredWallet,
+    tronApiKey
+  );
+}
+
+/*
+ * =========================================================
  * HANDLER PRINCIPAL
  * =========================================================
  */
@@ -1727,10 +1770,6 @@ export default async function handler(
   const tronApiKey =
     process.env.TRON_PRO_API_KEY;
 
-  /*
-   * A chave privada é necessária somente quando
-   * efetivamente vamos enviar USDT.
-   */
   if (
     !secret ||
     !databaseUrl ||
@@ -1787,12 +1826,10 @@ export default async function handler(
 
   /*
    * =======================================================
-   * NOVO MODO:
-   *
-   * purchase_order_id
-   * admin_binance_transfer: true
+   * COMPRA ADMIN → BINANCE
    * =======================================================
    */
+
   if (
     body.admin_binance_transfer ===
       true &&
@@ -1830,7 +1867,6 @@ export default async function handler(
 
   /*
    * =======================================================
-   * MODO ANTIGO:
    * RETIRADA NORMAL
    * =======================================================
    */
