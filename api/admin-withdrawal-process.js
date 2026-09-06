@@ -4,10 +4,11 @@ import { TronWeb } from "tronweb";
 
 const COOKIE_NAME = "usdtmz_admin_session";
 
-const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const USDT_CONTRACT =
+  "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+
 const USDT_DECIMALS = 6;
 
-// Limite máximo de energia/gasto de TRX permitido pela operação.
 // 100 TRX em sun.
 const DEFAULT_FEE_LIMIT = 100_000_000;
 
@@ -68,13 +69,17 @@ function getSessionToken(req) {
   const cookie = cookies
     .split(";")
     .map(item => item.trim())
-    .find(item => item.startsWith(`${COOKIE_NAME}=`));
+    .find(item =>
+      item.startsWith(`${COOKIE_NAME}=`)
+    );
 
   if (!cookie) {
     return null;
   }
 
-  return cookie.substring(COOKIE_NAME.length + 1);
+  return cookie.substring(
+    COOKIE_NAME.length + 1
+  );
 }
 
 function getDatabaseUrl() {
@@ -88,11 +93,16 @@ function getDatabaseUrl() {
 }
 
 function isValidPrivateKey(value) {
-  return /^[0-9a-fA-F]{64}$/.test(String(value || ""));
+  return /^[0-9a-fA-F]{64}$/.test(
+    String(value || "")
+  );
 }
 
 function normalizeAmount(value) {
-  if (value === null || value === undefined) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return null;
   }
 
@@ -126,9 +136,13 @@ function normalizeAmount(value) {
   };
 }
 
-function getTronWeb(privateKey, apiKey) {
+function getTronWeb(
+  privateKey,
+  apiKey
+) {
   const options = {
-    fullHost: "https://api.trongrid.io",
+    fullHost:
+      "https://api.trongrid.io",
     privateKey
   };
 
@@ -161,35 +175,51 @@ function getErrorMessage(error) {
   }
 }
 
-async function restoreAuthorized(sql, withdrawalId) {
+async function restoreAuthorized(
+  sql,
+  withdrawalId
+) {
   await sql`
     UPDATE withdrawals
     SET
       status = 'AUTHORIZED',
       updated_at = NOW()
     WHERE withdrawal_id = ${String(withdrawalId)}
-    AND UPPER(status) = 'PROCESSING'
-    AND (tx_hash IS NULL OR tx_hash = '')
+      AND UPPER(status) = 'PROCESSING'
+      AND (tx_hash IS NULL OR tx_hash = '')
   `;
 }
 
-async function getTransactionInfo(tronWeb, txHash) {
+async function getTransactionInfo(
+  tronWeb,
+  txHash
+) {
   try {
-    return await tronWeb.trx.getTransactionInfo(txHash);
+    return await tronWeb.trx.getTransactionInfo(
+      txHash
+    );
   } catch {
     return null;
   }
 }
 
-async function waitForTransaction(tronWeb, txHash) {
-  const maxAttempts = 6;
-  const delayMs = 2000;
+async function waitForTransaction(
+  tronWeb,
+  txHash
+) {
+  const maxAttempts = 8;
+  const delayMs = 2500;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const info = await getTransactionInfo(
-      tronWeb,
-      txHash
-    );
+  for (
+    let attempt = 0;
+    attempt < maxAttempts;
+    attempt++
+  ) {
+    const info =
+      await getTransactionInfo(
+        tronWeb,
+        txHash
+      );
 
     if (info && info.id) {
       return info;
@@ -203,11 +233,1482 @@ async function waitForTransaction(tronWeb, txHash) {
   return null;
 }
 
-export default async function handler(req, res) {
+function transactionSucceeded(
+  transactionInfo
+) {
+  if (!transactionInfo) {
+    return false;
+  }
+
+  const receipt =
+    transactionInfo.receipt;
+
+  if (!receipt) {
+    return false;
+  }
+
+  const result =
+    String(
+      receipt.result || ""
+    ).toUpperCase();
+
+  return (
+    result === "SUCCESS"
+  );
+}
+
+async function verifyUsdtTransfer(
+  tronWeb,
+  txHash,
+  expectedDestination,
+  expectedAmountBaseUnits
+) {
+  try {
+    const transaction =
+      await tronWeb.trx.getTransaction(
+        txHash
+      );
+
+    if (
+      !transaction ||
+      !transaction.raw_data
+    ) {
+      return {
+        valid: false,
+        reason:
+          "Transação TRON não encontrada."
+      };
+    }
+
+    const contractData =
+      transaction.raw_data.contract?.[0];
+
+    if (!contractData) {
+      return {
+        valid: false,
+        reason:
+          "Contrato da transação não encontrado."
+      };
+    }
+
+    if (
+      contractData.type !==
+      "TriggerSmartContract"
+    ) {
+      return {
+        valid: false,
+        reason:
+          "A transação não é uma chamada de contrato inteligente."
+      };
+    }
+
+    const parameter =
+      contractData.parameter?.value;
+
+    if (!parameter) {
+      return {
+        valid: false,
+        reason:
+          "Dados do contrato não encontrados."
+      };
+    }
+
+    const contractAddress =
+      tronWeb.address.fromHex(
+        parameter.contract_address
+      );
+
+    if (
+      contractAddress !==
+      USDT_CONTRACT
+    ) {
+      return {
+        valid: false,
+        reason:
+          "O contrato da transação não é o USDT TRC-20 oficial configurado."
+      };
+    }
+
+    const data =
+      String(parameter.data || "");
+
+    /*
+     * transfer(address,uint256)
+     *
+     * 4 bytes de selector +
+     * 32 bytes endereço +
+     * 32 bytes quantidade
+     *
+     * Total: 138 caracteres hex.
+     */
+    if (
+      !/^a9059cbb[a-fA-F0-9]{128}$/.test(
+        data
+      )
+    ) {
+      return {
+        valid: false,
+        reason:
+          "A transação não contém uma transferência USDT válida."
+      };
+    }
+
+    const destinationHex =
+      "41" +
+      data.substring(8 + 24, 8 + 64);
+
+    const decodedDestination =
+      tronWeb.address.fromHex(
+        destinationHex
+      );
+
+    const amountHex =
+      data.substring(
+        8 + 64,
+        8 + 128
+      );
+
+    const decodedAmount =
+      BigInt(
+        "0x" + amountHex
+      );
+
+    if (
+      decodedDestination !==
+      expectedDestination
+    ) {
+      return {
+        valid: false,
+        reason:
+          "O destino da transação não corresponde ao endereço configurado."
+      };
+    }
+
+    if (
+      decodedAmount !==
+      expectedAmountBaseUnits
+    ) {
+      return {
+        valid: false,
+        reason:
+          "A quantidade enviada não corresponde à ordem."
+      };
+    }
+
+    return {
+      valid: true
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      reason:
+        getErrorMessage(error)
+    };
+  }
+}
+
+/*
+ * =========================================================
+ * MODO 1
+ * RETIRADA NORMAL
+ * =========================================================
+ */
+
+async function processNormalWithdrawal(
+  sql,
+  withdrawalIdText,
+  privateKey,
+  configuredWallet,
+  tronApiKey
+) {
+  const locked =
+    await sql`
+      UPDATE withdrawals
+      SET
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE withdrawal_id = ${withdrawalIdText}
+        AND UPPER(status) = 'AUTHORIZED'
+        AND (tx_hash IS NULL OR tx_hash = '')
+      RETURNING
+        id,
+        withdrawal_id,
+        user_id,
+        amount,
+        amount_requested,
+        amount_to_send,
+        withdrawal_fee,
+        asset,
+        network,
+        destination_address,
+        status,
+        tx_hash,
+        created_at,
+        updated_at,
+        order_id
+    `;
+
+  if (locked.length === 0) {
+    const existing =
+      await sql`
+        SELECT
+          withdrawal_id,
+          status,
+          tx_hash
+        FROM withdrawals
+        WHERE withdrawal_id = ${withdrawalIdText}
+        LIMIT 1
+      `;
+
+    if (existing.length === 0) {
+      return {
+        status: 404,
+        body: {
+          success: false,
+          message:
+            "Levantamento não encontrado."
+        }
+      };
+    }
+
+    if (existing[0].tx_hash) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          message:
+            "Este levantamento já possui uma transação.",
+          tx_hash:
+            existing[0].tx_hash,
+          status:
+            existing[0].status
+        }
+      };
+    }
+
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message:
+          `O levantamento não está autorizado para processamento. Estado atual: ${existing[0].status}.`
+      }
+    };
+  }
+
+  const withdrawal =
+    locked[0];
+
+  const asset =
+    String(
+      withdrawal.asset || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (asset !== "USDT") {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Este processamento aceita somente USDT."
+      }
+    };
+  }
+
+  const network =
+    String(
+      withdrawal.network || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  const validNetwork =
+    network === "TRON" ||
+    network === "TRC20" ||
+    network === "TRC-20";
+
+  if (!validNetwork) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A rede do levantamento não é TRON TRC-20."
+      }
+    };
+  }
+
+  const destination =
+    String(
+      withdrawal.destination_address || ""
+    ).trim();
+
+  if (!destination) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Endereço de destino não informado."
+      }
+    };
+  }
+
+  const tronWeb =
+    getTronWeb(
+      privateKey,
+      tronApiKey
+    );
+
+  if (
+    !tronWeb.isAddress(
+      destination
+    )
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Endereço TRON de destino inválido."
+      }
+    };
+  }
+
+  const senderAddress =
+    tronWeb.address.fromPrivateKey(
+      privateKey
+    );
+
+  if (!senderAddress) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "Não foi possível identificar a carteira da chave privada."
+      }
+    };
+  }
+
+  if (
+    senderAddress !==
+    configuredWallet.trim()
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "A chave privada configurada não corresponde à carteira USDTMZ."
+      }
+    };
+  }
+
+  const amountValue =
+    withdrawal.amount_to_send ??
+    withdrawal.amount ??
+    withdrawal.amount_requested;
+
+  const amount =
+    normalizeAmount(
+      amountValue
+    );
+
+  if (!amount) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Valor de USDT inválido."
+      }
+    };
+  }
+
+  if (
+    destination ===
+    senderAddress
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "O endereço de destino não pode ser a própria carteira USDTMZ."
+      }
+    };
+  }
+
+  const contract =
+    await tronWeb.contract().at(
+      USDT_CONTRACT
+    );
+
+  const usdtBalanceRaw =
+    await contract
+      .balanceOf(senderAddress)
+      .call();
+
+  const usdtBalance =
+    BigInt(
+      usdtBalanceRaw.toString()
+    );
+
+  if (
+    usdtBalance <
+    amount.baseUnits
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Saldo USDT insuficiente para esta retirada."
+      }
+    };
+  }
+
+  const trxBalance =
+    await tronWeb.trx.getBalance(
+      senderAddress
+    );
+
+  if (
+    !Number.isFinite(
+      Number(trxBalance)
+    )
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 503,
+      body: {
+        success: false,
+        message:
+          "Não foi possível verificar o saldo TRX."
+      }
+    };
+  }
+
+  if (
+    Number(trxBalance) <= 0
+  ) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A carteira não possui TRX para pagar os recursos da rede."
+      }
+    };
+  }
+
+  const current =
+    await sql`
+      SELECT
+        status,
+        tx_hash
+      FROM withdrawals
+      WHERE withdrawal_id = ${withdrawalIdText}
+      LIMIT 1
+    `;
+
+  if (current.length === 0) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        message:
+          "Levantamento não encontrado."
+      }
+    };
+  }
+
+  if (current[0].tx_hash) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message:
+          "Este levantamento já possui TX Hash. Nenhum novo envio foi realizado.",
+        tx_hash:
+          current[0].tx_hash
+      }
+    };
+  }
+
+  let txHash;
+
+  try {
+    txHash =
+      await contract
+        .transfer(
+          destination,
+          amount.baseUnits.toString()
+        )
+        .send({
+          feeLimit:
+            DEFAULT_FEE_LIMIT,
+          callValue: 0,
+          shouldPollResponse: false
+        });
+  } catch (sendError) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 502,
+      body: {
+        success: false,
+        message:
+          "A transação não foi enviada para a rede TRON.",
+        error:
+          getErrorMessage(
+            sendError
+          )
+      }
+    };
+  }
+
+  if (!txHash) {
+    await restoreAuthorized(
+      sql,
+      withdrawalIdText
+    );
+
+    return {
+      status: 502,
+      body: {
+        success: false,
+        message:
+          "A rede TRON não retornou TX Hash."
+      }
+    };
+  }
+
+  const txHashText =
+    String(txHash);
+
+  const saved =
+    await sql`
+      UPDATE withdrawals
+      SET
+        tx_hash = ${txHashText},
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE withdrawal_id = ${withdrawalIdText}
+        AND UPPER(status) = 'PROCESSING'
+        AND (tx_hash IS NULL OR tx_hash = '')
+      RETURNING
+        withdrawal_id,
+        status,
+        tx_hash
+    `;
+
+  if (saved.length === 0) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "A transação foi enviada, mas não foi possível atualizar o registro. NÃO tente processar novamente automaticamente.",
+        tx_hash:
+          txHashText,
+        requires_reconciliation:
+          true
+      }
+    };
+  }
+
+  const transactionInfo =
+    await waitForTransaction(
+      tronWeb,
+      txHashText
+    );
+
+  if (!transactionInfo) {
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "USDT enviado para a rede TRON. A confirmação ainda está pendente.",
+        withdrawal_id:
+          withdrawalIdText,
+        tx_hash:
+          txHashText,
+        amount_usdt:
+          amount.display,
+        destination,
+        requires_confirmation:
+          true
+      }
+    };
+  }
+
+  const successful =
+    transactionSucceeded(
+      transactionInfo
+    );
+
+  if (!successful) {
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "A transação foi registrada, mas a confirmação final ainda precisa ser reconciliada.",
+        withdrawal_id:
+          withdrawalIdText,
+        tx_hash:
+          txHashText
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "PROCESSING",
+      message:
+        "USDT enviado com sucesso para a rede TRON. TX Hash registrado.",
+      withdrawal_id:
+        withdrawalIdText,
+      tx_hash:
+        txHashText,
+      amount_usdt:
+        amount.display,
+      destination,
+      transaction_found:
+        true
+    }
+  };
+}
+
+/*
+ * =========================================================
+ * MODO 2
+ * COMPRA USDTMZ → BINANCE
+ *
+ * A ordem vem da tabela orders.
+ * O navegador NÃO define:
+ * - quantidade de USDT
+ * - endereço Binance
+ * - valor da ordem
+ *
+ * Tudo é obtido do servidor/banco.
+ * =========================================================
+ */
+
+async function processAdminPurchaseToBinance(
+  sql,
+  purchaseOrderId,
+  privateKey,
+  configuredWallet,
+  tronApiKey
+) {
+  const orderId =
+    String(
+      purchaseOrderId || ""
+    ).trim();
+
+  if (!orderId) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "purchase_order_id é obrigatório."
+      }
+    };
+  }
+
+  /*
+   * O endereço Binance fica SOMENTE no servidor.
+   */
+  const binanceAddress =
+    String(
+      process.env.BINANCE_USDT_TRON_ADDRESS ||
+      ""
+    ).trim();
+
+  if (!binanceAddress) {
+    return {
+      status: 503,
+      body: {
+        success: false,
+        ready: false,
+        message:
+          "O endereço USDT TRON da Binance ainda não está configurado no servidor."
+      }
+    };
+  }
+
+  const orderRows =
+    await sql`
+      SELECT
+        id,
+        order_id,
+        name,
+        phone,
+        operation,
+        payment,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        pagar_payment_id,
+        pagar_event_id,
+        blockchain_tx_hash,
+        wallet_address,
+        created_at,
+        updated_at
+      FROM orders
+      WHERE order_id = ${orderId}
+      LIMIT 1
+    `;
+
+  if (orderRows.length === 0) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        message:
+          "Ordem de compra não encontrada."
+      }
+    };
+  }
+
+  const order =
+    orderRows[0];
+
+  const operation =
+    String(
+      order.operation || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  if (
+    operation !==
+    "BUY_USDT_ADMIN"
+  ) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Esta ordem não é uma compra USDT do Admin."
+      }
+    };
+  }
+
+  /*
+   * PAID é obrigatório.
+   *
+   * Nunca enviamos USDT somente porque o pagamento
+   * foi criado ou aceito pelo Pagar.
+   */
+  const orderStatus =
+    String(
+      order.status || ""
+    )
+      .trim()
+      .toUpperCase();
+
+  /*
+   * Se já existe TX Hash, nunca enviamos novamente.
+   */
+  if (
+    order.blockchain_tx_hash
+  ) {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        already_sent: true,
+        status:
+          orderStatus,
+        message:
+          "Esta compra já possui uma transação blockchain. Nenhum novo envio foi realizado.",
+        order_id:
+          order.order_id,
+        tx_hash:
+          order.blockchain_tx_hash
+      }
+    };
+  }
+
+  if (
+    orderStatus !== "PAID" &&
+    orderStatus !== "PROCESSING"
+  ) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message:
+          `A compra ainda não está pronta para envio. Estado atual: ${order.status}.`
+      }
+    };
+  }
+
+  /*
+   * Quantidade retirada DO BANCO.
+   */
+  const amount =
+    normalizeAmount(
+      order.usdt_amount
+    );
+
+  if (!amount) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A quantidade USDT da ordem é inválida."
+      }
+    };
+  }
+
+  const tronWeb =
+    getTronWeb(
+      privateKey,
+      tronApiKey
+    );
+
+  if (
+    !tronWeb.isAddress(
+      binanceAddress
+    )
+  ) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "BINANCE_USDT_TRON_ADDRESS não é um endereço TRON válido."
+      }
+    };
+  }
+
+  const senderAddress =
+    tronWeb.address.fromPrivateKey(
+      privateKey
+    );
+
+  if (!senderAddress) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "Não foi possível identificar a carteira USDTMZ."
+      }
+    };
+  }
+
+  if (
+    senderAddress !==
+    configuredWallet.trim()
+  ) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "A chave privada configurada não corresponde à carteira USDTMZ."
+      }
+    };
+  }
+
+  if (
+    senderAddress ===
+    binanceAddress
+  ) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A carteira Binance não pode ser igual à carteira USDTMZ."
+      }
+    };
+  }
+
+  /*
+   * =======================================================
+   * PROTEÇÃO CONTRA DOUBLE-SEND
+   *
+   * PAID → PROCESSING somente se:
+   * - ainda não existe TX Hash
+   *
+   * Apenas uma chamada consegue fazer essa mudança.
+   * =======================================================
+   */
+  const claimed =
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND operation = 'BUY_USDT_ADMIN'
+        AND UPPER(status) = 'PAID'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+      RETURNING
+        id,
+        order_id,
+        usdt_amount,
+        amount,
+        rate,
+        status,
+        blockchain_tx_hash
+    `;
+
+  if (claimed.length === 0) {
+    const current =
+      await sql`
+        SELECT
+          order_id,
+          status,
+          blockchain_tx_hash,
+          usdt_amount
+        FROM orders
+        WHERE order_id = ${orderId}
+        LIMIT 1
+      `;
+
+    if (
+      current.length === 0
+    ) {
+      return {
+        status: 404,
+        body: {
+          success: false,
+          message:
+            "Ordem não encontrada."
+        }
+      };
+    }
+
+    if (
+      current[0].blockchain_tx_hash
+    ) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          already_sent: true,
+          status:
+            current[0].status,
+          order_id:
+            current[0].order_id,
+          tx_hash:
+            current[0].blockchain_tx_hash
+        }
+      };
+    }
+
+    if (
+      String(
+        current[0].status || ""
+      ).toUpperCase() ===
+      "PROCESSING"
+    ) {
+      return {
+        status: 202,
+        body: {
+          success: true,
+          status: "PROCESSING",
+          message:
+            "Esta compra já está sendo processada. Nenhum segundo envio foi realizado.",
+          order_id:
+            current[0].order_id
+        }
+      };
+    }
+
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message:
+          `A compra não está disponível para envio. Estado atual: ${current[0].status}.`
+      }
+    };
+  }
+
+  /*
+   * Depois da proteção de concorrência,
+   * verificamos o saldo real.
+   */
+  const contract =
+    await tronWeb.contract().at(
+      USDT_CONTRACT
+    );
+
+  const usdtBalanceRaw =
+    await contract
+      .balanceOf(senderAddress)
+      .call();
+
+  const usdtBalance =
+    BigInt(
+      usdtBalanceRaw.toString()
+    );
+
+  if (
+    usdtBalance <
+    amount.baseUnits
+  ) {
+    /*
+     * Ainda não houve TX.
+     * Podemos devolver a ordem para PAID.
+     */
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Saldo USDT insuficiente na carteira USDTMZ.",
+        amount_usdt:
+          amount.display
+      }
+    };
+  }
+
+  const trxBalance =
+    await tronWeb.trx.getBalance(
+      senderAddress
+    );
+
+  if (
+    !Number.isFinite(
+      Number(trxBalance)
+    )
+  ) {
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
+
+    return {
+      status: 503,
+      body: {
+        success: false,
+        message:
+          "Não foi possível verificar o saldo TRX da carteira."
+      }
+    };
+  }
+
+  if (
+    Number(trxBalance) <= 0
+  ) {
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
+
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A carteira USDTMZ não possui TRX para pagar a operação."
+      }
+    };
+  }
+
+  /*
+   * =======================================================
+   * ENVIO REAL PARA BINANCE
+   * =======================================================
+   */
+  let txHash;
+
+  try {
+    txHash =
+      await contract
+        .transfer(
+          binanceAddress,
+          amount.baseUnits.toString()
+        )
+        .send({
+          feeLimit:
+            DEFAULT_FEE_LIMIT,
+          callValue: 0,
+          shouldPollResponse: false
+        });
+  } catch (sendError) {
+    /*
+     * Não existe TX Hash conhecido.
+     * Portanto podemos voltar para PAID.
+     */
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
+
+    return {
+      status: 502,
+      body: {
+        success: false,
+        message:
+          "O envio para a Binance não foi aceito pela rede TRON.",
+        error:
+          getErrorMessage(
+            sendError
+          )
+      }
+    };
+  }
+
+  if (!txHash) {
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PAID',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+    `;
+
+    return {
+      status: 502,
+      body: {
+        success: false,
+        message:
+          "A rede TRON não retornou TX Hash."
+      }
+    };
+  }
+
+  const txHashText =
+    String(txHash);
+
+  /*
+   * =======================================================
+   * GUARDA TX HASH IMEDIATAMENTE
+   *
+   * Depois deste ponto NÃO fazemos retry automático.
+   * =======================================================
+   */
+  const saved =
+    await sql`
+      UPDATE orders
+      SET
+        blockchain_tx_hash = ${txHashText},
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+      RETURNING
+        order_id,
+        status,
+        blockchain_tx_hash
+    `;
+
+  if (saved.length === 0) {
+    /*
+     * Muito importante:
+     * a transferência já aconteceu.
+     *
+     * NÃO tentar outra transferência.
+     */
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message:
+          "USDT foi enviado, mas não foi possível guardar o TX Hash no banco. NÃO tente enviar novamente.",
+        tx_hash:
+          txHashText,
+        requires_reconciliation:
+          true
+      }
+    };
+  }
+
+  /*
+   * =======================================================
+   * AGUARDA CONFIRMAÇÃO DA TRON
+   * =======================================================
+   */
+  const transactionInfo =
+    await waitForTransaction(
+      tronWeb,
+      txHashText
+    );
+
+  if (!transactionInfo) {
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "USDT enviado para a Binance. A confirmação blockchain ainda está pendente.",
+        order_id:
+          orderId,
+        tx_hash:
+          txHashText,
+        amount_usdt:
+          amount.display,
+        destination:
+          binanceAddress,
+        requires_confirmation:
+          true
+      }
+    };
+  }
+
+  if (
+    !transactionSucceeded(
+      transactionInfo
+    )
+  ) {
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "A transação possui TX Hash, mas a confirmação final ainda precisa de reconciliação.",
+        order_id:
+          orderId,
+        tx_hash:
+          txHashText,
+        requires_reconciliation:
+          true
+      }
+    };
+  }
+
+  /*
+   * Verificação adicional do contrato,
+   * destino e quantidade.
+   */
+  const transferVerification =
+    await verifyUsdtTransfer(
+      tronWeb,
+      txHashText,
+      binanceAddress,
+      amount.baseUnits
+    );
+
+  if (
+    !transferVerification.valid
+  ) {
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "A transação foi confirmada pela rede, mas a validação do conteúdo da transferência ainda requer reconciliação.",
+        order_id:
+          orderId,
+        tx_hash:
+          txHashText,
+        verification_error:
+          transferVerification.reason,
+        requires_reconciliation:
+          true
+      }
+    };
+  }
+
+  /*
+   * =======================================================
+   * CONCLUSÃO FINAL
+   *
+   * Só agora marcamos COMPLETED.
+   * =======================================================
+   */
+  const completed =
+    await sql`
+      UPDATE orders
+      SET
+        status = 'COMPLETED',
+        updated_at = NOW()
+      WHERE order_id = ${orderId}
+        AND UPPER(status) = 'PROCESSING'
+        AND blockchain_tx_hash = ${txHashText}
+      RETURNING
+        order_id,
+        status,
+        amount,
+        usdt_amount,
+        rate,
+        blockchain_tx_hash
+    `;
+
+  if (completed.length === 0) {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        status: "PROCESSING",
+        message:
+          "Transferência confirmada na blockchain, mas o estado final da ordem precisa de reconciliação.",
+        order_id:
+          orderId,
+        tx_hash:
+          txHashText,
+        requires_reconciliation:
+          true
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "COMPLETED",
+      message:
+        "USDT enviado e confirmado na blockchain para o endereço Binance TRC-20 configurado.",
+      order_id:
+        orderId,
+      tx_hash:
+        txHashText,
+      amount_usdt:
+        amount.display,
+      destination:
+        binanceAddress,
+      blockchain_confirmed:
+        true
+    }
+  };
+}
+
+/*
+ * =========================================================
+ * HANDLER PRINCIPAL
+ * =========================================================
+ */
+
+export default async function handler(
+  req,
+  res
+) {
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
-      message: "Método não permitido."
+      message:
+        "Método não permitido."
     });
   }
 
@@ -227,11 +1728,14 @@ export default async function handler(req, res) {
     process.env.TRON_PRO_API_KEY;
 
   /*
-   * A chave privada NÃO é exigida durante o primeiro
-   * teste de deploy. Assim conseguimos confirmar
-   * que a função está corretamente instalada.
+   * A chave privada é necessária somente quando
+   * efetivamente vamos enviar USDT.
    */
-  if (!secret || !databaseUrl || !configuredWallet) {
+  if (
+    !secret ||
+    !databaseUrl ||
+    !configuredWallet
+  ) {
     return res.status(500).json({
       success: false,
       message:
@@ -266,7 +1770,11 @@ export default async function handler(req, res) {
     });
   }
 
-  if (!isValidPrivateKey(privateKey)) {
+  if (
+    !isValidPrivateKey(
+      privateKey
+    )
+  ) {
     return res.status(500).json({
       success: false,
       message:
@@ -274,7 +1782,58 @@ export default async function handler(req, res) {
     });
   }
 
-  const body = req.body || {};
+  const body =
+    req.body || {};
+
+  /*
+   * =======================================================
+   * NOVO MODO:
+   *
+   * purchase_order_id
+   * admin_binance_transfer: true
+   * =======================================================
+   */
+  if (
+    body.admin_binance_transfer ===
+      true &&
+    body.purchase_order_id
+  ) {
+    try {
+      const sql =
+        neon(databaseUrl);
+
+      const result =
+        await processAdminPurchaseToBinance(
+          sql,
+          body.purchase_order_id,
+          privateKey,
+          configuredWallet,
+          tronApiKey
+        );
+
+      return res
+        .status(result.status)
+        .json(result.body);
+    } catch (error) {
+      console.error(
+        "ADMIN BINANCE PURCHASE ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Erro interno ao enviar a compra USDT para a Binance."
+      });
+    }
+  }
+
+  /*
+   * =======================================================
+   * MODO ANTIGO:
+   * RETIRADA NORMAL
+   * =======================================================
+   */
 
   const withdrawalId =
     body.withdrawal_id;
@@ -288,7 +1847,9 @@ export default async function handler(req, res) {
   }
 
   const withdrawalIdText =
-    String(withdrawalId).trim();
+    String(
+      withdrawalId
+    ).trim();
 
   if (!withdrawalIdText) {
     return res.status(400).json({
@@ -302,529 +1863,18 @@ export default async function handler(req, res) {
     const sql =
       neon(databaseUrl);
 
-    /*
-     * PRIMEIRA PROTEÇÃO:
-     *
-     * Somente um levantamento AUTHORIZED pode
-     * entrar em PROCESSING.
-     *
-     * Isso evita dois cliques simultâneos do Admin
-     * iniciarem duas operações.
-     */
-    const locked =
-      await sql`
-        UPDATE withdrawals
-        SET
-          status = 'PROCESSING',
-          updated_at = NOW()
-        WHERE withdrawal_id = ${withdrawalIdText}
-        AND UPPER(status) = 'AUTHORIZED'
-        AND (tx_hash IS NULL OR tx_hash = '')
-        RETURNING
-          id,
-          withdrawal_id,
-          user_id,
-          amount,
-          amount_requested,
-          amount_to_send,
-          withdrawal_fee,
-          asset,
-          network,
-          destination_address,
-          status,
-          tx_hash,
-          created_at,
-          updated_at,
-          order_id
-      `;
-
-    /*
-     * Se não conseguiu fazer AUTHORIZED → PROCESSING,
-     * verificamos o estado atual.
-     */
-    if (locked.length === 0) {
-      const existing =
-        await sql`
-          SELECT
-            withdrawal_id,
-            status,
-            tx_hash
-          FROM withdrawals
-          WHERE withdrawal_id = ${withdrawalIdText}
-          LIMIT 1
-        `;
-
-      if (existing.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Levantamento não encontrado."
-        });
-      }
-
-      if (existing[0].tx_hash) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "Este levantamento já possui uma transação.",
-          tx_hash:
-            existing[0].tx_hash,
-          status:
-            existing[0].status
-        });
-      }
-
-      return res.status(409).json({
-        success: false,
-        message:
-          `O levantamento não está autorizado para processamento. Estado atual: ${existing[0].status}.`
-      });
-    }
-
-    const withdrawal =
-      locked[0];
-
-    /*
-     * VALIDAÇÃO DO ATIVO
-     */
-    const asset =
-      String(
-        withdrawal.asset || ""
-      ).trim().toUpperCase();
-
-    if (asset !== "USDT") {
-      await restoreAuthorized(
+    const result =
+      await processNormalWithdrawal(
         sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Este processamento aceita somente USDT."
-      });
-    }
-
-    /*
-     * VALIDAÇÃO DA REDE
-     */
-    const network =
-      String(
-        withdrawal.network || ""
-      ).trim().toUpperCase();
-
-    const validNetwork =
-      network === "TRON" ||
-      network === "TRC20" ||
-      network === "TRC-20";
-
-    if (!validNetwork) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "A rede do levantamento não é TRON TRC-20."
-      });
-    }
-
-    /*
-     * DESTINO
-     */
-    const destination =
-      String(
-        withdrawal.destination_address || ""
-      ).trim();
-
-    if (!destination) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Endereço de destino não informado."
-      });
-    }
-
-    /*
-     * VALIDAÇÃO REAL DO ENDEREÇO TRON
-     */
-    const tronWeb =
-      getTronWeb(
+        withdrawalIdText,
         privateKey,
+        configuredWallet,
         tronApiKey
       );
 
-    if (!tronWeb.isAddress(destination)) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Endereço TRON de destino inválido."
-      });
-    }
-
-    /*
-     * CONFIRMAÇÃO DA CARTEIRA DE ORIGEM
-     */
-    const senderAddress =
-      tronWeb.address.fromPrivateKey(
-        privateKey
-      );
-
-    if (!senderAddress) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Não foi possível identificar a carteira da chave privada."
-      });
-    }
-
-    if (
-      senderAddress !==
-      configuredWallet.trim()
-    ) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "A chave privada configurada não corresponde à carteira USDTMZ."
-      });
-    }
-
-    /*
-     * VALOR
-     *
-     * Preferimos amount_to_send quando existir.
-     * Caso contrário usamos amount.
-     */
-    const amountValue =
-      withdrawal.amount_to_send ??
-      withdrawal.amount ??
-      withdrawal.amount_requested;
-
-    const amount =
-      normalizeAmount(
-        amountValue
-      );
-
-    if (!amount) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Valor de USDT inválido."
-      });
-    }
-
-    /*
-     * NÃO PERMITIMOS ENVIAR PARA A PRÓPRIA CARTEIRA.
-     */
-    if (
-      destination ===
-      senderAddress
-    ) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "O endereço de destino não pode ser a própria carteira USDTMZ."
-      });
-    }
-
-    /*
-     * CONTRATO USDT TRC-20
-     */
-    const contract =
-      await tronWeb.contract().at(
-        USDT_CONTRACT
-      );
-
-    /*
-     * SALDO REAL DE USDT
-     */
-    const usdtBalanceRaw =
-      await contract
-        .balanceOf(senderAddress)
-        .call();
-
-    const usdtBalance =
-      BigInt(
-        usdtBalanceRaw.toString()
-      );
-
-    if (
-      usdtBalance <
-      amount.baseUnits
-    ) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "Saldo USDT insuficiente para esta retirada."
-      });
-    }
-
-    /*
-     * SALDO DE TRX
-     *
-     * O TRX é necessário para recursos da rede.
-     */
-    const trxBalance =
-      await tronWeb.trx.getBalance(
-        senderAddress
-      );
-
-    if (
-      !Number.isFinite(
-        Number(trxBalance)
-      )
-    ) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(503).json({
-        success: false,
-        message:
-          "Não foi possível verificar o saldo TRX."
-      });
-    }
-
-    if (
-      Number(trxBalance) <= 0
-    ) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(400).json({
-        success: false,
-        message:
-          "A carteira não possui TRX para pagar os recursos da rede."
-      });
-    }
-
-    /*
-     * VERIFICAÇÃO EXTRA ANTES DO ENVIO:
-     *
-     * Se o levantamento já tiver TX Hash, nunca enviamos
-     * novamente.
-     */
-    const current =
-      await sql`
-        SELECT
-          status,
-          tx_hash
-        FROM withdrawals
-        WHERE withdrawal_id = ${withdrawalIdText}
-        LIMIT 1
-      `;
-
-    if (
-      current.length === 0
-    ) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Levantamento não encontrado."
-      });
-    }
-
-    if (
-      current[0].tx_hash
-    ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "Este levantamento já possui TX Hash. Nenhum novo envio foi realizado.",
-        tx_hash:
-          current[0].tx_hash
-      });
-    }
-
-    /*
-     * ENVIO REAL
-     *
-     * IMPORTANTE:
-     * Neste momento a chave privada já está no servidor.
-     * Ela nunca é enviada ao navegador.
-     */
-    let txHash;
-
-    try {
-      txHash =
-        await contract
-          .transfer(
-            destination,
-            amount.baseUnits.toString()
-          )
-          .send({
-            feeLimit:
-              DEFAULT_FEE_LIMIT,
-            callValue: 0,
-            shouldPollResponse: false
-          });
-    } catch (sendError) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(502).json({
-        success: false,
-        message:
-          "A transação não foi enviada para a rede TRON.",
-        error:
-          getErrorMessage(sendError)
-      });
-    }
-
-    if (!txHash) {
-      await restoreAuthorized(
-        sql,
-        withdrawalIdText
-      );
-
-      return res.status(502).json({
-        success: false,
-        message:
-          "A rede TRON não retornou TX Hash."
-      });
-    }
-
-    const txHashText =
-      String(txHash);
-
-    /*
-     * GUARDA O TX HASH IMEDIATAMENTE.
-     *
-     * A partir daqui o levantamento não pode voltar
-     * simplesmente para AUTHORIZED.
-     */
-    const saved =
-      await sql`
-        UPDATE withdrawals
-        SET
-          tx_hash = ${txHashText},
-          status = 'PROCESSING',
-          updated_at = NOW()
-        WHERE withdrawal_id = ${withdrawalIdText}
-        AND UPPER(status) = 'PROCESSING'
-        AND (tx_hash IS NULL OR tx_hash = '')
-        RETURNING
-          withdrawal_id,
-          status,
-          tx_hash
-      `;
-
-    /*
-     * Se não conseguiu guardar o TX Hash, NÃO fazemos
-     * outra transferência automaticamente.
-     *
-     * Isso é fundamental para evitar double-send.
-     */
-    if (saved.length === 0) {
-      return res.status(500).json({
-        success: false,
-        message:
-          "A transação foi enviada, mas não foi possível atualizar o registro. NÃO tente processar novamente automaticamente.",
-        tx_hash:
-          txHashText,
-        requires_reconciliation: true
-      });
-    }
-
-    /*
-     * Tenta localizar a informação da transação.
-     *
-     * Se ainda não estiver disponível, mantemos
-     * PROCESSING e devolvemos o TX Hash.
-     */
-    const transactionInfo =
-      await waitForTransaction(
-        tronWeb,
-        txHashText
-      );
-
-    if (!transactionInfo) {
-      return res.status(202).json({
-        success: true,
-        status: "PROCESSING",
-        message:
-          "USDT enviado para a rede TRON. A confirmação ainda está pendente.",
-        withdrawal_id:
-          withdrawalIdText,
-        tx_hash:
-          txHashText,
-        amount_usdt:
-          amount.display,
-        destination,
-        requires_confirmation: true
-      });
-    }
-
-    /*
-     * NÃO marcamos COMPLETED aqui apenas porque existe
-     * TX Hash.
-     *
-     * A confirmação final deve verificar:
-     * - contrato USDT correto
-     * - destino correto
-     * - quantidade correta
-     * - sucesso da execução
-     * - confirmação na blockchain
-     *
-     * O estado continua PROCESSING até essa validação.
-     */
-    return res.status(200).json({
-      success: true,
-      status: "PROCESSING",
-      message:
-        "USDT enviado com sucesso para a rede TRON. TX Hash registrado. A confirmação final será feita pela verificação da blockchain.",
-      withdrawal_id:
-        withdrawalIdText,
-      tx_hash:
-        txHashText,
-      amount_usdt:
-        amount.display,
-      destination,
-      transaction_found: true
-    });
-
+    return res
+      .status(result.status)
+      .json(result.body);
   } catch (error) {
     console.error(
       "ADMIN WITHDRAWAL PROCESS ERROR:",
@@ -834,9 +1884,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message:
-        "Erro interno ao processar o levantamento.",
-      error:
-        getErrorMessage(error)
+        "Erro interno ao processar o levantamento."
     });
   }
 }
