@@ -1,4 +1,3 @@
-import { neon } from "@neondatabase/serverless";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { TronWeb } from "tronweb";
 
@@ -6,6 +5,9 @@ const COOKIE_NAME = "usdtmz_admin_session";
 
 const USDT_CONTRACT =
   "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+
+const TRON_GRID =
+  "https://api.trongrid.io";
 
 const USDT_DECIMALS = 6;
 
@@ -84,31 +86,53 @@ function verifyAdminSession(req) {
   }
 }
 
-function getDatabaseUrl() {
-  return (
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED
+async function tronRequest(path, body, apiKey) {
+  const response = await fetch(
+    `${TRON_GRID}${path}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "TRON-PRO-API-KEY": apiKey
+      },
+      body: JSON.stringify(body)
+    }
   );
-}
 
-function getTronWeb() {
-  const apiKey =
-    process.env.TRON_PRO_API_KEY;
+  const text = await response.text();
 
-  const options = {
-    fullHost: "https://api.trongrid.io"
-  };
+  let data;
 
-  if (apiKey) {
-    options.headers = {
-      "TRON-PRO-API-KEY": apiKey
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {
+      message: text
     };
   }
 
-  return new TronWeb(options);
+  if (!response.ok) {
+    throw new Error(
+      `TRON API HTTP ${response.status}: ${
+        data?.message ||
+        data?.error ||
+        text ||
+        "Resposta inválida."
+      }`
+    );
+  }
+
+  if (
+    data?.success === false
+  ) {
+    throw new Error(
+      data?.message ||
+      "TRON API recusou a consulta."
+    );
+  }
+
+  return data;
 }
 
 export default async function handler(req, res) {
@@ -119,19 +143,28 @@ export default async function handler(req, res) {
     });
   }
 
-  const session = verifyAdminSession(req);
+  const session =
+    verifyAdminSession(req);
 
   if (!session) {
     return json(res, 401, {
       success: false,
       authenticated: false,
-      message: "Sessão Admin inválida ou expirada."
+      message:
+        "Sessão Admin inválida ou expirada."
     });
   }
 
   const walletAddress =
     String(
-      process.env.USDTMZ_TRON_WALLET_ADDRESS || ""
+      process.env.USDTMZ_TRON_WALLET_ADDRESS ||
+      ""
+    ).trim();
+
+  const apiKey =
+    String(
+      process.env.TRON_PRO_API_KEY ||
+      ""
     ).trim();
 
   if (!walletAddress) {
@@ -139,98 +172,193 @@ export default async function handler(req, res) {
       success: false,
       ready: false,
       message:
-        "USDTMZ_TRON_WALLET_ADDRESS não está configurado."
+        "USDTMZ_TRON_WALLET_ADDRESS não configurado."
+    });
+  }
+
+  if (!apiKey) {
+    return json(res, 500, {
+      success: false,
+      ready: false,
+      message:
+        "TRON_PRO_API_KEY não configurada."
     });
   }
 
   try {
-    const tronWeb = getTronWeb();
-
-    if (!tronWeb.isAddress(walletAddress)) {
+    /*
+     * Verifica se o endereço é TRON válido.
+     */
+    if (
+      !TronWeb.isAddress(
+        walletAddress
+      )
+    ) {
       return json(res, 500, {
         success: false,
         ready: false,
         message:
-          "O endereço da carteira USDTMZ não é um endereço TRON válido."
+          "O endereço USDTMZ_TRON_WALLET_ADDRESS não é válido."
       });
     }
 
     /*
-     * =====================================================
-     * SALDO TRX
-     * =====================================================
+     * Converte o endereço Base58 para hexadecimal
+     * no formato usado pelo TRON API.
      */
-
-    const trxBalanceSun =
-      await tronWeb.trx.getBalance(
-        walletAddress
-      );
-
-    const trxBalance =
-      Number(trxBalanceSun) / 1_000_000;
+    const walletHex =
+      TronWeb.address
+        .toHex(walletAddress);
 
     /*
      * =====================================================
-     * SALDO USDT TRC-20
+     * 1. SALDO TRX
      * =====================================================
      */
 
-    const contract =
-      await tronWeb.contract().at(
-        USDT_CONTRACT
+    const account =
+      await tronRequest(
+        "/wallet/getaccount",
+        {
+          address:
+            walletAddress,
+          visible: true
+        },
+        apiKey
       );
 
-    const usdtBalanceRaw =
-      await contract
-        .balanceOf(walletAddress)
-        .call();
+    const trxSun =
+      BigInt(
+        account?.balance ||
+        0
+      );
+
+    const trxBalance =
+      Number(trxSun) /
+      1_000_000;
+
+    /*
+     * =====================================================
+     * 2. SALDO USDT TRC-20
+     * =====================================================
+     *
+     * balanceOf(address)
+     *
+     * function selector:
+     * 70a08231
+     */
+
+    const ownerHex =
+      walletHex
+        .replace(/^41/, "")
+        .padStart(64, "0");
+
+    const constantResult =
+      await tronRequest(
+        "/wallet/triggerconstantcontract",
+        {
+          owner_address:
+            walletHex,
+
+          contract_address:
+            TronWeb.address.toHex(
+              USDT_CONTRACT
+            ),
+
+          function_selector:
+            "balanceOf(address)",
+
+          parameter:
+            ownerHex,
+
+          visible: true
+        },
+        apiKey
+      );
+
+    const rawBalance =
+      constantResult
+        ?.constant_result?.[0];
+
+    if (
+      !rawBalance ||
+      !/^[0-9a-fA-F]+$/.test(
+        rawBalance
+      )
+    ) {
+      throw new Error(
+        "TRON não retornou o saldo USDT."
+      );
+    }
 
     const usdtBaseUnits =
       BigInt(
-        usdtBalanceRaw.toString()
+        `0x${rawBalance}`
       );
 
     const usdtBalance =
-      Number(usdtBaseUnits) /
+      Number(
+        usdtBaseUnits
+      ) /
       10 ** USDT_DECIMALS;
 
     /*
      * =====================================================
-     * RETORNO
+     * RESULTADO
      * =====================================================
      */
 
     return json(res, 200, {
       success: true,
+
       network: "TRON",
+
       asset: "USDT",
-      wallet_address: walletAddress,
+
+      wallet_address:
+        walletAddress,
 
       usdt: {
-        balance: usdtBalance,
-        base_units: usdtBaseUnits.toString(),
-        decimals: USDT_DECIMALS,
-        contract: USDT_CONTRACT
+        balance:
+          usdtBalance,
+
+        base_units:
+          usdtBaseUnits.toString(),
+
+        decimals:
+          USDT_DECIMALS,
+
+        contract:
+          USDT_CONTRACT
       },
 
       trx: {
-        balance: trxBalance,
-        sun: String(trxBalanceSun)
+        balance:
+          trxBalance,
+
+        sun:
+          trxSun.toString()
       },
 
-      updated_at: new Date().toISOString()
+      updated_at:
+        new Date().toISOString()
     });
+
   } catch (error) {
     console.error(
       "TRON WALLET BALANCE ERROR:",
       error
     );
 
+    /*
+     * Retornamos o erro real para o Admin,
+     * sem revelar nenhuma chave ou segredo.
+     */
     return json(res, 502, {
       success: false,
       message:
         "Erro ao consultar saldo da carteira TRON.",
-      error:
+      detail:
         error?.message ||
         "Erro desconhecido."
     });
