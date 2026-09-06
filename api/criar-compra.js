@@ -6,6 +6,10 @@ import {
   timingSafeEqual
 } from "node:crypto";
 
+import {
+  processAdminPurchaseToBinanceInternal
+} from "./admin-withdrawal-process.js";
+
 export const config = {
   api: {
     bodyParser: false
@@ -18,11 +22,28 @@ const RATE_MZN_PER_USDT = 64;
 const MIN_MZN = 64;
 const MAX_MZN = 40000;
 
-const PAGAR_METHODS = new Set(["MPESA", "EMOLA"]);
+const PAGAR_METHODS =
+  new Set(["MPESA", "EMOLA"]);
+
+const PAGAR_STATUSES =
+  new Set([
+    "PENDING",
+    "PROCESSING",
+    "PAID",
+    "CANCELLED",
+    "FAILED",
+    "RECONCILIATION_REQUIRED"
+  ]);
 
 function json(res, status, body) {
-  res.status(status).json(body);
+  return res.status(status).json(body);
 }
+
+/*
+ * =========================================================
+ * SEGURANÇA
+ * =========================================================
+ */
 
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
@@ -36,54 +57,86 @@ function safeCompare(a, b) {
 }
 
 function getCookie(req, name) {
-  const cookies = req.headers.cookie || "";
+  const cookies =
+    req.headers.cookie || "";
 
   const cookie = cookies
     .split(";")
     .map((item) => item.trim())
-    .find((item) => item.startsWith(`${name}=`));
+    .find((item) =>
+      item.startsWith(`${name}=`)
+    );
 
   if (!cookie) {
     return null;
   }
 
-  return cookie.substring(name.length + 1);
+  return cookie.substring(
+    name.length + 1
+  );
 }
 
 function verifyAdminSession(req) {
-  const token = getCookie(req, COOKIE_NAME);
-  const secret = process.env.ADMIN_SESSION_SECRET;
+  const token =
+    getCookie(
+      req,
+      COOKIE_NAME
+    );
+
+  const secret =
+    process.env.ADMIN_SESSION_SECRET;
 
   if (!token || !secret) {
     return null;
   }
 
-  const parts = token.split(".");
+  const parts =
+    token.split(".");
 
   if (parts.length !== 2) {
     return null;
   }
 
-  const [data, signature] = parts;
+  const [data, signature] =
+    parts;
 
-  const expected = createHmac("sha256", secret)
-    .update(data)
-    .digest("base64url");
+  const expected =
+    createHmac(
+      "sha256",
+      secret
+    )
+      .update(data)
+      .digest("base64url");
 
-  if (!safeCompare(signature, expected)) {
+  if (
+    !safeCompare(
+      signature,
+      expected
+    )
+  ) {
     return null;
   }
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(data, "base64url").toString("utf8")
-    );
+    const payload =
+      JSON.parse(
+        Buffer.from(
+          data,
+          "base64url"
+        ).toString("utf8")
+      );
 
-    if (!payload.exp || Date.now() > Number(payload.exp)) {
+    if (
+      !payload.exp ||
+      Date.now() >
+        Number(payload.exp)
+    ) {
       return null;
     }
 
-    if (payload.id !== "admin") {
+    if (
+      payload.id !== "admin"
+    ) {
       return null;
     }
 
@@ -93,10 +146,18 @@ function verifyAdminSession(req) {
   }
 }
 
+/*
+ * =========================================================
+ * BODY
+ * =========================================================
+ */
+
 async function readRawBody(req) {
   const chunks = [];
 
-  for await (const chunk of req) {
+  for await (
+    const chunk of req
+  ) {
     chunks.push(
       Buffer.isBuffer(chunk)
         ? chunk
@@ -104,7 +165,9 @@ async function readRawBody(req) {
     );
   }
 
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(
+    chunks
+  ).toString("utf8");
 }
 
 function parseJson(rawBody) {
@@ -113,11 +176,19 @@ function parseJson(rawBody) {
   }
 
   try {
-    return JSON.parse(rawBody);
+    return JSON.parse(
+      rawBody
+    );
   } catch {
     return null;
   }
 }
+
+/*
+ * =========================================================
+ * DADOS DA COMPRA
+ * =========================================================
+ */
 
 function normalizePhone(value) {
   return String(value || "")
@@ -126,8 +197,12 @@ function normalizePhone(value) {
     .replace(/^258/, "");
 }
 
-function isValidMozambiquePhone(phone) {
-  return /^(84|85|86|87)\d{7}$/.test(phone);
+function isValidMozambiquePhone(
+  phone
+) {
+  return /^(84|85|86|87)\d{7}$/.test(
+    phone
+  );
 }
 
 function normalizeMethod(value) {
@@ -136,65 +211,125 @@ function normalizeMethod(value) {
     .toUpperCase();
 }
 
-function calculateUsdt(amountMzn) {
-  return amountMzn / RATE_MZN_PER_USDT;
+function calculateUsdt(
+  amountMzn
+) {
+  return (
+    amountMzn /
+    RATE_MZN_PER_USDT
+  );
 }
 
 function generateOrderId() {
-  const timestamp = Date.now().toString(36).toUpperCase();
+  const timestamp =
+    Date.now()
+      .toString(36)
+      .toUpperCase();
 
-  const random = randomBytes(5)
-    .toString("hex")
-    .toUpperCase();
+  const random =
+    randomBytes(5)
+      .toString("hex")
+      .toUpperCase();
 
-  return `USDTMZ-${timestamp}-${random}`;
+  return (
+    `USDTMZ-${timestamp}-${random}`
+  );
 }
+
+function getDatabaseUrl() {
+  return (
+    process.env.URL_DO_BANCO_DE_DADOS ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL_UNPOOLED
+  );
+}
+
+/*
+ * =========================================================
+ * PAGAR CONFIG
+ * =========================================================
+ */
 
 function getPagarConfig() {
   const baseUrl =
     process.env.PAGAR_API_BASE_URL ||
     "https://api.pagar.co.mz/api/v1";
 
-  const apiKey = process.env.PAGAR_API_KEY;
-  const signingSecret = process.env.PAGAR_SIGNING_SECRET;
-  const webhookSecret = process.env.PAGAR_WEBHOOK_SECRET;
+  const apiKey =
+    process.env.PAGAR_API_KEY;
 
-  if (!apiKey || !signingSecret || !webhookSecret) {
+  const signingSecret =
+    process.env.PAGAR_SIGNING_SECRET;
+
+  const webhookSecret =
+    process.env.PAGAR_WEBHOOK_SECRET;
+
+  if (
+    !apiKey ||
+    !signingSecret ||
+    !webhookSecret
+  ) {
     throw new Error(
       "Configuração Pagar incompleta."
     );
   }
 
   return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
+    baseUrl:
+      baseUrl.replace(
+        /\/+$/,
+        ""
+      ),
     apiKey,
     signingSecret,
     webhookSecret
   };
 }
 
-async function parsePagarResponse(response) {
-  const text = await response.text();
+/*
+ * =========================================================
+ * PAGAR RESPONSE
+ * =========================================================
+ */
+
+async function parsePagarResponse(
+  response
+) {
+  const text =
+    await response.text();
 
   let data = {};
 
   try {
-    data = text ? JSON.parse(text) : {};
+    data =
+      text
+        ? JSON.parse(text)
+        : {};
   } catch {
     data = {
-      message: text || "Resposta inválida da Pagar API."
+      message:
+        text ||
+        "Resposta inválida da Pagar API."
     };
   }
 
   if (!response.ok) {
-    const error = new Error(
-      data.message ||
-      "Pedido rejeitado pela Pagar API."
-    );
+    const error =
+      new Error(
+        data.message ||
+        "Pedido rejeitado pela Pagar API."
+      );
 
-    error.status = response.status;
-    error.code = data.error;
-    error.requestId = data.requestId;
+    error.status =
+      response.status;
+
+    error.code =
+      data.error;
+
+    error.requestId =
+      data.requestId;
 
     throw error;
   }
@@ -202,25 +337,42 @@ async function parsePagarResponse(response) {
   return data;
 }
 
+/*
+ * =========================================================
+ * PAGAR GET
+ * =========================================================
+ */
+
 async function pagarGet(path) {
   const {
     baseUrl,
     apiKey
   } = getPagarConfig();
 
-  const response = await fetch(
-    `${baseUrl}${path}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Accept: "application/json"
+  const response =
+    await fetch(
+      `${baseUrl}${path}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization:
+            `Bearer ${apiKey}`,
+          Accept:
+            "application/json"
+        }
       }
-    }
-  );
+    );
 
-  return parsePagarResponse(response);
+  return parsePagarResponse(
+    response
+  );
 }
+
+/*
+ * =========================================================
+ * PAGAR POST ASSINADO
+ * =========================================================
+ */
 
 async function pagarPost(
   path,
@@ -231,20 +383,26 @@ async function pagarPost(
     baseUrl,
     apiKey,
     signingSecret
-  } = getPagarConfig();
+  } =
+    getPagarConfig();
 
-  const rawBody = JSON.stringify(body);
+  const rawBody =
+    JSON.stringify(body);
 
-  const url = `${baseUrl}${path}`;
+  const url =
+    `${baseUrl}${path}`;
 
-  const timestamp = Date.now().toString();
+  const timestamp =
+    Date.now().toString();
 
-  const nonce = randomBytes(18)
-    .toString("base64url");
+  const nonce =
+    randomBytes(18)
+      .toString("base64url");
 
-  const bodyHash = createHash("sha256")
-    .update(rawBody)
-    .digest("hex");
+  const bodyHash =
+    createHash("sha256")
+      .update(rawBody)
+      .digest("hex");
 
   const canonicalPath =
     new URL(url).pathname;
@@ -257,60 +415,101 @@ async function pagarPost(
     bodyHash
   ].join("\n");
 
-  const signature = createHmac(
-    "sha256",
-    signingSecret
-  )
-    .update(canonical)
-    .digest("hex");
+  const signature =
+    createHmac(
+      "sha256",
+      signingSecret
+    )
+      .update(canonical)
+      .digest("hex");
 
-  const response = await fetch(
-    url,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "Idempotency-Key": idempotencyKey,
-        "X-Pagar-Timestamp": timestamp,
-        "X-Pagar-Nonce": nonce,
-        "X-Pagar-Signature": `v1=${signature}`
-      },
-      body: rawBody
-    }
+  const response =
+    await fetch(
+      url,
+      {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${apiKey}`,
+
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+
+          "Idempotency-Key":
+            idempotencyKey,
+
+          "X-Pagar-Timestamp":
+            timestamp,
+
+          "X-Pagar-Nonce":
+            nonce,
+
+          "X-Pagar-Signature":
+            `v1=${signature}`
+        },
+
+        body: rawBody
+      }
+    );
+
+  return parsePagarResponse(
+    response
   );
-
-  return parsePagarResponse(response);
 }
 
-function getWebhookHeader(req, name) {
-  const value = req.headers[name.toLowerCase()];
+/*
+ * =========================================================
+ * WEBHOOK PAGAR
+ * =========================================================
+ */
 
-  if (Array.isArray(value)) {
+function getWebhookHeader(
+  req,
+  name
+) {
+  const value =
+    req.headers[
+      name.toLowerCase()
+    ];
+
+  if (
+    Array.isArray(value)
+  ) {
     return value[0];
   }
 
   return value || "";
 }
 
-function parseWebhookSignature(value) {
+function parseWebhookSignature(
+  value
+) {
   const result = {};
 
-  for (const part of String(value || "").split(",")) {
-    const index = part.indexOf("=");
+  for (
+    const part of String(
+      value || ""
+    ).split(",")
+  ) {
+    const index =
+      part.indexOf("=");
 
     if (index === -1) {
       continue;
     }
 
-    const key = part
-      .slice(0, index)
-      .trim();
+    const key =
+      part
+        .slice(0, index)
+        .trim();
 
-    const val = part
-      .slice(index + 1)
-      .trim();
+    const val =
+      part
+        .slice(index + 1)
+        .trim();
 
     if (key) {
       result[key] = val;
@@ -326,12 +525,14 @@ function verifyPagarWebhook(
 ) {
   const {
     webhookSecret
-  } = getPagarConfig();
+  } =
+    getPagarConfig();
 
-  const eventId = getWebhookHeader(
-    req,
-    "pagar-event-id"
-  );
+  const eventId =
+    getWebhookHeader(
+      req,
+      "pagar-event-id"
+    );
 
   const signatureHeader =
     getWebhookHeader(
@@ -342,7 +543,8 @@ function verifyPagarWebhook(
   if (!eventId) {
     return {
       valid: false,
-      reason: "Pagar-Event-Id ausente."
+      reason:
+        "Pagar-Event-Id ausente."
     };
   }
 
@@ -351,8 +553,11 @@ function verifyPagarWebhook(
       signatureHeader
     );
 
-  const timestamp = parts.t;
-  const received = parts.v1;
+  const timestamp =
+    parts.t;
+
+  const received =
+    parts.v1;
 
   if (
     !/^\d+$/.test(
@@ -361,7 +566,8 @@ function verifyPagarWebhook(
   ) {
     return {
       valid: false,
-      reason: "Timestamp do webhook inválido."
+      reason:
+        "Timestamp do webhook inválido."
     };
   }
 
@@ -372,7 +578,8 @@ function verifyPagarWebhook(
   ) {
     return {
       valid: false,
-      reason: "Assinatura do webhook inválida."
+      reason:
+        "Assinatura do webhook inválida."
     };
   }
 
@@ -380,11 +587,14 @@ function verifyPagarWebhook(
     Number(timestamp);
 
   if (
-    !Number.isFinite(timestampSeconds)
+    !Number.isFinite(
+      timestampSeconds
+    )
   ) {
     return {
       valid: false,
-      reason: "Timestamp inválido."
+      reason:
+        "Timestamp inválido."
     };
   }
 
@@ -397,7 +607,8 @@ function verifyPagarWebhook(
   if (age > 300) {
     return {
       valid: false,
-      reason: "Webhook expirado."
+      reason:
+        "Webhook expirado."
     };
   }
 
@@ -411,10 +622,16 @@ function verifyPagarWebhook(
       )
       .digest("hex");
 
-  if (!safeCompare(received, expected)) {
+  if (
+    !safeCompare(
+      received,
+      expected
+    )
+  ) {
     return {
       valid: false,
-      reason: "Assinatura do webhook inválida."
+      reason:
+        "Assinatura do webhook inválida."
     };
   }
 
@@ -424,11 +641,31 @@ function verifyPagarWebhook(
   };
 }
 
-function extractPaymentFromEvent(event) {
+/*
+ * =========================================================
+ * EXTRAÇÃO DO EVENTO PAGAR
+ * =========================================================
+ */
+
+function getEventType(event) {
+  return String(
+    event?.type ||
+    event?.event ||
+    event?.name ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function extractPaymentFromEvent(
+  event
+) {
   if (
     event &&
     event.payment &&
-    typeof event.payment === "object"
+    typeof event.payment ===
+      "object"
   ) {
     return event.payment;
   }
@@ -437,7 +674,8 @@ function extractPaymentFromEvent(event) {
     event &&
     event.data &&
     event.data.payment &&
-    typeof event.data.payment === "object"
+    typeof event.data.payment ===
+      "object"
   ) {
     return event.data.payment;
   }
@@ -445,7 +683,8 @@ function extractPaymentFromEvent(event) {
   if (
     event &&
     event.data &&
-    typeof event.data === "object" &&
+    typeof event.data ===
+      "object" &&
     (
       event.data.id ||
       event.data.reference ||
@@ -458,7 +697,9 @@ function extractPaymentFromEvent(event) {
   return null;
 }
 
-function extractPaymentId(payment) {
+function extractPaymentId(
+  payment
+) {
   if (!payment) {
     return null;
   }
@@ -471,7 +712,9 @@ function extractPaymentId(payment) {
   );
 }
 
-function extractReference(payment) {
+function extractReference(
+  payment
+) {
   if (!payment) {
     return null;
   }
@@ -483,16 +726,55 @@ function extractReference(payment) {
   );
 }
 
-function getEventType(event) {
-  return String(
-    event?.type ||
-    event?.event ||
-    event?.name ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
+/*
+ * =========================================================
+ * PROCESSAMENTO AUTOMÁTICO
+ * =========================================================
+ */
+
+async function triggerAutomaticBinanceTransfer(
+  orderId
+) {
+  try {
+    const result =
+      await processAdminPurchaseToBinanceInternal(
+        orderId
+      );
+
+    console.log(
+      "AUTO BINANCE TRANSFER RESULT:",
+      {
+        order_id:
+          orderId,
+        status:
+          result?.body?.status ||
+          result?.body?.message ||
+          null
+      }
+    );
+
+    return result;
+  } catch (error) {
+    console.error(
+      "AUTO BINANCE TRANSFER ERROR:",
+      {
+        order_id:
+          orderId,
+        message:
+          error?.message ||
+          "Erro desconhecido."
+      }
+    );
+
+    return null;
+  }
 }
+
+/*
+ * =========================================================
+ * WEBHOOK
+ * =========================================================
+ */
 
 async function handlePagarWebhook(
   req,
@@ -513,17 +795,27 @@ async function handlePagarWebhook(
       error
     );
 
-    return json(res, 500, {
-      success: false,
-      message: "Erro de configuração do webhook."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        message:
+          "Erro de configuração do webhook."
+      }
+    );
   }
 
   if (!verification.valid) {
-    return json(res, 401, {
-      success: false,
-      message: verification.reason
-    });
+    return json(
+      res,
+      401,
+      {
+        success: false,
+        message:
+          verification.reason
+      }
+    );
   }
 
   const eventId =
@@ -532,36 +824,66 @@ async function handlePagarWebhook(
   let event;
 
   try {
-    event = JSON.parse(rawBody);
+    event =
+      JSON.parse(
+        rawBody
+      );
   } catch {
-    return json(res, 400, {
-      success: false,
-      message: "JSON do webhook inválido."
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "JSON do webhook inválido."
+      }
+    );
   }
 
   const eventType =
     getEventType(event);
 
   const payment =
-    extractPaymentFromEvent(event);
+    extractPaymentFromEvent(
+      event
+    );
 
   const paymentId =
-    extractPaymentId(payment);
+    extractPaymentId(
+      payment
+    );
 
   const reference =
-    extractReference(payment);
+    extractReference(
+      payment
+    );
 
-  const sql = neon(
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED ||
-    ""
-  );
+  const databaseUrl =
+    getDatabaseUrl();
 
-  if (!paymentId && !reference) {
+  if (!databaseUrl) {
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        message:
+          "Banco de dados não configurado."
+      }
+    );
+  }
+
+  const sql =
+    neon(databaseUrl);
+
+  /*
+   * Eventos sem payment/reference:
+   * guardar e responder 200.
+   */
+  if (
+    !paymentId &&
+    !reference
+  ) {
     await sql`
       INSERT INTO pagar_webhook_events (
         event_id,
@@ -581,130 +903,231 @@ async function handlePagarWebhook(
         NOW(),
         NOW()
       )
-      ON CONFLICT (event_id) DO NOTHING
+      ON CONFLICT (event_id)
+      DO NOTHING
     `;
 
-    return json(res, 200, {
-      success: true,
-      received: true
-    });
+    return json(
+      res,
+      200,
+      {
+        success: true,
+        received: true,
+        event_id:
+          eventId
+      }
+    );
   }
 
   let newStatus = null;
 
   if (
-    eventType === "payment.succeeded"
+    eventType ===
+    "payment.succeeded"
   ) {
     newStatus = "PAID";
-  }
-
-  if (
-    eventType === "payment.failed"
+  } else if (
+    eventType ===
+    "payment.failed"
   ) {
     newStatus = "FAILED";
   }
 
   /*
-   * Uma única instrução SQL é atómica:
-   * primeiro grava o event_id único e,
-   * no mesmo comando, atualiza o pedido.
+   * =======================================================
+   * REGISTRA EVENTO + ATUALIZA PEDIDO
+   * =======================================================
    *
-   * Se o webhook for repetido, ON CONFLICT
-   * não insere novamente e nenhuma atualização
-   * duplicada é aplicada.
+   * ON CONFLICT garante idempotência do webhook.
    */
-  const result = await sql`
-    WITH inserted_event AS (
-      INSERT INTO pagar_webhook_events (
-        event_id,
-        event_type,
-        payment_id,
-        reference,
-        payload,
-        processed_at,
-        created_at
+  const result =
+    await sql`
+      WITH inserted_event AS (
+        INSERT INTO pagar_webhook_events (
+          event_id,
+          event_type,
+          payment_id,
+          reference,
+          payload,
+          processed_at,
+          created_at
+        )
+        VALUES (
+          ${eventId},
+          ${eventType || null},
+          ${paymentId},
+          ${reference},
+          ${JSON.stringify(event)}::jsonb,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (event_id)
+        DO NOTHING
+        RETURNING event_id
+      ),
+
+      updated_order AS (
+        UPDATE orders
+        SET
+          status =
+            CASE
+              WHEN ${newStatus || null}
+                IS NOT NULL
+              THEN ${newStatus}
+              ELSE status
+            END,
+
+          pagar_payment_id =
+            COALESCE(
+              ${paymentId},
+              pagar_payment_id
+            ),
+
+          pagar_event_id =
+            CASE
+              WHEN ${newStatus === "PAID"
+                ? eventId
+                : null} IS NOT NULL
+              THEN ${eventId}
+              ELSE pagar_event_id
+            END,
+
+          updated_at = NOW()
+
+        WHERE
+          EXISTS (
+            SELECT 1
+            FROM inserted_event
+          )
+
+          AND (
+            (
+              ${reference} IS NOT NULL
+              AND order_id = ${reference}
+            )
+
+            OR
+
+            (
+              ${paymentId} IS NOT NULL
+              AND pagar_payment_id =
+                ${paymentId}
+            )
+          )
+
+          /*
+           * PAID nunca volta para outro estado.
+           */
+          AND NOT (
+            status = 'PAID'
+            AND ${newStatus || null}
+              IN (
+                'FAILED',
+                'PROCESSING',
+                'PENDING'
+              )
+          )
+
+        RETURNING
+          order_id,
+          status,
+          amount,
+          usdt_amount,
+          rate,
+          pagar_payment_id,
+          pagar_event_id,
+          blockchain_tx_hash
       )
-      VALUES (
-        ${eventId},
-        ${eventType || null},
-        ${paymentId},
-        ${reference},
-        ${JSON.stringify(event)}::jsonb,
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (event_id) DO NOTHING
-      RETURNING event_id
-    ),
-    updated_order AS (
-      UPDATE orders
-      SET
-        status = ${newStatus || "PROCESSING"},
-        pagar_payment_id =
-          COALESCE(
-            ${paymentId},
-            pagar_payment_id
-          ),
-        pagar_event_id =
-          CASE
-            WHEN ${newStatus === "PAID" ? eventId : null}
-              IS NOT NULL
-            THEN ${eventId}
-            ELSE pagar_event_id
-          END,
-        updated_at = NOW()
-      WHERE
+
+      SELECT
         EXISTS (
           SELECT 1
           FROM inserted_event
-        )
-        AND (
-          (
-            ${reference} IS NOT NULL
-            AND order_id = ${reference}
-          )
-          OR
-          (
-            ${paymentId} IS NOT NULL
-            AND pagar_payment_id = ${paymentId}
-          )
-        )
-        AND (
-          ${newStatus === "PAID" ? "PAID" : null} IS NULL
-          OR status <> 'PAID'
-        )
-      RETURNING
-        order_id,
-        status,
-        amount,
-        usdt_amount,
-        rate,
-        pagar_payment_id,
-        pagar_event_id
-    )
-    SELECT
-      EXISTS (
-        SELECT 1
-        FROM inserted_event
-      ) AS inserted,
-      COALESCE(
-        (
-          SELECT row_to_json(updated_order)
-          FROM updated_order
-          LIMIT 1
-        ),
-        NULL
-      ) AS updated
-  `;
+        ) AS inserted,
 
-  return json(res, 200, {
-    success: true,
-    received: true,
-    event_id: eventId,
-    duplicate: result[0]?.inserted !== true,
-    order: result[0]?.updated || null
-  });
+        COALESCE(
+          (
+            SELECT row_to_json(
+              updated_order
+            )
+            FROM updated_order
+            LIMIT 1
+          ),
+          NULL
+        ) AS updated
+    `;
+
+  const inserted =
+    result[0]?.inserted === true;
+
+  const updatedOrder =
+    result[0]?.updated || null;
+
+  /*
+   * Webhook duplicado:
+   * não processar novamente.
+   */
+  if (!inserted) {
+    return json(
+      res,
+      200,
+      {
+        success: true,
+        received: true,
+        duplicate: true,
+        event_id:
+          eventId
+      }
+    );
+  }
+
+  /*
+   * =======================================================
+   * PAGAMENTO CONFIRMADO
+   * =======================================================
+   *
+   * Somente payment.succeeded pode iniciar a entrega.
+   */
+  if (
+    eventType ===
+      "payment.succeeded" &&
+    updatedOrder &&
+    String(
+      updatedOrder.status
+    ).toUpperCase() ===
+      "PAID"
+  ) {
+    /*
+     * O processamento automático é feito
+     * diretamente pela função interna.
+     *
+     * Não usamos HTTP nem sessão Admin.
+     */
+    await triggerAutomaticBinanceTransfer(
+      updatedOrder.order_id
+    );
+  }
+
+  return json(
+    res,
+    200,
+    {
+      success: true,
+      received: true,
+      duplicate: false,
+      event_id:
+        eventId,
+      order:
+        updatedOrder
+    }
+  );
 }
+
+/*
+ * =========================================================
+ * CHECK STATUS
+ * =========================================================
+ */
 
 async function handleCheckStatus(
   req,
@@ -712,61 +1135,82 @@ async function handleCheckStatus(
   body
 ) {
   const orderId =
-    String(body.order_id || "")
-      .trim();
+    String(
+      body.order_id || ""
+    ).trim();
 
   if (!orderId) {
-    return json(res, 400, {
-      success: false,
-      message: "order_id é obrigatório."
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "order_id é obrigatório."
+      }
+    );
   }
 
   const databaseUrl =
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED;
+    getDatabaseUrl();
 
   if (!databaseUrl) {
-    return json(res, 500, {
-      success: false,
-      message: "Banco de dados não configurado."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        message:
+          "Banco de dados não configurado."
+      }
+    );
   }
 
-  const sql = neon(databaseUrl);
+  const sql =
+    neon(databaseUrl);
 
-  const rows = await sql`
-    SELECT
-      order_id,
-      name,
-      phone,
-      operation,
-      payment,
-      amount,
-      usdt_amount,
-      rate,
-      status,
-      created_at,
-      updated_at,
-      pagar_payment_id,
-      pagar_event_id,
-      blockchain_tx_hash
-    FROM orders
-    WHERE order_id = ${orderId}
-    LIMIT 1
-  `;
+  const rows =
+    await sql`
+      SELECT
+        order_id,
+        name,
+        phone,
+        operation,
+        payment,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        created_at,
+        updated_at,
+        pagar_payment_id,
+        pagar_event_id,
+        blockchain_tx_hash
+      FROM orders
+      WHERE order_id = ${orderId}
+      LIMIT 1
+    `;
 
   if (rows.length === 0) {
-    return json(res, 404, {
-      success: false,
-      message: "Pedido não encontrado."
-    });
+    return json(
+      res,
+      404,
+      {
+        success: false,
+        message:
+          "Pedido não encontrado."
+      }
+    );
   }
 
-  const order = rows[0];
+  const order =
+    rows[0];
+
+  /*
+   * =======================================================
+   * CONSULTA AUTENTICADA NA PAGAR
+   * =======================================================
+   */
 
   if (
     order.pagar_payment_id
@@ -791,27 +1235,23 @@ async function handleCheckStatus(
           .toUpperCase();
 
       if (
-        pagarStatus &&
-        [
-          "PENDING",
-          "PROCESSING",
-          "PAID",
-          "CANCELLED",
-          "FAILED",
-          "RECONCILIATION_REQUIRED"
-        ].includes(pagarStatus)
+        PAGAR_STATUSES.has(
+          pagarStatus
+        )
       ) {
         /*
-         * A consulta autenticada pode confirmar PAID,
-         * conforme o guia oficial.
-         *
-         * Não substituímos um PAID por um estado
-         * não-terminal posterior.
+         * Somente PAID pode liberar a entrega.
          */
         if (
           pagarStatus === "PAID" &&
-          String(order.status)
-            .toUpperCase() !== "PAID"
+          String(
+            order.status
+          ).toUpperCase() !==
+            "PAID" &&
+          String(
+            order.status
+          ).toUpperCase() !==
+            "COMPLETED"
         ) {
           const updated =
             await sql`
@@ -819,90 +1259,205 @@ async function handleCheckStatus(
               SET
                 status = 'PAID',
                 updated_at = NOW()
-              WHERE order_id = ${orderId}
-                AND status <> 'PAID'
+              WHERE order_id =
+                ${orderId}
+                AND status NOT IN (
+                  'PAID',
+                  'COMPLETED'
+                )
               RETURNING
                 order_id,
-                name,
-                phone,
-                operation,
-                payment,
+                status,
                 amount,
                 usdt_amount,
                 rate,
-                status,
-                created_at,
-                updated_at,
                 pagar_payment_id,
                 pagar_event_id,
                 blockchain_tx_hash
             `;
 
-          if (updated.length > 0) {
+          if (
+            updated.length > 0
+          ) {
             order.status =
               updated[0].status;
+
             order.updated_at =
-              updated[0].updated_at;
+              new Date();
+
+            /*
+             * GET autenticado confirmou PAID.
+             * Pode iniciar a entrega.
+             */
+            await triggerAutomaticBinanceTransfer(
+              orderId
+            );
           }
+        } else if (
+          pagarStatus === "PAID" &&
+          String(
+            order.status
+          ).toUpperCase() ===
+            "PAID" &&
+          !order.blockchain_tx_hash
+        ) {
+          /*
+           * Caso o webhook tenha falhado,
+           * a consulta autenticada também consegue
+           * iniciar a transferência.
+           */
+          await triggerAutomaticBinanceTransfer(
+            orderId
+          );
         }
 
+        /*
+         * Estados finais da Pagar não podem sobrescrever
+         * uma ordem que já foi PAID/COMPLETED.
+         */
         if (
           [
             "CANCELLED",
             "FAILED",
             "RECONCILIATION_REQUIRED"
-          ].includes(pagarStatus) &&
-          String(order.status)
-            .toUpperCase() !== "PAID"
+          ].includes(
+            pagarStatus
+          ) &&
+          ![
+            "PAID",
+            "COMPLETED"
+          ].includes(
+            String(
+              order.status
+            ).toUpperCase()
+          )
         ) {
           const updated =
             await sql`
               UPDATE orders
               SET
-                status = ${pagarStatus},
-                updated_at = NOW()
-              WHERE order_id = ${orderId}
-                AND status <> 'PAID'
+                status =
+                  ${pagarStatus},
+                updated_at =
+                  NOW()
+              WHERE order_id =
+                ${orderId}
+                AND status NOT IN (
+                  'PAID',
+                  'COMPLETED'
+                )
               RETURNING status
             `;
 
-          if (updated.length > 0) {
+          if (
+            updated.length > 0
+          ) {
             order.status =
               updated[0].status;
           }
         }
       }
     } catch (error) {
+      /*
+       * Uma falha na consulta Pagar não transforma
+       * uma compra em PAID.
+       */
       console.error(
         "Erro ao consultar pagamento Pagar:",
-        error
+        {
+          message:
+            error?.message ||
+            "Erro desconhecido.",
+          status:
+            error?.status ||
+            null,
+          code:
+            error?.code ||
+            null,
+          requestId:
+            error?.requestId ||
+            null
+        }
       );
-
-      /*
-       * Não transformamos um erro de consulta
-       * em FAILED. O estado financeiro continua
-       * sendo o estado conhecido da nossa base.
-       */
     }
   }
 
-  return json(res, 200, {
-    success: true,
-    order: {
-      order_id: order.order_id,
-      amount_mzn: Number(order.amount),
-      usdt_amount: Number(order.usdt_amount),
-      rate: Number(order.rate),
-      status: order.status,
-      pagar_payment_id:
-        order.pagar_payment_id,
-      blockchain_tx_hash:
-        order.blockchain_tx_hash,
-      created_at: order.created_at,
-      updated_at: order.updated_at
+  /*
+   * Recarrega estado final.
+   */
+  const finalRows =
+    await sql`
+      SELECT
+        order_id,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        created_at,
+        updated_at,
+        pagar_payment_id,
+        pagar_event_id,
+        blockchain_tx_hash
+      FROM orders
+      WHERE order_id =
+        ${orderId}
+      LIMIT 1
+    `;
+
+  const finalOrder =
+    finalRows[0] || order;
+
+  return json(
+    res,
+    200,
+    {
+      success: true,
+      order: {
+        order_id:
+          finalOrder.order_id,
+
+        amount_mzn:
+          Number(
+            finalOrder.amount
+          ),
+
+        usdt_amount:
+          Number(
+            finalOrder.usdt_amount
+          ),
+
+        rate:
+          Number(
+            finalOrder.rate
+          ),
+
+        status:
+          finalOrder.status,
+
+        pagar_payment_id:
+          finalOrder.pagar_payment_id,
+
+        pagar_event_id:
+          finalOrder.pagar_event_id,
+
+        blockchain_tx_hash:
+          finalOrder.blockchain_tx_hash,
+
+        created_at:
+          finalOrder.created_at,
+
+        updated_at:
+          finalOrder.updated_at
+      }
     }
-  });
+  );
 }
+
+/*
+ * =========================================================
+ * CRIAR COMPRA
+ * =========================================================
+ */
 
 async function handleCreatePurchase(
   req,
@@ -913,11 +1468,16 @@ async function handleCreatePurchase(
     verifyAdminSession(req);
 
   if (!adminSession) {
-    return json(res, 401, {
-      success: false,
-      authenticated: false,
-      message: "Sessão Admin inválida ou expirada."
-    });
+    return json(
+      res,
+      401,
+      {
+        success: false,
+        authenticated: false,
+        message:
+          "Sessão Admin inválida ou expirada."
+      }
+    );
   }
 
   const amountRaw =
@@ -938,88 +1498,148 @@ async function handleCreatePurchase(
   const amount =
     Number(amountRaw);
 
+  /*
+   * MZN deve ser inteiro.
+   */
   if (
     !Number.isFinite(amount) ||
     !Number.isInteger(amount)
   ) {
-    return json(res, 400, {
-      success: false,
-      message: "O valor deve ser um número inteiro em MZN."
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "O valor deve ser um número inteiro em MZN."
+      }
+    );
   }
 
+  /*
+   * Limites internos USDTMZ.
+   */
   if (
     amount < MIN_MZN ||
     amount > MAX_MZN
   ) {
-    return json(res, 400, {
-      success: false,
-      message:
-        `O valor deve estar entre ${MIN_MZN} MZN e ${MAX_MZN} MZN.`
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          `O valor deve estar entre ${MIN_MZN} MZN e ${MAX_MZN} MZN.`
+      }
+    );
   }
 
-  if (!PAGAR_METHODS.has(method)) {
-    return json(res, 400, {
-      success: false,
-      message: "Método de pagamento inválido. Use MPESA ou EMOLA."
-    });
+  /*
+   * Método Pagar.
+   */
+  if (
+    !PAGAR_METHODS.has(
+      method
+    )
+  ) {
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "Método de pagamento inválido. Use MPESA ou EMOLA."
+      }
+    );
   }
 
-  if (!isValidMozambiquePhone(payerPhone)) {
-    return json(res, 400, {
-      success: false,
-      message:
-        "Número M-Pesa/e-Mola inválido. Use um número moçambicano válido."
-    });
+  /*
+   * Telefone.
+   */
+  if (
+    !isValidMozambiquePhone(
+      payerPhone
+    )
+  ) {
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "Número M-Pesa/e-Mola inválido. Use um número moçambicano válido."
+      }
+    );
   }
 
+  /*
+   * =======================================================
+   * CÁLCULO INTERNO
+   * =======================================================
+   *
+   * O navegador não decide a quantidade de USDT.
+   */
   const usdtAmount =
-    calculateUsdt(amount);
+    calculateUsdt(
+      amount
+    );
 
   if (
-    !Number.isFinite(usdtAmount) ||
+    !Number.isFinite(
+      usdtAmount
+    ) ||
     usdtAmount <= 0
   ) {
-    return json(res, 400, {
-      success: false,
-      message: "Não foi possível calcular o valor USDT."
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "Não foi possível calcular o valor USDT."
+      }
+    );
   }
 
   const databaseUrl =
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED;
+    getDatabaseUrl();
 
   if (!databaseUrl) {
-    return json(res, 500, {
-      success: false,
-      message: "Banco de dados não configurado."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        message:
+          "Banco de dados não configurado."
+      }
+    );
   }
 
-  const sql = neon(databaseUrl);
+  const sql =
+    neon(databaseUrl);
 
   const orderId =
     generateOrderId();
 
   /*
-   * Título, descrição, valor e quantidade
-   * são derivados pelo backend.
-   *
-   * O frontend não controla o preço.
+   * Título e descrição derivados
+   * dos dados internos.
    */
   const title =
     `Compra de ${usdtAmount} USDT - USDTMZ`;
 
   const description =
     `${amount} MZN para compra de ${usdtAmount} USDT ` +
-    `à taxa fixa de ${RATE_MZN_PER_USDT} MZN por USDT.`;
+    `à taxa de ${RATE_MZN_PER_USDT} MZN por USDT.`;
 
   try {
+    /*
+     * =====================================================
+     * CRIAR ORDEM INTERNA PRIMEIRO
+     * =====================================================
+     */
+
     const inserted =
       await sql`
         INSERT INTO orders (
@@ -1057,25 +1677,51 @@ async function handleCreatePurchase(
           status
       `;
 
-    if (inserted.length === 0) {
-      return json(res, 500, {
-        success: false,
-        message: "Não foi possível criar o pedido."
-      });
+    if (
+      inserted.length === 0
+    ) {
+      return json(
+        res,
+        500,
+        {
+          success: false,
+          message:
+            "Não foi possível criar o pedido."
+        }
+      );
     }
 
     const order =
       inserted[0];
 
+    /*
+     * =====================================================
+     * PAGAR
+     * =====================================================
+     */
+
     const pagarBody = {
-      reference: order.order_id,
+      reference:
+        order.order_id,
+
       title,
+
       description,
-      amountMzn: amount,
+
+      amountMzn:
+        Number(
+          order.amount
+        ),
+
       method,
+
       payerPhone
     };
 
+    /*
+     * Idempotência oficial baseada
+     * no ID interno da ordem.
+     */
     const idempotencyKey =
       `payment:${order.id}`;
 
@@ -1090,28 +1736,43 @@ async function handleCreatePurchase(
         );
     } catch (error) {
       /*
-       * Não apagamos o pedido.
-       * O estado permanece PENDING para
-       * reconciliação/repetição controlada.
+       * Não apagamos a ordem.
+       *
+       * A Pagar pode ter processado o pedido
+       * mesmo que a resposta tenha falhado.
        */
       console.error(
         "Erro ao criar pagamento Pagar:",
         {
-          message: error.message,
-          status: error.status,
-          code: error.code,
-          requestId: error.requestId
+          message:
+            error?.message ||
+            "Erro desconhecido.",
+          status:
+            error?.status ||
+            null,
+          code:
+            error?.code ||
+            null,
+          requestId:
+            error?.requestId ||
+            null
         }
       );
 
-      return json(res, 502, {
-        success: false,
-        message:
-          "A Pagar não confirmou a criação do pagamento. O pedido foi preservado para reconciliação.",
-        order_id: order.order_id,
-        request_id:
-          error.requestId || null
-      });
+      return json(
+        res,
+        502,
+        {
+          success: false,
+          message:
+            "A Pagar não confirmou a criação do pagamento. O pedido foi preservado para reconciliação.",
+          order_id:
+            order.order_id,
+          request_id:
+            error?.requestId ||
+            null
+        }
+      );
     }
 
     const payment =
@@ -1119,12 +1780,17 @@ async function handleCreatePurchase(
       null;
 
     if (!payment?.id) {
-      return json(res, 502, {
-        success: false,
-        message:
-          "A Pagar respondeu sem um payment.id. O pedido foi preservado para reconciliação.",
-        order_id: order.order_id
-      });
+      return json(
+        res,
+        502,
+        {
+          success: false,
+          message:
+            "A Pagar respondeu sem um payment.id. O pedido foi preservado para reconciliação.",
+          order_id:
+            order.order_id
+        }
+      );
     }
 
     const pagarStatus =
@@ -1135,30 +1801,46 @@ async function handleCreatePurchase(
         .trim()
         .toUpperCase();
 
-    const validStatuses = [
-      "PENDING",
-      "PROCESSING",
-      "PAID",
-      "CANCELLED",
-      "FAILED",
-      "RECONCILIATION_REQUIRED"
-    ];
-
     const internalStatus =
-      validStatuses.includes(
+      PAGAR_STATUSES.has(
         pagarStatus
       )
         ? pagarStatus
         : "PROCESSING";
 
+    /*
+     * =====================================================
+     * GUARDAR PAYMENT ID
+     * =====================================================
+     */
+
     const saved =
       await sql`
         UPDATE orders
         SET
-          pagar_payment_id = ${payment.id},
-          status = ${internalStatus},
-          updated_at = NOW()
-        WHERE order_id = ${order.order_id}
+          pagar_payment_id =
+            ${payment.id},
+
+          status =
+            CASE
+              /*
+               * Mesmo que a Pagar responda PAID,
+               * a entrega só é feita depois da confirmação
+               * autenticada/webhook.
+               */
+              WHEN ${internalStatus}
+                = 'PAID'
+              THEN 'PAID'
+
+              ELSE ${internalStatus}
+            END,
+
+          updated_at =
+            NOW()
+
+        WHERE order_id =
+          ${order.order_id}
+
         RETURNING
           order_id,
           amount,
@@ -1170,74 +1852,129 @@ async function handleCreatePurchase(
           updated_at
       `;
 
-    return json(res, 202, {
-      success: true,
-      message:
-        "Pagamento enviado para processamento.",
-      order: saved[0] || {
-        order_id: order.order_id,
-        amount: amount,
-        usdt_amount: usdtAmount,
-        rate: RATE_MZN_PER_USDT,
-        status: internalStatus,
-        pagar_payment_id: payment.id
-      },
-      payment: {
-        id: payment.id,
-        status: pagarStatus,
-        reference:
-          payment.reference ||
-          order.order_id,
-        amountMzn:
-          payment.amountMzn ??
-          amount,
-        currency:
-          payment.currency ||
-          "MZN",
-        method:
-          payment.method ||
-          method,
-        payerPhone:
-          payment.payerPhone ||
-          null,
-        paidAt:
-          payment.paidAt ||
-          null
+    /*
+     * =====================================================
+     * IMPORTANTE:
+     *
+     * NÃO enviamos para Binance aqui somente porque
+     * o POST inicial respondeu.
+     *
+     * A confirmação será feita pelo webhook ou GET
+     * autenticado da Pagar.
+     * =====================================================
+     */
+
+    return json(
+      res,
+      202,
+      {
+        success: true,
+
+        message:
+          "Pagamento enviado para processamento. O USDT será enviado automaticamente somente após confirmação PAID.",
+
+        order:
+          saved[0] || {
+            order_id:
+              order.order_id,
+
+            amount:
+              amount,
+
+            usdt_amount:
+              usdtAmount,
+
+            rate:
+              RATE_MZN_PER_USDT,
+
+            status:
+              internalStatus,
+
+            pagar_payment_id:
+              payment.id
+          },
+
+        payment: {
+          id:
+            payment.id,
+
+          status:
+            pagarStatus,
+
+          reference:
+            payment.reference ||
+            order.order_id,
+
+          amountMzn:
+            payment.amountMzn ??
+            amount,
+
+          currency:
+            payment.currency ||
+            "MZN",
+
+          method:
+            payment.method ||
+            method,
+
+          payerPhone:
+            payment.payerPhone ||
+            payerPhone,
+
+          paidAt:
+            payment.paidAt ||
+            null
+        }
       }
-    });
+    );
   } catch (error) {
     console.error(
       "Erro ao criar compra USDTMZ:",
       error
     );
 
-    return json(res, 500, {
-      success: false,
-      message:
-        "Erro interno ao criar a compra."
-    });
+    return json(
+      res,
+      500,
+      {
+        success: false,
+        message:
+          "Erro interno ao criar a compra."
+      }
+    );
   }
 }
+
+/*
+ * =========================================================
+ * HANDLER
+ * =========================================================
+ */
 
 export default async function handler(
   req,
   res
 ) {
-  if (req.method !== "POST") {
-    return json(res, 405, {
-      success: false,
-      message: "Método não permitido."
-    });
+  if (
+    req.method !== "POST"
+  ) {
+    return json(
+      res,
+      405,
+      {
+        success: false,
+        message:
+          "Método não permitido."
+      }
+    );
   }
 
   const rawBody =
     await readRawBody(req);
 
   /*
-   * Webhook Pagar:
-   * possui Pagar-Event-Id + Pagar-Signature.
-   *
-   * Ele não usa a sessão Admin.
+   * Webhook Pagar é identificado
+   * pelos headers oficiais.
    */
   const isWebhook =
     Boolean(
@@ -1266,11 +2003,15 @@ export default async function handler(
         error
       );
 
-      return json(res, 500, {
-        success: false,
-        message:
-          "Erro interno no processamento do webhook."
-      });
+      return json(
+        res,
+        500,
+        {
+          success: false,
+          message:
+            "Erro interno no processamento do webhook."
+        }
+      );
     }
   }
 
@@ -1278,22 +2019,42 @@ export default async function handler(
     parseJson(rawBody);
 
   if (!body) {
-    return json(res, 400, {
-      success: false,
-      message: "JSON inválido."
-    });
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        message:
+          "JSON inválido."
+      }
+    );
   }
 
+  /*
+   * Toda chamada que não é webhook
+   * exige sessão Admin.
+   */
   const adminSession =
     verifyAdminSession(req);
 
   if (!adminSession) {
-    return json(res, 401, {
-      success: false,
-      authenticated: false,
-      message: "Sessão Admin inválida ou expirada."
-    });
+    return json(
+      res,
+      401,
+      {
+        success: false,
+        authenticated: false,
+        message:
+          "Sessão Admin inválida ou expirada."
+      }
+    );
   }
+
+  /*
+   * =======================================================
+   * CONSULTAR STATUS
+   * =======================================================
+   */
 
   if (
     body.check_status === true
@@ -1304,6 +2065,12 @@ export default async function handler(
       body
     );
   }
+
+  /*
+   * =======================================================
+   * CRIAR COMPRA
+   * =======================================================
+   */
 
   return handleCreatePurchase(
     req,
