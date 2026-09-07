@@ -9,11 +9,15 @@ const USDT_CONTRACT =
 
 const USDT_DECIMALS = 6;
 
-// 100 TRX em sun.
-const DEFAULT_FEE_LIMIT = 100_000_000;
-
 const TRON_API_BASE =
   "https://api.trongrid.io";
+
+const DEFAULT_FEE_LIMIT =
+  100_000_000;
+
+/* =========================================================
+   SEGURANÇA
+   ========================================================= */
 
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
@@ -39,7 +43,10 @@ function verifySession(token, secret) {
 
   const [data, signature] = parts;
 
-  const expectedSignature = createHmac("sha256", secret)
+  const expectedSignature = createHmac(
+    "sha256",
+    secret
+  )
     .update(data)
     .digest("base64url");
 
@@ -52,7 +59,10 @@ function verifySession(token, secret) {
       Buffer.from(data, "base64url").toString("utf8")
     );
 
-    if (!payload.exp || Date.now() > Number(payload.exp)) {
+    if (
+      !payload.exp ||
+      Date.now() > Number(payload.exp)
+    ) {
       return null;
     }
 
@@ -67,7 +77,8 @@ function verifySession(token, secret) {
 }
 
 function getSessionToken(req) {
-  const cookies = req.headers.cookie || "";
+  const cookies =
+    req.headers.cookie || "";
 
   const cookie = cookies
     .split(";")
@@ -85,6 +96,10 @@ function getSessionToken(req) {
   );
 }
 
+/* =========================================================
+   DATABASE
+   ========================================================= */
+
 function getDatabaseUrl() {
   return (
     process.env.URL_DO_BANCO_DE_DADOS ||
@@ -95,47 +110,14 @@ function getDatabaseUrl() {
   );
 }
 
+/* =========================================================
+   TRON
+   ========================================================= */
+
 function isValidPrivateKey(value) {
   return /^[0-9a-fA-F]{64}$/.test(
     String(value || "")
   );
-}
-
-function normalizeAmount(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return null;
-  }
-
-  const text = String(value).trim();
-
-  if (!/^\d+(\.\d{1,6})?$/.test(text)) {
-    return null;
-  }
-
-  const parts = text.split(".");
-  const whole = parts[0];
-
-  const decimal = (parts[1] || "")
-    .padEnd(USDT_DECIMALS, "0");
-
-  const baseUnits =
-    BigInt(whole) * 1_000_000n +
-    BigInt(decimal);
-
-  if (baseUnits <= 0n) {
-    return null;
-  }
-
-  return {
-    text,
-    baseUnits,
-    display: (
-      Number(baseUnits) / 1_000_000
-    ).toFixed(6)
-  };
 }
 
 function getTronWeb(
@@ -176,32 +158,56 @@ function getErrorMessage(error) {
   }
 }
 
-/*
- * =========================================================
- * LEITURA DIRETA DO SALDO USDT TRC-20
- * =========================================================
- *
- * Esta função NÃO usa:
- *
- * tronWeb.contract().at(...).balanceOf(...).call()
- *
- * porque essa chamada estava causando:
- *
- * owner_address isn't set
- *
- * Em vez disso, usamos diretamente:
- *
- * /wallet/triggerconstantcontract
- *
- * informando explicitamente:
- *
- * owner_address
- * contract_address
- * function_selector
- * parameter
- *
- * balanceOf(address)
- */
+/* =========================================================
+   VALOR USDT
+   ========================================================= */
+
+function normalizeAmount(value) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  const text = String(value).trim();
+
+  if (!/^\d+(\.\d{1,6})?$/.test(text)) {
+    return null;
+  }
+
+  const parts = text.split(".");
+  const whole = parts[0];
+
+  const decimal = (
+    parts[1] || ""
+  ).padEnd(
+    USDT_DECIMALS,
+    "0"
+  );
+
+  const baseUnits =
+    BigInt(whole) *
+      1_000_000n +
+    BigInt(decimal);
+
+  if (baseUnits <= 0n) {
+    return null;
+  }
+
+  return {
+    text,
+    baseUnits,
+    display: (
+      Number(baseUnits) /
+      1_000_000
+    ).toFixed(6)
+  };
+}
+
+/* =========================================================
+   SALDO USDT
+   ========================================================= */
 
 async function getUsdtBalanceBaseUnits(
   ownerAddress,
@@ -224,39 +230,22 @@ async function getUsdtBalanceBaseUnits(
       fullHost: TRON_API_BASE
     });
 
-  if (
-    !tronWeb.isAddress(
-      ownerAddress
-    )
-  ) {
+  if (!tronWeb.isAddress(ownerAddress)) {
     throw new Error(
       "Endereço da carteira USDTMZ inválido."
     );
   }
 
-  /*
-   * Endereço TRON em hexadecimal:
-   *
-   * 41 + 20 bytes
-   *
-   * Para ABI precisamos somente dos
-   * 20 bytes sem o prefixo 41.
-   */
   const ownerHex =
     tronWeb.address
       .toHex(ownerAddress)
       .replace(/^41/, "");
 
-  /*
-   * ABI:
-   *
-   * balanceOf(address)
-   *
-   * O endereço precisa ocupar 32 bytes,
-   * portanto adicionamos zeros à esquerda.
-   */
   const parameter =
-    ownerHex.padStart(64, "0");
+    ownerHex.padStart(
+      64,
+      "0"
+    );
 
   const response =
     await fetch(
@@ -264,7 +253,8 @@ async function getUsdtBalanceBaseUnits(
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type":
+            "application/json",
           "TRON-PRO-API-KEY":
             tronApiKey
         },
@@ -282,76 +272,51 @@ async function getUsdtBalanceBaseUnits(
       }
     );
 
-  const responseText =
+  const text =
     await response.text();
 
   if (!response.ok) {
     throw new Error(
-      `TRON API HTTP ${response.status}: ${responseText}`
+      `TRON API HTTP ${response.status}: ${text}`
     );
   }
 
   let data;
 
   try {
-    data =
-      JSON.parse(
-        responseText
-      );
+    data = JSON.parse(text);
   } catch {
     throw new Error(
-      "A resposta da TRON não é JSON válido."
+      "Resposta inválida da TRON."
     );
   }
 
-  if (
-    data &&
-    data.result &&
-    data.result.result === false
-  ) {
-    throw new Error(
-      data.result.message ||
-      "A TRON recusou a consulta do saldo USDT."
-    );
-  }
-
-  const constantResult =
+  const result =
     data?.constant_result?.[0];
 
   if (
-    !constantResult ||
-    !/^[0-9a-fA-F]+$/.test(
-      constantResult
-    )
+    !result ||
+    !/^[0-9a-fA-F]+$/.test(result)
   ) {
     throw new Error(
-      "TRON não retornou um saldo USDT válido."
+      "TRON não retornou saldo USDT válido."
     );
   }
 
-  try {
-    return BigInt(
-      `0x${constantResult}`
-    );
-  } catch {
-    throw new Error(
-      "Não foi possível converter o saldo USDT retornado pela TRON."
-    );
-  }
+  return BigInt(`0x${result}`);
 }
 
-/*
- * =========================================================
- * LEITURA DO SALDO TRX
- * =========================================================
- */
+/* =========================================================
+   SALDO TRX
+   ========================================================= */
 
 async function getTrxBalanceSun(
   ownerAddress,
   tronApiKey
 ) {
   const headers = {
-    "Content-Type": "application/json"
+    "Content-Type":
+      "application/json"
   };
 
   if (tronApiKey) {
@@ -373,25 +338,22 @@ async function getTrxBalanceSun(
       }
     );
 
-  const responseText =
+  const text =
     await response.text();
 
   if (!response.ok) {
     throw new Error(
-      `TRON API HTTP ${response.status}: ${responseText}`
+      `TRON API HTTP ${response.status}: ${text}`
     );
   }
 
   let data;
 
   try {
-    data =
-      JSON.parse(
-        responseText
-      );
+    data = JSON.parse(text);
   } catch {
     throw new Error(
-      "A resposta da TRON não é JSON válido."
+      "Resposta inválida da TRON."
     );
   }
 
@@ -400,20 +362,9 @@ async function getTrxBalanceSun(
   );
 }
 
-async function restoreAuthorized(
-  sql,
-  withdrawalId
-) {
-  await sql`
-    UPDATE withdrawals
-    SET
-      status = 'AUTHORIZED',
-      updated_at = NOW()
-    WHERE withdrawal_id = ${String(withdrawalId)}
-      AND UPPER(status) = 'PROCESSING'
-      AND (tx_hash IS NULL OR tx_hash = '')
-  `;
-}
+/* =========================================================
+   TRANSAÇÃO
+   ========================================================= */
 
 async function getTransactionInfo(
   tronWeb,
@@ -450,35 +401,49 @@ async function waitForTransaction(
       return info;
     }
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, delayMs)
+    await new Promise(
+      (resolve) =>
+        setTimeout(
+          resolve,
+          delayMs
+        )
     );
   }
 
   return null;
 }
 
-function transactionSucceeded(
-  transactionInfo
-) {
-  if (!transactionInfo) {
+function transactionSucceeded(info) {
+  if (!info) {
     return false;
   }
 
-  const receipt =
-    transactionInfo.receipt;
-
-  if (!receipt) {
-    return false;
+  if (
+    info.receipt &&
+    info.receipt.result
+  ) {
+    return (
+      String(
+        info.receipt.result
+      ).toUpperCase() ===
+      "SUCCESS"
+    );
   }
 
-  const result =
-    String(
-      receipt.result || ""
-    ).toUpperCase();
+  if (
+    info.receipt &&
+    info.receipt.result ===
+      undefined
+  ) {
+    return true;
+  }
 
-  return result === "SUCCESS";
+  return false;
 }
+
+/* =========================================================
+   VALIDAR TRANSFERÊNCIA USDT
+   ========================================================= */
 
 async function verifyUsdtTransfer(
   tronWeb,
@@ -503,10 +468,11 @@ async function verifyUsdtTransfer(
       };
     }
 
-    const contractData =
-      transaction.raw_data.contract?.[0];
+    const contract =
+      transaction.raw_data
+        .contract?.[0];
 
-    if (!contractData) {
+    if (!contract) {
       return {
         valid: false,
         reason:
@@ -515,18 +481,18 @@ async function verifyUsdtTransfer(
     }
 
     if (
-      contractData.type !==
+      contract.type !==
       "TriggerSmartContract"
     ) {
       return {
         valid: false,
         reason:
-          "A transação não é uma chamada de contrato inteligente."
+          "A transação não é uma chamada de contrato."
       };
     }
 
     const parameter =
-      contractData.parameter?.value;
+      contract.parameter?.value;
 
     if (!parameter) {
       return {
@@ -548,12 +514,14 @@ async function verifyUsdtTransfer(
       return {
         valid: false,
         reason:
-          "O contrato da transação não é o USDT TRC-20 oficial configurado."
+          "Contrato USDT incorreto."
       };
     }
 
     const data =
-      String(parameter.data || "");
+      String(
+        parameter.data || ""
+      );
 
     if (
       !/^a9059cbb[a-fA-F0-9]{128}$/.test(
@@ -563,7 +531,7 @@ async function verifyUsdtTransfer(
       return {
         valid: false,
         reason:
-          "A transação não contém uma transferência USDT válida."
+          "Transferência USDT inválida."
       };
     }
 
@@ -574,7 +542,7 @@ async function verifyUsdtTransfer(
         8 + 64
       );
 
-    const decodedDestination =
+    const destination =
       tronWeb.address.fromHex(
         destinationHex
       );
@@ -585,30 +553,30 @@ async function verifyUsdtTransfer(
         8 + 128
       );
 
-    const decodedAmount =
+    const amount =
       BigInt(
         "0x" + amountHex
       );
 
     if (
-      decodedDestination !==
+      destination !==
       expectedDestination
     ) {
       return {
         valid: false,
         reason:
-          "O destino da transação não corresponde ao endereço configurado."
+          "Destino incorreto."
       };
     }
 
     if (
-      decodedAmount !==
+      amount !==
       expectedAmountBaseUnits
     ) {
       return {
         valid: false,
         reason:
-          "A quantidade enviada não corresponde à ordem."
+          "Quantidade USDT incorreta."
       };
     }
 
@@ -624,16 +592,13 @@ async function verifyUsdtTransfer(
   }
 }
 
-/*
- * =========================================================
- * MODO 1
- * RETIRADA NORMAL
- * =========================================================
- */
+/* =========================================================
+   RETIRADA NORMAL
+   ========================================================= */
 
 async function processNormalWithdrawal(
   sql,
-  withdrawalIdText,
+  withdrawalId,
   privateKey,
   configuredWallet,
   tronApiKey
@@ -644,40 +609,31 @@ async function processNormalWithdrawal(
       SET
         status = 'PROCESSING',
         updated_at = NOW()
-      WHERE withdrawal_id = ${withdrawalIdText}
-        AND UPPER(status) = 'AUTHORIZED'
-        AND (tx_hash IS NULL OR tx_hash = '')
-      RETURNING
-        id,
-        withdrawal_id,
-        user_id,
-        amount,
-        amount_requested,
-        amount_to_send,
-        withdrawal_fee,
-        asset,
-        network,
-        destination_address,
-        status,
-        tx_hash,
-        created_at,
-        updated_at,
-        order_id
+      WHERE withdrawal_id =
+        ${withdrawalId}
+        AND UPPER(status) =
+          'AUTHORIZED'
+        AND (
+          tx_hash IS NULL
+          OR tx_hash = ''
+        )
+      RETURNING *
     `;
 
   if (locked.length === 0) {
-    const existing =
+    const current =
       await sql`
         SELECT
           withdrawal_id,
           status,
           tx_hash
         FROM withdrawals
-        WHERE withdrawal_id = ${withdrawalIdText}
+        WHERE withdrawal_id =
+          ${withdrawalId}
         LIMIT 1
       `;
 
-    if (existing.length === 0) {
+    if (!current.length) {
       return {
         status: 404,
         body: {
@@ -688,17 +644,15 @@ async function processNormalWithdrawal(
       };
     }
 
-    if (existing[0].tx_hash) {
+    if (current[0].tx_hash) {
       return {
         status: 409,
         body: {
           success: false,
           message:
-            "Este levantamento já possui uma transação.",
+            "Este levantamento já possui TX Hash.",
           tx_hash:
-            existing[0].tx_hash,
-          status:
-            existing[0].status
+            current[0].tx_hash
         }
       };
     }
@@ -708,7 +662,7 @@ async function processNormalWithdrawal(
       body: {
         success: false,
         message:
-          `O levantamento não está autorizado para processamento. Estado atual: ${existing[0].status}.`
+          `Estado atual: ${current[0].status}.`
       }
     };
   }
@@ -723,22 +677,6 @@ async function processNormalWithdrawal(
       .trim()
       .toUpperCase();
 
-  if (asset !== "USDT") {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
-    return {
-      status: 400,
-      body: {
-        success: false,
-        message:
-          "Este processamento aceita somente USDT."
-      }
-    };
-  }
-
   const network =
     String(
       withdrawal.network || ""
@@ -746,47 +684,36 @@ async function processNormalWithdrawal(
       .trim()
       .toUpperCase();
 
-  const validNetwork =
-    network === "TRON" ||
-    network === "TRC20" ||
-    network === "TRC-20";
-
-  if (!validNetwork) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
+  if (asset !== "USDT") {
     return {
       status: 400,
       body: {
         success: false,
         message:
-          "A rede do levantamento não é TRON TRC-20."
+          "Somente USDT pode ser processado."
+      }
+    };
+  }
+
+  if (
+    !["TRON", "TRC20", "TRC-20"]
+      .includes(network)
+  ) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "A rede deve ser TRON TRC-20."
       }
     };
   }
 
   const destination =
     String(
-      withdrawal.destination_address || ""
+      withdrawal.destination_address ||
+      ""
     ).trim();
-
-  if (!destination) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
-    return {
-      status: 400,
-      body: {
-        success: false,
-        message:
-          "Endereço de destino não informado."
-      }
-    };
-  }
 
   const tronWeb =
     getTronWeb(
@@ -799,246 +726,97 @@ async function processNormalWithdrawal(
       destination
     )
   ) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
     return {
       status: 400,
       body: {
         success: false,
         message:
-          "Endereço TRON de destino inválido."
+          "Endereço TRON inválido."
       }
     };
   }
 
-  const senderAddress =
+  const sender =
     tronWeb.address.fromPrivateKey(
       privateKey
     );
 
-  if (!senderAddress) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
-    return {
-      status: 500,
-      body: {
-        success: false,
-        message:
-          "Não foi possível identificar a carteira da chave privada."
-      }
-    };
-  }
-
   if (
-    senderAddress !==
+    sender !==
     configuredWallet.trim()
   ) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
     return {
       status: 500,
       body: {
         success: false,
         message:
-          "A chave privada configurada não corresponde à carteira USDTMZ."
+          "A chave privada não corresponde à carteira USDTMZ."
       }
     };
   }
 
-  const amountValue =
-    withdrawal.amount_to_send ??
-    withdrawal.amount ??
-    withdrawal.amount_requested;
+  if (sender === destination) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Destino não pode ser a carteira USDTMZ."
+      }
+    };
+  }
 
   const amount =
     normalizeAmount(
-      amountValue
+      withdrawal.amount_to_send ??
+      withdrawal.amount ??
+      withdrawal.amount_requested
     );
 
   if (!amount) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
     return {
       status: 400,
       body: {
         success: false,
         message:
-          "Valor de USDT inválido."
+          "Valor USDT inválido."
       }
     };
   }
 
-  if (
-    destination ===
-    senderAddress
-  ) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
+  const balance =
+    await getUsdtBalanceBaseUnits(
+      sender,
+      tronApiKey
     );
 
-    return {
-      status: 400,
-      body: {
-        success: false,
-        message:
-          "O endereço de destino não pode ser a própria carteira USDTMZ."
-      }
-    };
-  }
-
-  /*
-   * =======================================================
-   * SALDO USDT
-   * =======================================================
-   */
-
-  let usdtBalance;
-
-  try {
-    usdtBalance =
-      await getUsdtBalanceBaseUnits(
-        senderAddress,
-        tronApiKey
-      );
-  } catch (balanceError) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
-    return {
-      status: 503,
-      body: {
-        success: false,
-        message:
-          "Não foi possível consultar o saldo USDT na rede TRON.",
-        error:
-          getErrorMessage(
-            balanceError
-          )
-      }
-    };
-  }
-
   if (
-    usdtBalance <
+    balance <
     amount.baseUnits
   ) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
     return {
       status: 400,
       body: {
         success: false,
         message:
-          "Saldo USDT insuficiente para esta retirada.",
-        balance_usdt:
-          (
-            Number(usdtBalance) /
-            1_000_000
-          ).toFixed(6)
+          "Saldo USDT insuficiente."
       }
     };
   }
 
-  /*
-   * =======================================================
-   * SALDO TRX
-   * =======================================================
-   */
-
-  let trxBalance;
-
-  try {
-    trxBalance =
-      await getTrxBalanceSun(
-        senderAddress,
-        tronApiKey
-      );
-  } catch (trxError) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
+  const trx =
+    await getTrxBalanceSun(
+      sender,
+      tronApiKey
     );
 
-    return {
-      status: 503,
-      body: {
-        success: false,
-        message:
-          "Não foi possível verificar o saldo TRX.",
-        error:
-          getErrorMessage(
-            trxError
-          )
-      }
-    };
-  }
-
-  if (
-    trxBalance <= 0n
-  ) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
+  if (trx <= 0n) {
     return {
       status: 400,
       body: {
         success: false,
         message:
-          "A carteira não possui TRX para pagar os recursos da rede."
-      }
-    };
-  }
-
-  const current =
-    await sql`
-      SELECT
-        status,
-        tx_hash
-      FROM withdrawals
-      WHERE withdrawal_id = ${withdrawalIdText}
-      LIMIT 1
-    `;
-
-  if (current.length === 0) {
-    return {
-      status: 404,
-      body: {
-        success: false,
-        message:
-          "Levantamento não encontrado."
-      }
-    };
-  }
-
-  if (current[0].tx_hash) {
-    return {
-      status: 409,
-      body: {
-        success: false,
-        message:
-          "Este levantamento já possui TX Hash. Nenhum novo envio foi realizado.",
-        tx_hash:
-          current[0].tx_hash
+          "Saldo TRX insuficiente."
       }
     };
   }
@@ -1063,166 +841,131 @@ async function processNormalWithdrawal(
           feeLimit:
             DEFAULT_FEE_LIMIT,
           callValue: 0,
-          shouldPollResponse: false
+          shouldPollResponse:
+            false
         });
-  } catch (sendError) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
+  } catch (error) {
+    /*
+     * IMPORTANTE:
+     * Nunca voltar automaticamente
+     * para AUTHORIZED depois de uma
+     * tentativa de broadcast.
+     *
+     * Mantemos PROCESSING para
+     * reconciliação.
+     */
     return {
       status: 502,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "A transação não foi enviada para a rede TRON.",
+          "Não foi possível confirmar o resultado do envio. A operação ficou em PROCESSING para reconciliação.",
         error:
-          getErrorMessage(
-            sendError
-          )
-      }
-    };
-  }
-
-  if (!txHash) {
-    await restoreAuthorized(
-      sql,
-      withdrawalIdText
-    );
-
-    return {
-      status: 502,
-      body: {
-        success: false,
-        message:
-          "A rede TRON não retornou TX Hash."
-      }
-    };
-  }
-
-  const txHashText =
-    String(txHash);
-
-  const saved =
-    await sql`
-      UPDATE withdrawals
-      SET
-        tx_hash = ${txHashText},
-        status = 'PROCESSING',
-        updated_at = NOW()
-      WHERE withdrawal_id = ${withdrawalIdText}
-        AND UPPER(status) = 'PROCESSING'
-        AND (tx_hash IS NULL OR tx_hash = '')
-      RETURNING
-        withdrawal_id,
-        status,
-        tx_hash
-    `;
-
-  if (saved.length === 0) {
-    return {
-      status: 500,
-      body: {
-        success: false,
-        message:
-          "A transação foi enviada, mas não foi possível atualizar o registro. NÃO tente processar novamente automaticamente.",
-        tx_hash:
-          txHashText,
+          getErrorMessage(error),
         requires_reconciliation:
           true
       }
     };
   }
 
-  const transactionInfo =
-    await waitForTransaction(
-      tronWeb,
-      txHashText
-    );
-
-  if (!transactionInfo) {
+  if (!txHash) {
     return {
-      status: 202,
+      status: 502,
       body: {
-        success: true,
-        status: "PROCESSING",
+        success: false,
+        status:
+          "PROCESSING",
         message:
-          "USDT enviado para a rede TRON. A confirmação ainda está pendente.",
-        withdrawal_id:
-          withdrawalIdText,
-        tx_hash:
-          txHashText,
-        amount_usdt:
-          amount.display,
-        destination,
-        requires_confirmation:
+          "A TRON não retornou TX Hash. A operação requer reconciliação.",
+        requires_reconciliation:
           true
       }
     };
   }
 
-  const successful =
-    transactionSucceeded(
-      transactionInfo
-    );
+  const hash =
+    String(txHash);
 
-  if (!successful) {
+  const saved =
+    await sql`
+      UPDATE withdrawals
+      SET
+        tx_hash = ${hash},
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE withdrawal_id =
+        ${withdrawalId}
+        AND UPPER(status) =
+          'PROCESSING'
+        AND (
+          tx_hash IS NULL
+          OR tx_hash = ''
+        )
+      RETURNING
+        withdrawal_id,
+        status,
+        tx_hash
+    `;
+
+  if (!saved.length) {
     return {
-      status: 202,
+      status: 500,
       body: {
-        success: true,
-        status: "PROCESSING",
+        success: false,
         message:
-          "A transação foi registrada, mas a confirmação final ainda precisa ser reconciliada.",
-        withdrawal_id:
-          withdrawalIdText,
-        tx_hash:
-          txHashText
+          "USDT foi enviado, mas o TX Hash não pôde ser salvo. NÃO envie novamente.",
+        tx_hash: hash,
+        requires_reconciliation:
+          true
       }
     };
   }
 
+  const info =
+    await waitForTransaction(
+      tronWeb,
+      hash
+    );
+
   return {
-    status: 200,
+    status: 202,
     body: {
       success: true,
-      status: "PROCESSING",
+      status:
+        "PROCESSING",
       message:
-        "USDT enviado com sucesso para a rede TRON. TX Hash registrado.",
+        info
+          ? "TX Hash registrado. A confirmação final permanece em PROCESSING."
+          : "USDT enviado para a rede TRON. Confirmação pendente.",
       withdrawal_id:
-        withdrawalIdText,
-      tx_hash:
-        txHashText,
+        withdrawalId,
+      tx_hash: hash,
       amount_usdt:
         amount.display,
       destination,
-      transaction_found:
+      requires_confirmation:
         true
     }
   };
 }
 
-/*
- * =========================================================
- * MODO 2
- * COMPRA USDTMZ → BINANCE
- * =========================================================
- */
+/* =========================================================
+   COMPRA ADMIN → BINANCE
+   ========================================================= */
 
 async function processAdminPurchaseToBinance(
   sql,
-  purchaseOrderId,
+  orderId,
   privateKey,
   configuredWallet,
   tronApiKey
 ) {
-  const orderId =
-    String(
-      purchaseOrderId || ""
-    ).trim();
+  const id =
+    String(orderId || "").trim();
 
-  if (!orderId) {
+  if (!id) {
     return {
       status: 400,
       body: {
@@ -1246,20 +989,17 @@ async function processAdminPurchaseToBinance(
         success: false,
         ready: false,
         message:
-          "O endereço USDT TRON da Binance ainda não está configurado no servidor."
+          "O endereço USDT TRON da Binance não está configurado no servidor."
       }
     };
   }
 
-  const orderRows =
+  const rows =
     await sql`
       SELECT
         id,
         order_id,
-        name,
-        phone,
         operation,
-        payment,
         amount,
         usdt_amount,
         rate,
@@ -1267,15 +1007,14 @@ async function processAdminPurchaseToBinance(
         pagar_payment_id,
         pagar_event_id,
         blockchain_tx_hash,
-        wallet_address,
         created_at,
         updated_at
       FROM orders
-      WHERE order_id = ${orderId}
+      WHERE order_id = ${id}
       LIMIT 1
     `;
 
-  if (orderRows.length === 0) {
+  if (!rows.length) {
     return {
       status: 404,
       body: {
@@ -1287,17 +1026,12 @@ async function processAdminPurchaseToBinance(
   }
 
   const order =
-    orderRows[0];
-
-  const operation =
-    String(
-      order.operation || ""
-    )
-      .trim()
-      .toUpperCase();
+    rows[0];
 
   if (
-    operation !==
+    String(order.operation || "")
+      .trim()
+      .toUpperCase() !==
     "BUY_USDT_ADMIN"
   ) {
     return {
@@ -1310,15 +1044,9 @@ async function processAdminPurchaseToBinance(
     };
   }
 
-  const orderStatus =
-    String(
-      order.status || ""
-    )
-      .trim()
-      .toUpperCase();
-
   /*
-   * Nunca enviar novamente se já existe TX Hash.
+   * Nunca enviar novamente se
+   * já existe TX Hash.
    */
   if (
     order.blockchain_tx_hash
@@ -1329,30 +1057,99 @@ async function processAdminPurchaseToBinance(
         success: true,
         already_sent: true,
         status:
-          orderStatus,
-        message:
-          "Esta compra já possui uma transação blockchain. Nenhum novo envio foi realizado.",
+          order.status,
         order_id:
-          order.order_id,
+          id,
         tx_hash:
           order.blockchain_tx_hash
       }
     };
   }
 
-  /*
-   * Somente PAID ou PROCESSING.
-   */
+  const orderStatus =
+    String(
+      order.status || ""
+    )
+      .trim()
+      .toUpperCase();
+
   if (
-    orderStatus !== "PAID" &&
-    orderStatus !== "PROCESSING"
+    orderStatus !== "PAID"
   ) {
     return {
       status: 409,
       body: {
         success: false,
         message:
-          `A compra ainda não está pronta para envio. Estado atual: ${order.status}.`
+          `A compra ainda não está PAID. Estado atual: ${order.status}.`
+      }
+    };
+  }
+
+  /*
+   * CLAIM ATÔMICO.
+   *
+   * Apenas uma execução pode
+   * passar de PAID → PROCESSING.
+   */
+  const claimed =
+    await sql`
+      UPDATE orders
+      SET
+        status = 'PROCESSING',
+        updated_at = NOW()
+      WHERE order_id = ${id}
+        AND operation =
+          'BUY_USDT_ADMIN'
+        AND UPPER(status) =
+          'PAID'
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+      RETURNING
+        order_id,
+        usdt_amount,
+        status
+    `;
+
+  if (!claimed.length) {
+    const current =
+      await sql`
+        SELECT
+          status,
+          blockchain_tx_hash
+        FROM orders
+        WHERE order_id = ${id}
+        LIMIT 1
+      `;
+
+    if (
+      current[0]?.blockchain_tx_hash
+    ) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          already_sent: true,
+          status:
+            current[0].status,
+          tx_hash:
+            current[0]
+              .blockchain_tx_hash
+        }
+      };
+    }
+
+    return {
+      status: 202,
+      body: {
+        success: true,
+        status:
+          "PROCESSING",
+        message:
+          "Esta compra já está sendo processada. Nenhum segundo envio foi realizado.",
+        order_id: id
       }
     };
   }
@@ -1368,7 +1165,7 @@ async function processAdminPurchaseToBinance(
       body: {
         success: false,
         message:
-          "A quantidade USDT da ordem é inválida."
+          "Quantidade USDT inválida."
       }
     };
   }
@@ -1389,29 +1186,18 @@ async function processAdminPurchaseToBinance(
       body: {
         success: false,
         message:
-          "BINANCE_USDT_TRON_ADDRESS não é um endereço TRON válido."
+          "BINANCE_USDT_TRON_ADDRESS inválido."
       }
     };
   }
 
-  const senderAddress =
+  const sender =
     tronWeb.address.fromPrivateKey(
       privateKey
     );
 
-  if (!senderAddress) {
-    return {
-      status: 500,
-      body: {
-        success: false,
-        message:
-          "Não foi possível identificar a carteira USDTMZ."
-      }
-    };
-  }
-
   if (
-    senderAddress !==
+    sender !==
     configuredWallet.trim()
   ) {
     return {
@@ -1419,13 +1205,13 @@ async function processAdminPurchaseToBinance(
       body: {
         success: false,
         message:
-          "A chave privada configurada não corresponde à carteira USDTMZ."
+          "A chave privada não corresponde à carteira USDTMZ."
       }
     };
   }
 
   if (
-    senderAddress ===
+    sender ===
     binanceAddress
   ) {
     return {
@@ -1433,179 +1219,29 @@ async function processAdminPurchaseToBinance(
       body: {
         success: false,
         message:
-          "A carteira Binance não pode ser igual à carteira USDTMZ."
+          "Binance não pode ser a própria carteira USDTMZ."
       }
     };
   }
 
-  /*
-   * =======================================================
-   * PROTEÇÃO CONTRA DOUBLE-SEND
-   * =======================================================
-   */
-
-  if (orderStatus === "PAID") {
-    const claimed =
-      await sql`
-        UPDATE orders
-        SET
-          status = 'PROCESSING',
-          updated_at = NOW()
-        WHERE order_id = ${orderId}
-          AND operation = 'BUY_USDT_ADMIN'
-          AND UPPER(status) = 'PAID'
-          AND (
-            blockchain_tx_hash IS NULL
-            OR blockchain_tx_hash = ''
-          )
-        RETURNING
-          id,
-          order_id,
-          usdt_amount,
-          amount,
-          rate,
-          status,
-          blockchain_tx_hash
-      `;
-
-    if (claimed.length === 0) {
-      const current =
-        await sql`
-          SELECT
-            order_id,
-            status,
-            blockchain_tx_hash,
-            usdt_amount
-          FROM orders
-          WHERE order_id = ${orderId}
-          LIMIT 1
-        `;
-
-      if (current.length === 0) {
-        return {
-          status: 404,
-          body: {
-            success: false,
-            message:
-              "Ordem não encontrada."
-          }
-        };
-      }
-
-      if (
-        current[0].blockchain_tx_hash
-      ) {
-        return {
-          status: 200,
-          body: {
-            success: true,
-            already_sent: true,
-            status:
-              current[0].status,
-            order_id:
-              current[0].order_id,
-            tx_hash:
-              current[0].blockchain_tx_hash
-          }
-        };
-      }
-
-      return {
-        status: 202,
-        body: {
-          success: true,
-          status: "PROCESSING",
-          message:
-            "Esta compra já está sendo processada. Nenhum segundo envio foi realizado.",
-          order_id:
-            current[0].order_id
-        }
-      };
-    }
-  } else {
-    /*
-     * PROCESSING sem TX Hash:
-     *
-     * NÃO fazemos um segundo envio.
-     */
-    return {
-      status: 202,
-      body: {
-        success: true,
-        status: "PROCESSING",
-        message:
-          "Esta compra já está em processamento. Nenhum segundo envio foi realizado.",
-        order_id:
-          orderId
-      }
-    };
-  }
-
-  /*
-   * =======================================================
-   * SALDO USDT
-   * =======================================================
-   */
-
-  let usdtBalance;
-
-  try {
-    usdtBalance =
-      await getUsdtBalanceBaseUnits(
-        senderAddress,
-        tronApiKey
-      );
-  } catch (balanceError) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
-    return {
-      status: 503,
-      body: {
-        success: false,
-        message:
-          "Não foi possível consultar o saldo USDT da carteira USDTMZ.",
-        error:
-          getErrorMessage(
-            balanceError
-          )
-      }
-    };
-  }
+  const usdtBalance =
+    await getUsdtBalanceBaseUnits(
+      sender,
+      tronApiKey
+    );
 
   if (
     usdtBalance <
     amount.baseUnits
   ) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
     return {
       status: 400,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "Saldo USDT insuficiente na carteira USDTMZ.",
+          "Saldo USDT insuficiente. A compra permanece PROCESSING.",
         balance_usdt:
           (
             Number(usdtBalance) /
@@ -1617,80 +1253,28 @@ async function processAdminPurchaseToBinance(
     };
   }
 
-  /*
-   * =======================================================
-   * SALDO TRX
-   * =======================================================
-   */
+  const trxBalance =
+    await getTrxBalanceSun(
+      sender,
+      tronApiKey
+    );
 
-  let trxBalance;
-
-  try {
-    trxBalance =
-      await getTrxBalanceSun(
-        senderAddress,
-        tronApiKey
-      );
-  } catch (trxError) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
-    return {
-      status: 503,
-      body: {
-        success: false,
-        message:
-          "Não foi possível verificar o saldo TRX da carteira.",
-        error:
-          getErrorMessage(
-            trxError
-          )
-      }
-    };
-  }
-
-  if (
-    trxBalance <= 0n
-  ) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
+  if (trxBalance <= 0n) {
     return {
       status: 400,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "A carteira USDTMZ não possui TRX para pagar a operação."
+          "Saldo TRX insuficiente. A compra permanece PROCESSING."
       }
     };
   }
 
   /*
-   * =======================================================
-   * ENVIO REAL PARA BINANCE
-   * =======================================================
+   * ENVIO REAL.
    */
-
   let txHash;
 
   try {
@@ -1711,78 +1295,67 @@ async function processAdminPurchaseToBinance(
           feeLimit:
             DEFAULT_FEE_LIMIT,
           callValue: 0,
-          shouldPollResponse: false
+          shouldPollResponse:
+            false
         });
-  } catch (sendError) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
+  } catch (error) {
+    /*
+     * NÃO voltar para PAID.
+     *
+     * O resultado do broadcast pode
+     * ser desconhecido.
+     */
     return {
       status: 502,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "O envio para a Binance não foi aceito pela rede TRON.",
+          "Não foi possível determinar com segurança o resultado do envio. A compra permanece PROCESSING.",
         error:
-          getErrorMessage(
-            sendError
-          )
+          getErrorMessage(error),
+        requires_reconciliation:
+          true
       }
     };
   }
 
   if (!txHash) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'PAID',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
-    `;
-
     return {
       status: 502,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "A rede TRON não retornou TX Hash."
+          "A TRON não retornou TX Hash. A compra permanece PROCESSING para reconciliação.",
+        requires_reconciliation:
+          true
       }
     };
   }
 
-  const txHashText =
+  const hash =
     String(txHash);
 
   /*
-   * =======================================================
-   * GUARDAR TX HASH IMEDIATAMENTE
-   * =======================================================
+   * SALVAR TX HASH IMEDIATAMENTE.
    */
-
   const saved =
     await sql`
       UPDATE orders
       SET
-        blockchain_tx_hash = ${txHashText},
-        status = 'PROCESSING',
-        updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
+        blockchain_tx_hash =
+          ${hash},
+        status =
+          'PROCESSING',
+        updated_at =
+          NOW()
+      WHERE order_id =
+        ${id}
+        AND UPPER(status) =
+          'PROCESSING'
         AND (
           blockchain_tx_hash IS NULL
           OR blockchain_tx_hash = ''
@@ -1793,15 +1366,16 @@ async function processAdminPurchaseToBinance(
         blockchain_tx_hash
     `;
 
-  if (saved.length === 0) {
+  if (!saved.length) {
     return {
       status: 500,
       body: {
         success: false,
+        status:
+          "PROCESSING",
         message:
-          "USDT foi enviado, mas não foi possível guardar o TX Hash no banco. NÃO tente enviar novamente.",
-        tx_hash:
-          txHashText,
+          "USDT foi enviado, mas o TX Hash não pôde ser salvo. NÃO envie novamente.",
+        tx_hash: hash,
         requires_reconciliation:
           true
       }
@@ -1809,33 +1383,27 @@ async function processAdminPurchaseToBinance(
   }
 
   /*
-   * =======================================================
-   * AGUARDAR CONFIRMAÇÃO
-   * =======================================================
+   * CONFIRMAÇÃO.
    */
-
-  const transactionInfo =
+  const info =
     await waitForTransaction(
       tronWeb,
-      txHashText
+      hash
     );
 
-  if (!transactionInfo) {
+  if (!info) {
     return {
       status: 202,
       body: {
         success: true,
-        status: "PROCESSING",
+        status:
+          "PROCESSING",
         message:
-          "USDT enviado para a Binance. A confirmação blockchain ainda está pendente.",
-        order_id:
-          orderId,
-        tx_hash:
-          txHashText,
+          "USDT enviado para Binance. Confirmação blockchain pendente.",
+        order_id: id,
+        tx_hash: hash,
         amount_usdt:
           amount.display,
-        destination:
-          binanceAddress,
         requires_confirmation:
           true
       }
@@ -1843,21 +1411,18 @@ async function processAdminPurchaseToBinance(
   }
 
   if (
-    !transactionSucceeded(
-      transactionInfo
-    )
+    !transactionSucceeded(info)
   ) {
     return {
       status: 202,
       body: {
         success: true,
-        status: "PROCESSING",
+        status:
+          "PROCESSING",
         message:
-          "A transação possui TX Hash, mas a confirmação final ainda precisa de reconciliação.",
-        order_id:
-          orderId,
-        tx_hash:
-          txHashText,
+          "A transação possui TX Hash, mas requer reconciliação.",
+        order_id: id,
+        tx_hash: hash,
         requires_reconciliation:
           true
       }
@@ -1865,38 +1430,29 @@ async function processAdminPurchaseToBinance(
   }
 
   /*
-   * =======================================================
-   * VALIDAR:
-   * - contrato USDT
-   * - destino Binance
-   * - quantidade USDT
-   * =======================================================
+   * VALIDAR DESTINO E VALOR.
    */
-
-  const transferVerification =
+  const verification =
     await verifyUsdtTransfer(
       tronWeb,
-      txHashText,
+      hash,
       binanceAddress,
       amount.baseUnits
     );
 
-  if (
-    !transferVerification.valid
-  ) {
+  if (!verification.valid) {
     return {
       status: 202,
       body: {
         success: true,
-        status: "PROCESSING",
+        status:
+          "PROCESSING",
         message:
-          "A transação foi confirmada pela rede, mas a validação do conteúdo da transferência requer reconciliação.",
-        order_id:
-          orderId,
-        tx_hash:
-          txHashText,
+          "A blockchain confirmou a transação, mas a transferência requer reconciliação.",
+        order_id: id,
+        tx_hash: hash,
         verification_error:
-          transferVerification.reason,
+          verification.reason,
         requires_reconciliation:
           true
       }
@@ -1904,41 +1460,37 @@ async function processAdminPurchaseToBinance(
   }
 
   /*
-   * =======================================================
-   * COMPLETED
-   * =======================================================
+   * COMPLETED.
    */
-
   const completed =
     await sql`
       UPDATE orders
       SET
         status = 'COMPLETED',
         updated_at = NOW()
-      WHERE order_id = ${orderId}
-        AND UPPER(status) = 'PROCESSING'
-        AND blockchain_tx_hash = ${txHashText}
+      WHERE order_id = ${id}
+        AND UPPER(status) =
+          'PROCESSING'
+        AND blockchain_tx_hash =
+          ${hash}
       RETURNING
         order_id,
         status,
-        amount,
         usdt_amount,
-        rate,
         blockchain_tx_hash
     `;
 
-  if (completed.length === 0) {
+  if (!completed.length) {
     return {
       status: 200,
       body: {
         success: true,
-        status: "PROCESSING",
+        status:
+          "PROCESSING",
         message:
-          "Transferência confirmada na blockchain, mas o estado final da ordem precisa de reconciliação.",
-        order_id:
-          orderId,
-        tx_hash:
-          txHashText,
+          "Transferência confirmada, mas o estado final requer reconciliação.",
+        order_id: id,
+        tx_hash: hash,
         requires_reconciliation:
           true
       }
@@ -1949,30 +1501,26 @@ async function processAdminPurchaseToBinance(
     status: 200,
     body: {
       success: true,
-      status: "COMPLETED",
+      status:
+        "COMPLETED",
       message:
-        "USDT enviado e confirmado na blockchain para o endereço Binance TRC-20 configurado.",
-      order_id:
-        orderId,
-      tx_hash:
-        txHashText,
+        "USDT enviado e confirmado na blockchain.",
+      order_id: id,
+      tx_hash: hash,
       amount_usdt:
         amount.display,
-      destination:
-        binanceAddress,
       blockchain_confirmed:
         true
     }
   };
 }
 
-/*
- * =========================================================
- * FUNÇÃO INTERNA
- *
- * NÃO É UMA API NOVA.
- * =========================================================
- */
+/* =========================================================
+   FUNÇÃO INTERNA
+   NÃO É UMA API NOVA.
+   É usada pelo criar-compra.js
+   após pagamento PAID.
+   ========================================================= */
 
 export async function processAdminPurchaseToBinanceInternal(
   orderId
@@ -2022,11 +1570,9 @@ export async function processAdminPurchaseToBinanceInternal(
   );
 }
 
-/*
- * =========================================================
- * HANDLER PRINCIPAL
- * =========================================================
- */
+/* =========================================================
+   HANDLER PRINCIPAL
+   ========================================================= */
 
 export default async function handler(
   req,
@@ -2090,7 +1636,7 @@ export default async function handler(
       success: false,
       ready: false,
       message:
-        "A carteira de envio ainda não está configurada no servidor."
+        "TRON_PRIVATE_KEY ainda não está configurada."
     });
   }
 
@@ -2110,14 +1656,10 @@ export default async function handler(
     req.body || {};
 
   /*
-   * =======================================================
-   * COMPRA ADMIN → BINANCE
-   * =======================================================
+   * ADMIN → BINANCE
    */
-
   if (
-    body.admin_binance_transfer ===
-      true &&
+    body.admin_binance_transfer === true &&
     body.purchase_order_id
   ) {
     try {
@@ -2145,38 +1687,26 @@ export default async function handler(
       return res.status(500).json({
         success: false,
         message:
-          "Erro interno ao enviar a compra USDT para a Binance."
+          "Erro interno ao enviar USDT para Binance.",
+        detail:
+          getErrorMessage(error)
       });
     }
   }
 
   /*
-   * =======================================================
    * RETIRADA NORMAL
-   * =======================================================
    */
-
   const withdrawalId =
-    body.withdrawal_id;
+    String(
+      body.withdrawal_id || ""
+    ).trim();
 
   if (!withdrawalId) {
     return res.status(400).json({
       success: false,
       message:
         "withdrawal_id é obrigatório."
-    });
-  }
-
-  const withdrawalIdText =
-    String(
-      withdrawalId
-    ).trim();
-
-  if (!withdrawalIdText) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "withdrawal_id inválido."
     });
   }
 
@@ -2187,7 +1717,7 @@ export default async function handler(
     const result =
       await processNormalWithdrawal(
         sql,
-        withdrawalIdText,
+        withdrawalId,
         privateKey,
         configuredWallet,
         tronApiKey
@@ -2205,7 +1735,9 @@ export default async function handler(
     return res.status(500).json({
       success: false,
       message:
-        "Erro interno ao processar o levantamento."
+        "Erro interno ao processar o levantamento.",
+      detail:
+        getErrorMessage(error)
     });
   }
 }
