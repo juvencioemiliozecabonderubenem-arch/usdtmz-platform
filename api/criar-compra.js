@@ -1,6 +1,17 @@
 import { neon } from "@neondatabase/serverless";
-import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
-import { processAdminPurchaseToBinanceInternal } from "./admin-withdrawal-process.js";
+import {
+  createHmac,
+  timingSafeEqual,
+  randomUUID
+} from "node:crypto";
+
+import {
+  processAdminPurchaseToBinanceInternal
+} from "./admin-withdrawal-process.js";
+
+/* =========================================================
+   CONFIGURAÇÃO USDTMZ
+   ========================================================= */
 
 const RATE_MZN_PER_USDT = 64;
 
@@ -12,9 +23,10 @@ const ALLOWED_PAYMENT_METHODS = [
   "EMOLA"
 ];
 
-const PAGAR_BASE_URL =
+const PAGAR_BASE_URL = (
   process.env.PAGAR_BASE_URL ||
-  "https://api.pagar.co.mz/api/v1";
+  "https://api.pagar.co.mz/api/v1"
+).replace(/\/+$/, "");
 
 const PAGAR_STATUSES = [
   "PENDING",
@@ -44,7 +56,7 @@ function getDatabaseUrl() {
    ========================================================= */
 
 function normalizeText(value) {
-  return String(value || "").trim();
+  return String(value ?? "").trim();
 }
 
 function normalizePayment(value) {
@@ -68,10 +80,23 @@ function getHeader(req, name) {
   const value = req.headers?.[name];
 
   if (Array.isArray(value)) {
-    return value[0] || "";
+    return String(value[0] || "");
   }
 
   return String(value || "");
+}
+
+function getErrorMessage(error) {
+  if (!error) {
+    return "Erro desconhecido.";
+  }
+
+  return (
+    error.message ||
+    error.error ||
+    error.detail ||
+    String(error)
+  );
 }
 
 /* =========================================================
@@ -90,19 +115,13 @@ function safeCompare(a, b) {
 }
 
 function hmacHex(secret, payload) {
-  return createHmac(
-    "sha256",
-    secret
-  )
+  return createHmac("sha256", secret)
     .update(payload)
     .digest("hex");
 }
 
 function hmacBase64(secret, payload) {
-  return createHmac(
-    "sha256",
-    secret
-  )
+  return createHmac("sha256", secret)
     .update(payload)
     .digest("base64");
 }
@@ -113,7 +132,6 @@ function hmacBase64(secret, payload) {
 
 async function readRawBody(req) {
   if (
-    req.body &&
     typeof req.body === "string"
   ) {
     return req.body;
@@ -148,7 +166,7 @@ function parseJsonBody(rawBody) {
 }
 
 /* =========================================================
-   PAGAR — ASSINATURA
+   PAGAR — WEBHOOK SIGNATURE
    ========================================================= */
 
 function verifyWebhookSignature(
@@ -163,54 +181,34 @@ function verifyWebhookSignature(
   }
 
   const received =
-    getHeader(
-      req,
-      "x-pagar-signature"
-    ) ||
-    getHeader(
-      req,
-      "x-webhook-signature"
-    ) ||
-    getHeader(
-      req,
-      "x-signature"
-    );
+    getHeader(req, "x-pagar-signature") ||
+    getHeader(req, "x-webhook-signature") ||
+    getHeader(req, "x-signature") ||
+    getHeader(req, "Pagar-Signature");
 
   if (!received) {
     return false;
   }
 
-  const receivedClean =
+  const clean =
     received
       .replace(/^sha256=/i, "")
       .trim();
 
   const expectedHex =
-    hmacHex(
-      secret,
-      rawBody
-    );
+    hmacHex(secret, rawBody);
 
   const expectedBase64 =
-    hmacBase64(
-      secret,
-      rawBody
-    );
+    hmacBase64(secret, rawBody);
 
   return (
-    safeCompare(
-      receivedClean,
-      expectedHex
-    ) ||
-    safeCompare(
-      receivedClean,
-      expectedBase64
-    )
+    safeCompare(clean, expectedHex) ||
+    safeCompare(clean, expectedBase64)
   );
 }
 
 /* =========================================================
-   PAGAR — EXTRAÇÃO DE DADOS
+   PAGAR — EXTRAIR DADOS
    ========================================================= */
 
 function getWebhookEventId(body) {
@@ -258,7 +256,7 @@ function getPaymentStatus(body) {
 }
 
 /* =========================================================
-   PAGAR — API
+   PAGAR API
    ========================================================= */
 
 async function pagarRequest(
@@ -279,13 +277,15 @@ async function pagarRequest(
       `${PAGAR_BASE_URL}${path}`,
       {
         ...options,
+
         headers: {
+          Accept: "application/json",
           "Content-Type":
             "application/json",
-          Accept:
-            "application/json",
+
           Authorization:
             `Bearer ${apiKey}`,
+
           ...options.headers
         }
       }
@@ -294,12 +294,13 @@ async function pagarRequest(
   const text =
     await response.text();
 
-  let data;
+  let data = {};
 
   try {
-    data = text
-      ? JSON.parse(text)
-      : {};
+    data =
+      text
+        ? JSON.parse(text)
+        : {};
   } catch {
     data = {
       raw: text
@@ -311,6 +312,7 @@ async function pagarRequest(
       `Pagar HTTP ${response.status}: ${
         data?.message ||
         data?.error ||
+        data?.detail ||
         text ||
         "erro desconhecido"
       }`
@@ -321,7 +323,7 @@ async function pagarRequest(
 }
 
 /* =========================================================
-   CRIAR PAGAMENTO
+   CRIAR PAGAMENTO PAGAR
    ========================================================= */
 
 async function createPagarPayment({
@@ -331,19 +333,13 @@ async function createPagarPayment({
   amountMzn,
   paymentMethod
 }) {
-  /*
-   * O formato abaixo mantém a ordem USDTMZ
-   * identificável no Pagar.
-   *
-   * Se a conta Pagar exigir campos adicionais,
-   * eles devem ser configurados aqui,
-   * sem colocar secrets no frontend.
-   */
-
   const payload = {
     reference: orderId,
+
     amount: amountMzn,
+
     currency: "MZN",
+
     description:
       `Compra de USDT - ${orderId}`,
 
@@ -366,17 +362,30 @@ async function createPagarPayment({
 }
 
 /* =========================================================
-   ATUALIZAR ORDEM APÓS PAID
+   EXTRAIR PAYMENT ID
+   ========================================================= */
+
+function extractPaymentId(data) {
+  return normalizeText(
+    data?.payment_id ||
+    data?.paymentId ||
+    data?.id ||
+    data?.payment?.id ||
+    data?.data?.payment_id ||
+    data?.data?.paymentId ||
+    data?.data?.id ||
+    data?.data?.payment?.id
+  );
+}
+
+/* =========================================================
+   PROCESSAR ORDEM PAID
    ========================================================= */
 
 async function processPaidOrder(
   sql,
   orderId
 ) {
-  /*
-   * Busca novamente para evitar processar
-   * uma ordem inexistente.
-   */
   const rows =
     await sql`
       SELECT
@@ -396,12 +405,9 @@ async function processPaidOrder(
     );
   }
 
-  const order =
-    rows[0];
+  const order = rows[0];
 
-  if (
-    order.blockchain_tx_hash
-  ) {
+  if (order.blockchain_tx_hash) {
     return {
       status: "COMPLETED",
       tx_hash:
@@ -419,27 +425,9 @@ async function processPaidOrder(
     );
   }
 
-  /*
-   * A API 05 faz o claim PAID → PROCESSING.
-   */
-  const result =
-    await processAdminPurchaseToBinanceInternal(
-      orderId
-    );
-
-  return {
-    status:
-      result?.body?.status ||
-      "PROCESSING",
-
-    tx_hash:
-      result?.body?.tx_hash ||
-      null,
-
-    message:
-      result?.body?.message ||
-      null
-  };
+  return processAdminPurchaseToBinanceInternal(
+    orderId
+  );
 }
 
 /* =========================================================
@@ -466,29 +454,19 @@ async function handleWebhook(
   }
 
   const body =
-    parseJsonBody(
-      rawBody
-    );
+    parseJsonBody(rawBody);
 
   const eventId =
-    getWebhookEventId(
-      body
-    );
+    getWebhookEventId(body);
 
   const paymentId =
-    getPaymentId(
-      body
-    );
+    getPaymentId(body);
 
   const reference =
-    getReference(
-      body
-    );
+    getReference(body);
 
   const pagarStatus =
-    getPaymentStatus(
-      body
-    );
+    getPaymentStatus(body);
 
   if (!eventId) {
     return res.status(400).json({
@@ -498,19 +476,23 @@ async function handleWebhook(
     });
   }
 
-  /*
-   * Idempotência:
-   * o mesmo evento não pode ser processado
-   * duas vezes.
-   */
+  if (!reference) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Referência da ordem não encontrada.",
+      event_id: eventId
+    });
+  }
+
+  /* =======================================================
+     IDEMPOTÊNCIA
+     ======================================================= */
+
   const existing =
     await sql`
       SELECT
-        id,
-        event_id,
-        payment_id,
-        reference,
-        processed_at
+        event_id
       FROM pagar_webhook_events
       WHERE event_id = ${eventId}
       LIMIT 1
@@ -526,38 +508,9 @@ async function handleWebhook(
     });
   }
 
-  /*
-   * Guarda o evento antes de processar.
-   */
-  await sql`
-    INSERT INTO pagar_webhook_events (
-      event_id,
-      event_type,
-      payment_id,
-      reference,
-      payload,
-      created_at
-    )
-    VALUES (
-      ${eventId},
-      ${pagarStatus || "UNKNOWN"},
-      ${paymentId || null},
-      ${reference || null},
-      ${JSON.stringify(body)},
-      NOW()
-    )
-    ON CONFLICT (event_id)
-    DO NOTHING
-  `;
-
-  if (!reference) {
-    return res.status(400).json({
-      success: false,
-      message:
-        "Referência da ordem não encontrada.",
-      event_id: eventId
-    });
-  }
+  /* =======================================================
+     LOCALIZAR ORDEM
+     ======================================================= */
 
   const orders =
     await sql`
@@ -584,20 +537,41 @@ async function handleWebhook(
     });
   }
 
-  const order =
-    orders[0];
+  const order = orders[0];
 
-  /*
-   * Se o pagamento já foi concluído,
-   * não repetir envio.
-   */
-  if (
-    order.blockchain_tx_hash
-  ) {
+  /* =======================================================
+     GUARDAR EVENTO
+     ======================================================= */
+
+  await sql`
+    INSERT INTO pagar_webhook_events (
+      event_id,
+      event_type,
+      payment_id,
+      reference,
+      payload,
+      created_at
+    )
+    VALUES (
+      ${eventId},
+      ${pagarStatus || "UNKNOWN"},
+      ${paymentId || null},
+      ${reference},
+      ${JSON.stringify(body)},
+      NOW()
+    )
+    ON CONFLICT (event_id)
+    DO NOTHING
+  `;
+
+  /* =======================================================
+     JÁ TEM TX
+     ======================================================= */
+
+  if (order.blockchain_tx_hash) {
     await sql`
       UPDATE pagar_webhook_events
-      SET
-        processed_at = NOW()
+      SET processed_at = NOW()
       WHERE event_id = ${eventId}
     `;
 
@@ -613,9 +587,10 @@ async function handleWebhook(
     });
   }
 
-  /*
-   * Guarda o payment ID/evento.
-   */
+  /* =======================================================
+     GUARDAR PAYMENT ID
+     ======================================================= */
+
   await sql`
     UPDATE orders
     SET
@@ -624,81 +599,95 @@ async function handleWebhook(
           ${paymentId || null},
           pagar_payment_id
         ),
+
       pagar_event_id =
         ${eventId},
+
       updated_at = NOW()
-    WHERE order_id =
-      ${reference}
+
+    WHERE order_id = ${reference}
   `;
 
-  /*
-   * =====================================================
-   * PAID
-   * =====================================================
-   */
-  if (
-    pagarStatus === "PAID"
-  ) {
+  /* =======================================================
+     PAID
+     ======================================================= */
+
+  if (pagarStatus === "PAID") {
     await sql`
       UPDATE orders
       SET
         status = 'PAID',
         updated_at = NOW()
-      WHERE order_id =
-        ${reference}
-        AND (
-          UPPER(status) IN (
-            'PENDING',
-            'PROCESSING',
-            'PAID'
-          )
-        )
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+      WHERE order_id = ${reference}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
     `;
 
-    let transfer;
-
     try {
-      transfer =
+      const transfer =
         await processPaidOrder(
           sql,
           reference
         );
+
+      await sql`
+        UPDATE pagar_webhook_events
+        SET processed_at = NOW()
+        WHERE event_id = ${eventId}
+      `;
+
+      return res.status(200).json({
+        success: true,
+        payment_status: "PAID",
+
+        order_status:
+          transfer?.body?.status ||
+          transfer?.status ||
+          "PROCESSING",
+
+        order_id:
+          reference,
+
+        tx_hash:
+          transfer?.body?.tx_hash ||
+          transfer?.tx_hash ||
+          null,
+
+        message:
+          transfer?.body?.message ||
+          transfer?.message ||
+          "Pagamento confirmado."
+      });
     } catch (error) {
       console.error(
-        "PAGAR PAID → BINANCE ERROR:",
+        "PAGAR PAID -> BINANCE ERROR:",
         error
       );
 
       /*
-       * Não marcamos FAILED automaticamente.
-       *
-       * O pagamento foi confirmado, mas
-       * o resultado blockchain pode ser
-       * desconhecido.
+       * O pagamento foi confirmado.
+       * Não marcamos como FAILED porque
+       * pode ter ocorrido broadcast.
        */
+
       await sql`
         UPDATE orders
         SET
           status = 'PROCESSING',
           updated_at = NOW()
-        WHERE order_id =
-          ${reference}
-          AND (
-            blockchain_tx_hash IS NULL
-            OR blockchain_tx_hash = ''
-          )
+        WHERE order_id = ${reference}
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
       `;
 
       await sql`
         UPDATE pagar_webhook_events
-        SET
-          processed_at = NOW()
-        WHERE event_id =
-          ${eventId}
+        SET processed_at = NOW()
+        WHERE event_id = ${eventId}
       `;
 
       return res.status(202).json({
@@ -706,40 +695,17 @@ async function handleWebhook(
         payment_status: "PAID",
         order_status: "PROCESSING",
         order_id: reference,
+        requires_reconciliation: true,
         message:
-          "Pagamento confirmado. Transferência USDT para Binance requer processamento/reconciliação.",
-        requires_reconciliation:
-          true
+          "Pagamento confirmado. Transferência USDT requer processamento."
       });
     }
-
-    await sql`
-      UPDATE pagar_webhook_events
-      SET
-        processed_at = NOW()
-      WHERE event_id =
-        ${eventId}
-    `;
-
-    return res.status(200).json({
-      success: true,
-      payment_status: "PAID",
-      order_status:
-        transfer.status,
-      order_id: reference,
-      tx_hash:
-        transfer.tx_hash || null,
-      message:
-        transfer.message ||
-        "Pagamento confirmado."
-    });
   }
 
-  /*
-   * =====================================================
-   * CANCELADO
-   * =====================================================
-   */
+  /* =======================================================
+     CANCELLED
+     ======================================================= */
+
   if (
     pagarStatus === "CANCELLED"
   ) {
@@ -748,38 +714,31 @@ async function handleWebhook(
       SET
         status = 'CANCELLED',
         updated_at = NOW()
-      WHERE order_id =
-        ${reference}
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+      WHERE order_id = ${reference}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
     `;
 
     await sql`
       UPDATE pagar_webhook_events
-      SET
-        processed_at = NOW()
-      WHERE event_id =
-        ${eventId}
+      SET processed_at = NOW()
+      WHERE event_id = ${eventId}
     `;
 
     return res.status(200).json({
       success: true,
-      payment_status:
-        "CANCELLED",
-      order_status:
-        "CANCELLED",
-      order_id:
-        reference
+      payment_status: "CANCELLED",
+      order_status: "CANCELLED",
+      order_id: reference
     });
   }
 
-  /*
-   * =====================================================
-   * FAILED
-   * =====================================================
-   */
+  /* =======================================================
+     FAILED
+     ======================================================= */
+
   if (
     pagarStatus === "FAILED"
   ) {
@@ -788,36 +747,31 @@ async function handleWebhook(
       SET
         status = 'FAILED',
         updated_at = NOW()
-      WHERE order_id =
-        ${reference}
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+      WHERE order_id = ${reference}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
     `;
 
     await sql`
       UPDATE pagar_webhook_events
-      SET
-        processed_at = NOW()
-      WHERE event_id =
-        ${eventId}
+      SET processed_at = NOW()
+      WHERE event_id = ${eventId}
     `;
 
     return res.status(200).json({
       success: true,
-      payment_status:
-        "FAILED",
-      order_status:
-        "FAILED",
-      order_id:
-        reference
+      payment_status: "FAILED",
+      order_status: "FAILED",
+      order_id: reference
     });
   }
 
-  /*
-   * PENDING / PROCESSING / OUTROS
-   */
+  /* =======================================================
+     PENDING / PROCESSING
+     ======================================================= */
+
   const safeStatus =
     PAGAR_STATUSES.includes(
       pagarStatus
@@ -828,30 +782,25 @@ async function handleWebhook(
   await sql`
     UPDATE orders
     SET
-      status =
-        ${safeStatus},
-      updated_at =
-        NOW()
-    WHERE order_id =
-      ${reference}
-      AND (
-        blockchain_tx_hash IS NULL
-        OR blockchain_tx_hash = ''
-      )
+      status = ${safeStatus},
+      updated_at = NOW()
+    WHERE order_id = ${reference}
+    AND (
+      blockchain_tx_hash IS NULL
+      OR blockchain_tx_hash = ''
+    )
   `;
 
   await sql`
     UPDATE pagar_webhook_events
-    SET
-      processed_at = NOW()
-    WHERE event_id =
-      ${eventId}
+    SET processed_at = NOW()
+    WHERE event_id = ${eventId}
   `;
 
   return res.status(200).json({
     success: true,
     payment_status:
-      pagarStatus,
+      pagarStatus || "PROCESSING",
     order_status:
       safeStatus,
     order_id:
@@ -860,7 +809,7 @@ async function handleWebhook(
 }
 
 /* =========================================================
-   VERIFICAR PAGAMENTO MANUALMENTE
+   CONSULTAR PAGAMENTO NO PAGAR
    ========================================================= */
 
 async function getPagarPaymentStatus(
@@ -875,6 +824,10 @@ async function getPagarPaymentStatus(
     }
   );
 }
+
+/* =========================================================
+   STATUS MANUAL
+   ========================================================= */
 
 async function handleStatusCheck(
   req,
@@ -934,8 +887,7 @@ async function handleStatusCheck(
         pagar_payment_id,
         blockchain_tx_hash
       FROM orders
-      WHERE order_id =
-        ${orderId}
+      WHERE order_id = ${orderId}
       LIMIT 1
     `;
 
@@ -947,12 +899,9 @@ async function handleStatusCheck(
     });
   }
 
-  const order =
-    rows[0];
+  const order = rows[0];
 
-  if (
-    order.blockchain_tx_hash
-  ) {
+  if (order.blockchain_tx_hash) {
     return res.status(200).json({
       success: true,
       order_id:
@@ -964,9 +913,7 @@ async function handleStatusCheck(
     });
   }
 
-  if (
-    !order.pagar_payment_id
-  ) {
+  if (!order.pagar_payment_id) {
     return res.status(409).json({
       success: false,
       message:
@@ -980,24 +927,19 @@ async function handleStatusCheck(
     );
 
   const status =
-    getPaymentStatus(
-      payment
-    );
+    getPaymentStatus(payment);
 
-  if (
-    status === "PAID"
-  ) {
+  if (status === "PAID") {
     await sql`
       UPDATE orders
       SET
         status = 'PAID',
         updated_at = NOW()
-      WHERE order_id =
-        ${orderId}
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+      WHERE order_id = ${orderId}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
     `;
 
     try {
@@ -1009,78 +951,72 @@ async function handleStatusCheck(
 
       return res.status(200).json({
         success: true,
-        payment_status:
-          "PAID",
+        payment_status: "PAID",
+
         order_status:
-          transfer.status,
+          transfer?.body?.status ||
+          transfer?.status ||
+          "PROCESSING",
+
         order_id:
           orderId,
+
         tx_hash:
-          transfer.tx_hash || null
+          transfer?.body?.tx_hash ||
+          transfer?.tx_hash ||
+          null
       });
     } catch (error) {
       console.error(
-        "PAGAR STATUS → BINANCE ERROR:",
+        "PAGAR STATUS -> BINANCE ERROR:",
         error
       );
 
       await sql`
         UPDATE orders
         SET
-          status =
-            'PROCESSING',
-          updated_at =
-            NOW()
-        WHERE order_id =
-          ${orderId}
-          AND (
-            blockchain_tx_hash IS NULL
-            OR blockchain_tx_hash = ''
-          )
+          status = 'PROCESSING',
+          updated_at = NOW()
+        WHERE order_id = ${orderId}
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
       `;
 
       return res.status(202).json({
         success: true,
-        payment_status:
-          "PAID",
-        order_status:
-          "PROCESSING",
-        order_id:
-          orderId,
+        payment_status: "PAID",
+        order_status: "PROCESSING",
+        order_id: orderId,
+        requires_reconciliation: true,
         message:
-          "Pagamento confirmado. Transferência requer reconciliação.",
-        requires_reconciliation:
-          true
+          "Pagamento confirmado. Transferência requer processamento."
       });
     }
   }
 
   const finalStatus =
-    PAGAR_STATUSES.includes(
-      status
-    )
+    PAGAR_STATUSES.includes(status)
       ? status
       : "PROCESSING";
 
   await sql`
     UPDATE orders
     SET
-      status =
-        ${finalStatus},
-      updated_at =
-        NOW()
-    WHERE order_id =
-      ${orderId}
-      AND (
-        blockchain_tx_hash IS NULL
-        OR blockchain_tx_hash = ''
-      )
+      status = ${finalStatus},
+      updated_at = NOW()
+    WHERE order_id = ${orderId}
+    AND (
+      blockchain_tx_hash IS NULL
+      OR blockchain_tx_hash = ''
+    )
   `;
 
   return res.status(200).json({
     success: true,
     payment_status:
-      status,
+      status || "PROCESSING",
     order_status:
       finalStatus,
     order_id:
@@ -1098,7 +1034,12 @@ async function createPurchase(
   sql
 ) {
   const body =
-    req.body || {};
+    req.body &&
+    typeof req.body === "object"
+      ? req.body
+      : parseJsonBody(
+          await readRawBody(req)
+        );
 
   const name =
     normalizeText(
@@ -1113,14 +1054,20 @@ async function createPurchase(
   const paymentMethod =
     normalizePayment(
       body.payment ||
-      body.payment_method
+      body.payment_method ||
+      body.method
     );
 
   const amountMzn =
     Number(
       body.amount ??
-      body.amount_mzn
+      body.amount_mzn ??
+      body.valor
     );
+
+  /* =======================================================
+     VALIDAÇÕES
+     ======================================================= */
 
   if (!name) {
     return res.status(400).json({
@@ -1139,9 +1086,7 @@ async function createPurchase(
   }
 
   if (
-    !Number.isFinite(
-      amountMzn
-    )
+    !Number.isFinite(amountMzn)
   ) {
     return res.status(400).json({
       success: false,
@@ -1182,6 +1127,10 @@ async function createPurchase(
     });
   }
 
+  /* =======================================================
+     CÁLCULO
+     ======================================================= */
+
   const usdtAmount =
     calculateUsdt(
       amountMzn
@@ -1190,185 +1139,240 @@ async function createPurchase(
   const orderId =
     createOrderId();
 
-  /*
-   * Cria primeiro a ordem no banco.
-   */
-  const created =
-    await sql`
-      INSERT INTO orders (
-        order_id,
-        name,
-        phone,
-        operation,
-        payment,
-        amount,
-        usdt_amount,
-        rate,
-        status,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        ${orderId},
-        ${name},
-        ${phone},
-        'BUY_USDT_ADMIN',
-        ${paymentMethod},
-        ${amountMzn},
-        ${usdtAmount},
-        ${RATE_MZN_PER_USDT},
-        'PENDING',
-        NOW(),
-        NOW()
-      )
-      RETURNING
-        id,
-        order_id,
-        name,
-        phone,
-        operation,
-        payment,
-        amount,
-        usdt_amount,
-        rate,
-        status,
-        created_at
-    `;
+  /* =======================================================
+     CRIAR ORDEM NO NEON
+     ======================================================= */
 
-  if (!created.length) {
+  let created;
+
+  try {
+    created =
+      await sql`
+        INSERT INTO orders (
+          order_id,
+          name,
+          phone,
+          operation,
+          payment,
+          amount,
+          usdt_amount,
+          rate,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${orderId},
+          ${name},
+          ${phone},
+          'BUY_USDT_ADMIN',
+          ${paymentMethod},
+          ${amountMzn},
+          ${usdtAmount},
+          ${RATE_MZN_PER_USDT},
+          'PENDING',
+          NOW(),
+          NOW()
+        )
+        RETURNING
+          id,
+          order_id,
+          name,
+          phone,
+          operation,
+          payment,
+          amount,
+          usdt_amount,
+          rate,
+          status,
+          created_at
+      `;
+  } catch (error) {
+    console.error(
+      "DATABASE CREATE ORDER ERROR:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message:
-        "Não foi possível criar a ordem."
+        "Não foi possível criar a ordem no banco de dados.",
+      detail:
+        getErrorMessage(error)
+    });
+  }
+
+  if (!created?.length) {
+    return res.status(500).json({
+      success: false,
+      message:
+        "A ordem não foi criada."
     });
   }
 
   const order =
     created[0];
 
+  /* =======================================================
+     CRIAR PAGAMENTO NO PAGAR
+     ======================================================= */
+
   try {
     const pagar =
       await createPagarPayment({
         orderId:
           order.order_id,
+
         name,
+
         phone,
+
         amountMzn,
+
         paymentMethod
       });
 
     const paymentId =
-      normalizeText(
-        pagar?.payment_id ||
-        pagar?.paymentId ||
-        pagar?.id ||
-        pagar?.payment?.id ||
-        pagar?.data?.payment_id ||
-        pagar?.data?.payment?.id
+      extractPaymentId(
+        pagar
       );
+
+    /*
+     * Se o Pagar não devolver ID,
+     * não fingimos que o pagamento foi criado.
+     */
+
+    if (!paymentId) {
+      console.error(
+        "PAGAR RESPONSE WITHOUT PAYMENT ID:",
+        pagar
+      );
+
+      await sql`
+        UPDATE orders
+        SET
+          status = 'FAILED',
+          updated_at = NOW()
+        WHERE order_id = ${order.order_id}
+        AND (
+          blockchain_tx_hash IS NULL
+          OR blockchain_tx_hash = ''
+        )
+      `;
+
+      return res.status(502).json({
+        success: false,
+        message:
+          "O Pagar respondeu sem payment_id.",
+        order_id:
+          order.order_id
+      });
+    }
+
+    /* =====================================================
+       ATUALIZAR ORDEM
+       ===================================================== */
 
     await sql`
       UPDATE orders
       SET
         pagar_payment_id =
-          ${paymentId || null},
+          ${paymentId},
+
         status = 'PROCESSING',
+
         updated_at = NOW()
+
       WHERE order_id =
         ${order.order_id}
     `;
 
+    /* =====================================================
+       RESPOSTA
+       ===================================================== */
+
     return res.status(201).json({
       success: true,
+
+      message:
+        "Ordem criada e pagamento enviado ao Pagar.",
 
       order: {
         order_id:
           order.order_id,
+
         amount_mzn:
           Number(order.amount),
+
         usdt_amount:
           Number(order.usdt_amount),
+
         rate:
           Number(order.rate),
+
         payment:
           order.payment,
+
         status:
           "PROCESSING"
       },
 
       pagar: {
         payment_id:
-          paymentId || null,
+          paymentId,
 
-        /*
-         * Mantemos a resposta completa do Pagar
-         * para o frontend conseguir usar a forma
-         * de pagamento retornada pela API.
-         */
         data:
           pagar
       }
     });
+
   } catch (error) {
     console.error(
       "PAGAR CREATE PAYMENT ERROR:",
       error
     );
 
+    /*
+     * A ordem continua registrada no banco,
+     * mas o pagamento não foi criado.
+     */
+
     await sql`
       UPDATE orders
       SET
         status = 'FAILED',
         updated_at = NOW()
-      WHERE order_id =
-        ${order.order_id}
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+      WHERE order_id = ${order.order_id}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
     `;
 
     return res.status(502).json({
       success: false,
+
       message:
         "A ordem foi criada, mas não foi possível criar o pagamento no Pagar.",
+
       order_id:
         order.order_id,
+
       detail:
-        error?.message ||
-        "Erro desconhecido."
+        getErrorMessage(error)
     });
   }
 }
 
 /* =========================================================
-   HANDLER
+   HANDLER PRINCIPAL
    ========================================================= */
 
 export default async function handler(
   req,
   res
 ) {
-  /*
-   * WEBHOOK
-   */
-  if (
-    req.method === "POST" &&
-    (
-      getHeader(
-        req,
-        "x-pagar-signature"
-      ) ||
-      getHeader(
-        req,
-        "x-webhook-signature"
-      ) ||
-      getHeader(
-        req,
-        "x-signature"
-      )
-    )
-  ) {
+  try {
     const databaseUrl =
       getDatabaseUrl();
 
@@ -1380,14 +1384,36 @@ export default async function handler(
       });
     }
 
-    const rawBody =
-      await readRawBody(
-        req
-      );
+    const sql =
+      neon(databaseUrl);
 
-    try {
-      const sql =
-        neon(databaseUrl);
+    /* =====================================================
+       WEBHOOK PAGAR
+       ===================================================== */
+
+    if (
+      req.method === "POST" &&
+      (
+        getHeader(
+          req,
+          "x-pagar-signature"
+        ) ||
+        getHeader(
+          req,
+          "x-webhook-signature"
+        ) ||
+        getHeader(
+          req,
+          "x-signature"
+        ) ||
+        getHeader(
+          req,
+          "Pagar-Signature"
+        )
+      )
+    ) {
+      const rawBody =
+        await readRawBody(req);
 
       return await handleWebhook(
         req,
@@ -1395,111 +1421,62 @@ export default async function handler(
         sql,
         rawBody
       );
-    } catch (error) {
-      console.error(
-        "PAGAR WEBHOOK ERROR:",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Erro ao processar webhook.",
-        detail:
-          error?.message ||
-          "Erro desconhecido."
-      });
-    }
-  }
-
-  /*
-   * CONSULTA MANUAL DO PAGAMENTO
-   */
-  if (
-    req.method === "GET" &&
-    req.query?.order_id
-  ) {
-    const databaseUrl =
-      getDatabaseUrl();
-
-    if (!databaseUrl) {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Banco de dados não configurado."
-      });
     }
 
-    try {
-      const sql =
-        neon(databaseUrl);
+    /* =====================================================
+       CONSULTAR STATUS
+       ===================================================== */
 
+    if (
+      req.method === "GET" &&
+      (
+        req.query?.order_id ||
+        req.query?.orderId
+      )
+    ) {
       return await handleStatusCheck(
         req,
         res,
         sql
       );
-    } catch (error) {
-      console.error(
-        "PAGAR STATUS ERROR:",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Erro ao consultar pagamento.",
-        detail:
-          error?.message ||
-          "Erro desconhecido."
-      });
-    }
-  }
-
-  /*
-   * CRIAR COMPRA
-   */
-  if (req.method === "POST") {
-    const databaseUrl =
-      getDatabaseUrl();
-
-    if (!databaseUrl) {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Banco de dados não configurado."
-      });
     }
 
-    try {
-      const sql =
-        neon(databaseUrl);
+    /* =====================================================
+       CRIAR COMPRA
+       ===================================================== */
 
+    if (
+      req.method === "POST"
+    ) {
       return await createPurchase(
         req,
         res,
         sql
       );
-    } catch (error) {
-      console.error(
-        "CREATE PURCHASE ERROR:",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Erro interno ao criar compra.",
-        detail:
-          error?.message ||
-          "Erro desconhecido."
-      });
     }
-  }
 
-  return res.status(405).json({
-    success: false,
-    message:
-      "Método não permitido."
-  });
+    /* =====================================================
+       MÉTODO NÃO PERMITIDO
+       ===================================================== */
+
+    return res.status(405).json({
+      success: false,
+      message:
+        "Método não permitido."
+    });
+
+  } catch (error) {
+    console.error(
+      "CREATE PURCHASE FATAL ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Erro interno ao processar a operação.",
+      detail:
+        getErrorMessage(error)
+    });
+  }
 }
