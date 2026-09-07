@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>USDTMZ — Admin Operações</title>
+
+  <title>USDTMZ — Admin Retiradas</title>
 
   <style>
     * {
@@ -12,180 +13,235 @@
 
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: Arial, Helvetica, sans-serif;
       background: #f4f6f8;
-      color: #111827;
+      color: #17202a;
     }
 
-    .container {
-      width: min(1100px, 94%);
-      margin: 30px auto;
+    header {
+      background: #111827;
+      color: white;
+      padding: 18px;
     }
 
-    h1 {
-      margin-bottom: 25px;
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    header p {
+      margin: 6px 0 0;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 1200px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-bottom: 18px;
     }
 
     .card {
       background: white;
       border-radius: 14px;
-      padding: 22px;
-      margin-bottom: 20px;
-      box-shadow: 0 4px 18px rgba(0,0,0,.08);
+      padding: 20px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.07);
+      border: 1px solid #e5e7eb;
     }
 
     .card h2 {
       margin-top: 0;
+      font-size: 18px;
+    }
+
+    .wallet-address {
+      word-break: break-all;
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      margin: 8px 0 15px;
+    }
+
+    .balances {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .balance {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .balance span {
+      display: block;
+      color: #64748b;
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    .balance strong {
       font-size: 20px;
     }
 
-    .wallet {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 15px;
-    }
-
-    .wallet-box {
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: 15px;
-      border: 1px solid #e5e7eb;
-    }
-
-    .label {
-      color: #6b7280;
-      font-size: 13px;
-      margin-bottom: 6px;
-    }
-
-    .value {
+    label {
+      display: block;
+      font-size: 14px;
       font-weight: bold;
-      word-break: break-all;
-    }
-
-    input,
-    select,
-    button {
-      width: 100%;
-      padding: 13px;
-      border-radius: 9px;
-      border: 1px solid #d1d5db;
-      font-size: 15px;
+      margin: 13px 0 6px;
     }
 
     input,
     select {
-      margin-bottom: 12px;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #2563eb;
     }
 
     button {
-      cursor: pointer;
-      border: none;
+      width: 100%;
+      border: 0;
+      border-radius: 9px;
+      padding: 13px;
+      margin-top: 12px;
+      font-size: 15px;
       font-weight: bold;
-      background: #111827;
-      color: white;
-    }
-
-    button:hover {
-      opacity: .9;
+      cursor: pointer;
     }
 
     button:disabled {
-      opacity: .5;
+      opacity: 0.55;
       cursor: not-allowed;
     }
 
-    .btn-refresh {
-      margin-top: 15px;
+    .btn-primary {
+      background: #2563eb;
+      color: white;
     }
 
-    .btn-buy {
-      margin-top: 5px;
-    }
-
-    .binance-box {
-      display: none;
-      margin-top: 20px;
-      padding: 20px;
-      border-radius: 12px;
-      border: 2px solid #16a34a;
-      background: #f0fdf4;
-    }
-
-    .binance-box h3 {
-      margin-top: 0;
-      color: #166534;
-    }
-
-    .binance-address {
-      padding: 12px;
-      background: white;
-      border: 1px solid #bbf7d0;
-      border-radius: 8px;
-      word-break: break-all;
-      margin: 12px 0;
-      font-family: monospace;
-      font-size: 13px;
+    .btn-primary:hover {
+      background: #1d4ed8;
     }
 
     .btn-binance {
-      background: #16a34a;
-      font-size: 18px;
-      padding: 16px;
+      background: #111827;
+      color: white;
+      font-size: 16px;
+      padding: 15px;
     }
 
     .btn-binance:hover {
-      background: #15803d;
+      background: #000000;
     }
 
-    .status {
+    .btn-refresh {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .message {
       margin-top: 12px;
-      padding: 12px;
+      padding: 11px;
       border-radius: 8px;
-      background: #f3f4f6;
+      display: none;
+      font-size: 14px;
       white-space: pre-wrap;
       word-break: break-word;
     }
 
-    .success {
+    .message.success {
+      display: block;
       background: #dcfce7;
       color: #166534;
     }
 
-    .error {
+    .message.error {
+      display: block;
       background: #fee2e2;
       color: #991b1b;
     }
 
-    .warning {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    .info {
+    .message.info {
+      display: block;
       background: #dbeafe;
       color: #1e40af;
     }
 
-    .purchase-result {
+    .binance-box {
       display: none;
-      margin-top: 20px;
-    }
-
-    .purchase-details {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 12px;
-    }
-
-    .detail {
-      padding: 12px;
+      margin-top: 18px;
+      border: 2px solid #111827;
+      border-radius: 12px;
+      padding: 16px;
       background: #f8fafc;
-      border-radius: 8px;
-      border: 1px solid #e5e7eb;
     }
 
-    .table-wrapper {
+    .binance-box.show {
+      display: block;
+    }
+
+    .binance-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
+
+    .binance-info {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #475569;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .status.PAID {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status.PROCESSING {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status.COMPLETED {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .status.FAILED,
+    .status.CANCELLED {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .table-wrap {
       overflow-x: auto;
     }
 
@@ -197,35 +253,46 @@
 
     th,
     td {
-      padding: 12px;
-      border-bottom: 1px solid #e5e7eb;
       text-align: left;
-      font-size: 14px;
+      padding: 11px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      vertical-align: middle;
     }
 
     th {
       background: #f8fafc;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #64748b;
     }
 
-    .small-button {
-      width: auto;
-      padding: 9px 12px;
-      font-size: 13px;
+    .tx {
+      max-width: 180px;
+      word-break: break-all;
+      font-size: 11px;
     }
 
-    .logout {
-      background: #dc2626;
-      margin-bottom: 20px;
+    .small {
+      font-size: 12px;
+      color: #64748b;
     }
 
-    @media (max-width: 600px) {
-      .container {
-        width: 96%;
-        margin: 15px auto;
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      main {
+        padding: 12px;
       }
 
       .card {
-        padding: 16px;
+        padding: 15px;
       }
     }
   </style>
@@ -233,222 +300,177 @@
 
 <body>
 
-<div class="container">
+<header>
+  <h1>USDTMZ — Admin</h1>
+  <p>Gestão de compras, carteira e retiradas USDT TRC-20</p>
+</header>
 
-  <h1>USDTMZ — Admin Operações</h1>
+<main>
 
-  <button
-    id="logoutButton"
-    class="logout"
-    type="button">
-    Sair do Admin
-  </button>
+  <div class="grid">
 
-  <!-- =====================================================
-       CARTEIRA USDTMZ
-       ===================================================== -->
+    <!-- =====================================================
+         CARTEIRA USDTMZ
+         ===================================================== -->
+    <section class="card">
 
-  <div class="card">
+      <h2>💰 Carteira USDTMZ</h2>
 
-    <h2>Carteira USDTMZ</h2>
-
-    <div class="wallet">
-
-      <div class="wallet-box">
-        <div class="label">Endereço</div>
-        <div
-          class="value"
-          id="walletAddress">
-          —
-        </div>
+      <div class="wallet-address" id="walletAddress">
+        Carregando...
       </div>
 
-      <div class="wallet-box">
-        <div class="label">USDT</div>
-        <div
-          class="value"
-          id="walletUsdt">
-          —
+      <div class="balances">
+
+        <div class="balance">
+          <span>USDT</span>
+          <strong id="usdtBalance">—</strong>
         </div>
+
+        <div class="balance">
+          <span>TRX</span>
+          <strong id="trxBalance">—</strong>
+        </div>
+
       </div>
 
-      <div class="wallet-box">
-        <div class="label">TRX</div>
-        <div
-          class="value"
-          id="walletTrx">
-          —
-        </div>
+      <div class="small" style="margin-top:12px;">
+        Rede: TRON / TRC-20
       </div>
-
-      <div class="wallet-box">
-        <div class="label">Rede</div>
-        <div class="value">
-          TRON / TRC-20
-        </div>
-      </div>
-
-    </div>
-
-    <button
-      id="refreshWallet"
-      class="btn-refresh"
-      type="button">
-      Atualizar saldo
-    </button>
-
-    <div
-      id="walletStatus"
-      class="status">
-    </div>
-
-  </div>
-
-
-  <!-- =====================================================
-       COMPRAR USDT
-       ===================================================== -->
-
-  <div class="card">
-
-    <h2>Comprar USDT</h2>
-
-    <p>
-      Taxa:
-      <strong>1 USDT = 64 MZN</strong>
-    </p>
-
-    <p>
-      Mínimo:
-      <strong>64 MZN = 1 USDT</strong>
-    </p>
-
-    <p>
-      Máximo:
-      <strong>40.000 MZN</strong>
-    </p>
-
-    <form id="purchaseForm">
-
-      <input
-        id="customerName"
-        type="text"
-        placeholder="Nome do cliente"
-        required>
-
-      <input
-        id="customerPhone"
-        type="text"
-        placeholder="Número M-Pesa/e-Mola"
-        required>
-
-      <select
-        id="paymentMethod"
-        required>
-
-        <option value="">
-          Escolher método de pagamento
-        </option>
-
-        <option value="MPESA">
-          M-Pesa
-        </option>
-
-        <option value="EMOLA">
-          e-Mola
-        </option>
-
-      </select>
-
-      <input
-        id="amountMzn"
-        type="number"
-        min="64"
-        max="40000"
-        step="1"
-        placeholder="Valor em MZN"
-        required>
 
       <button
-        id="createPurchaseButton"
-        class="btn-buy"
-        type="submit">
-        Criar compra
+        class="btn-refresh"
+        id="refreshWalletButton"
+        type="button">
+        🔄 Atualizar saldo
       </button>
 
-    </form>
+      <div
+        id="walletMessage"
+        class="message">
+      </div>
 
-    <div
-      id="purchaseStatus"
-      class="status">
-    </div>
+    </section>
 
 
-    <!-- ===================================================
-         RESULTADO DA COMPRA
-         =================================================== -->
+    <!-- =====================================================
+         COMPRAR USDT
+         ===================================================== -->
+    <section class="card">
 
-    <div
-      id="purchaseResult"
-      class="purchase-result">
+      <h2>🛒 Comprar USDT</h2>
 
-      <h3>Compra criada</h3>
+      <form id="purchaseForm">
 
-      <div class="purchase-details">
+        <label for="customerName">
+          Nome
+        </label>
 
-        <div class="detail">
-          <strong>Order ID</strong>
-          <div id="resultOrderId">—</div>
-        </div>
+        <input
+          id="customerName"
+          type="text"
+          autocomplete="name"
+          required
+          placeholder="Nome do cliente">
 
-        <div class="detail">
-          <strong>Valor MZN</strong>
-          <div id="resultMzn">—</div>
-        </div>
+        <label for="customerPhone">
+          Telefone
+        </label>
 
-        <div class="detail">
-          <strong>USDT</strong>
-          <div id="resultUsdt">—</div>
-        </div>
+        <input
+          id="customerPhone"
+          type="tel"
+          autocomplete="tel"
+          required
+          placeholder="Número M-Pesa/e-Mola">
 
-        <div class="detail">
-          <strong>Taxa</strong>
-          <div id="resultRate">—</div>
-        </div>
+        <label for="amountMzn">
+          Valor em MZN
+        </label>
 
-        <div class="detail">
-          <strong>Status</strong>
-          <div id="resultStatus">—</div>
-        </div>
+        <input
+          id="amountMzn"
+          type="number"
+          min="64"
+          max="40000"
+          step="1"
+          required
+          placeholder="Ex.: 6400">
 
+        <label for="paymentMethod">
+          Método de pagamento
+        </label>
+
+        <select
+          id="paymentMethod"
+          required>
+
+          <option value="">
+            Selecionar
+          </option>
+
+          <option value="MPESA">
+            M-Pesa
+          </option>
+
+          <option value="EMOLA">
+            e-Mola
+          </option>
+
+        </select>
+
+        <button
+          class="btn-primary"
+          id="createPurchaseButton"
+          type="submit">
+
+          Criar pagamento
+
+        </button>
+
+      </form>
+
+      <div
+        id="purchaseMessage"
+        class="message">
       </div>
 
 
-      <!-- =================================================
-           BINANCE
-           ================================================= -->
+      <!-- ===================================================
+           ENVIO PARA BINANCE
+           =================================================== -->
 
       <div
         id="binanceBox"
         class="binance-box">
 
-        <h3>
-          ✓ Pagamento confirmado
-        </h3>
+        <div class="binance-title">
+          🚀 Enviar USDT para Binance
+        </div>
 
-        <p>
-          A compra está <strong>PAID</strong>.
-          O USDT pode ser enviado para a Binance.
-        </p>
+        <div class="binance-info">
 
-        <p>
-          <strong>Destino Binance — USDT TRC-20:</strong>
-        </p>
+          <div>
+            Ordem:
+            <strong id="binanceOrderId">—</strong>
+          </div>
 
-        <div
-          id="binanceAddress"
-          class="binance-address">
-          Endereço configurado no servidor
+          <div>
+            Valor:
+            <strong id="binanceAmount">—</strong>
+            USDT
+          </div>
+
+          <div>
+            Rede:
+            <strong>TRON TRC-20</strong>
+          </div>
+
+          <div style="margin-top:7px;">
+            O endereço Binance está protegido no servidor
+            e não é exposto nesta página.
+          </div>
+
         </div>
 
         <button
@@ -461,314 +483,413 @@
         </button>
 
         <div
-          id="binanceStatus"
-          class="status">
+          id="binanceMessage"
+          class="message">
         </div>
 
       </div>
 
-    </div>
+    </section>
 
   </div>
 
 
-  <!-- =====================================================
-       LEVANTAMENTOS
-       ===================================================== -->
+  <!-- =======================================================
+       RETIRADAS
+       ======================================================= -->
 
-  <div class="card">
+  <section class="card">
 
-    <h2>Levantamentos</h2>
+    <h2>📋 Retiradas</h2>
 
-    <div class="table-wrapper">
+    <div class="table-wrap">
 
       <table>
 
         <thead>
+
           <tr>
             <th>ID</th>
             <th>USDT</th>
             <th>Destino</th>
             <th>Rede</th>
-            <th>Data</th>
-            <th>Status</th>
+            <th>Estado</th>
             <th>TX Hash</th>
+            <th>Data</th>
             <th>Ação</th>
           </tr>
+
         </thead>
 
-        <tbody id="withdrawalsTable">
+        <tbody id="withdrawalsBody">
+
           <tr>
             <td colspan="8">
               Carregando...
             </td>
           </tr>
+
         </tbody>
 
       </table>
 
     </div>
 
-  </div>
+    <div
+      id="withdrawalsMessage"
+      class="message">
+    </div>
 
-</div>
+  </section>
+
+</main>
 
 
 <script>
+"use strict";
 
-  let currentPurchase = null;
+/*
+ * =========================================================
+ * ESTADO DA PÁGINA
+ * =========================================================
+ */
 
-
-  /* ======================================================
-     ELEMENTOS
-     ====================================================== */
-
-  const purchaseForm =
-    document.getElementById(
-      "purchaseForm"
-    );
-
-  const purchaseStatus =
-    document.getElementById(
-      "purchaseStatus"
-    );
-
-  const purchaseResult =
-    document.getElementById(
-      "purchaseResult"
-    );
-
-  const binanceBox =
-    document.getElementById(
-      "binanceBox"
-    );
-
-  const binanceStatus =
-    document.getElementById(
-      "binanceStatus"
-    );
-
-  const sendBinanceButton =
-    document.getElementById(
-      "sendBinanceButton"
-    );
+let currentPurchase = null;
 
 
-  /* ======================================================
-     STATUS
-     ====================================================== */
+/*
+ * =========================================================
+ * HELPERS
+ * =========================================================
+ */
 
-  function showStatus(
-    element,
+function byId(id) {
+  return document.getElementById(id);
+}
+
+function setMessage(
+  element,
+  text,
+  type = "info"
+) {
+  if (!element) {
+    return;
+  }
+
+  element.textContent = text || "";
+
+  element.className =
+    "message " +
+    (text ? type : "");
+}
+
+function formatNumber(value) {
+  const number =
+    Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "—";
+  }
+
+  return number.toLocaleString(
+    "pt-PT",
+    {
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 6
+    }
+  );
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function readJson(response) {
+  const text =
+    await response.text();
+
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      success: false,
+      message: text
+    };
+  }
+}
+
+
+/*
+ * =========================================================
+ * CARTEIRA
+ * =========================================================
+ */
+
+async function loadWallet() {
+
+  const message =
+    byId("walletMessage");
+
+  setMessage(
     message,
-    type = ""
-  ) {
+    "Consultando carteira...",
+    "info"
+  );
 
-    element.textContent =
-      message || "";
+  try {
 
-    element.className =
-      "status " + type;
-
-  }
-
-
-  /* ======================================================
-     JSON SEGURO
-     ====================================================== */
-
-  async function readJson(response) {
-
-    try {
-      return await response.json();
-    } catch {
-      return {};
-    }
-
-  }
-
-
-  /* ======================================================
-     CARTEIRA
-     ====================================================== */
-
-  async function loadWallet() {
-
-    showStatus(
-      document.getElementById(
-        "walletStatus"
-      ),
-      "Atualizando carteira..."
-    );
-
-    try {
-
-      const response =
-        await fetch(
-          "/api/tron-wallet-info",
-          {
-            method: "GET",
-            credentials: "include"
-          }
-        );
-
-      const data =
-        await readJson(response);
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.message ||
-          "Não foi possível carregar a carteira."
-        );
-
-      }
-
-      const wallet =
-        data.data ||
-        data.wallet ||
-        data;
-
-      document.getElementById(
-        "walletAddress"
-      ).textContent =
-        wallet.address ||
-        wallet.wallet_address ||
-        "—";
-
-      document.getElementById(
-        "walletUsdt"
-      ).textContent =
-        wallet.usdt_balance ??
-        wallet.usdt ??
-        "—";
-
-      document.getElementById(
-        "walletTrx"
-      ).textContent =
-        wallet.trx_balance ??
-        wallet.trx ??
-        "—";
-
-      showStatus(
-        document.getElementById(
-          "walletStatus"
-        ),
-        "Carteira atualizada.",
-        "success"
+    const response =
+      await fetch(
+        "/api/tron-wallet-info",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        }
       );
 
-    } catch (error) {
+    const data =
+      await readJson(response);
 
-      showStatus(
-        document.getElementById(
-          "walletStatus"
-        ),
-        error.message ||
-        "Erro ao carregar carteira.",
-        "error"
+    if (!response.ok || data.success === false) {
+
+      throw new Error(
+        data.message ||
+        "Não foi possível carregar a carteira."
       );
-
     }
 
-  }
+    const wallet =
+      data.wallet ||
+      data.data ||
+      data;
 
+    const address =
+      wallet.address ||
+      wallet.wallet_address ||
+      wallet.tron_address ||
+      "";
 
-  document
-    .getElementById(
-      "refreshWallet"
-    )
-    .addEventListener(
-      "click",
-      loadWallet
+    const usdt =
+      wallet.usdt_balance ??
+      wallet.usdt ??
+      wallet.balance_usdt;
+
+    const trx =
+      wallet.trx_balance ??
+      wallet.trx ??
+      wallet.balance_trx;
+
+    byId("walletAddress").textContent =
+      address || "—";
+
+    byId("usdtBalance").textContent =
+      usdt !== undefined &&
+      usdt !== null
+        ? formatNumber(usdt)
+        : "—";
+
+    byId("trxBalance").textContent =
+      trx !== undefined &&
+      trx !== null
+        ? formatNumber(trx)
+        : "—";
+
+    setMessage(
+      message,
+      "Carteira atualizada.",
+      "success"
     );
 
+  } catch (error) {
 
-  /* ======================================================
-     CRIAR COMPRA
-     ====================================================== */
+    byId("walletAddress").textContent =
+      "—";
 
-  purchaseForm.addEventListener(
+    byId("usdtBalance").textContent =
+      "—";
+
+    byId("trxBalance").textContent =
+      "—";
+
+    setMessage(
+      message,
+      error.message ||
+      "Erro ao carregar carteira.",
+      "error"
+    );
+  }
+}
+
+
+/*
+ * =========================================================
+ * MOSTRAR BINANCE
+ * =========================================================
+ */
+
+function showBinanceBox(order) {
+
+  currentPurchase = order;
+
+  const box =
+    byId("binanceBox");
+
+  const orderId =
+    order.orderId ||
+    order.order_id;
+
+  const usdtAmount =
+    order.usdtAmount ??
+    order.usdt_amount;
+
+  byId("binanceOrderId").textContent =
+    orderId || "—";
+
+  byId("binanceAmount").textContent =
+    usdtAmount !== undefined &&
+    usdtAmount !== null
+      ? formatNumber(usdtAmount)
+      : "—";
+
+  box.classList.add("show");
+
+  const button =
+    byId("sendBinanceButton");
+
+  button.disabled = false;
+
+  button.textContent =
+    "🚀 ENVIAR USDT PARA BINANCE";
+
+  setMessage(
+    byId("binanceMessage"),
+    "Pagamento confirmado. O USDT está pronto para envio.",
+    "info"
+  );
+}
+
+
+/*
+ * =========================================================
+ * ESCONDER BINANCE
+ * =========================================================
+ */
+
+function hideBinanceBox() {
+
+  currentPurchase = null;
+
+  byId("binanceBox")
+    .classList.remove("show");
+
+  setMessage(
+    byId("binanceMessage"),
+    ""
+  );
+}
+
+
+/*
+ * =========================================================
+ * CRIAR COMPRA
+ * =========================================================
+ */
+
+byId("purchaseForm")
+  .addEventListener(
     "submit",
     async function(event) {
 
       event.preventDefault();
 
       const button =
-        document.getElementById(
-          "createPurchaseButton"
-        );
+        byId("createPurchaseButton");
 
-      button.disabled = true;
-
-      binanceBox.style.display =
-        "none";
-
-      binanceStatus.textContent =
-        "";
-
-      showStatus(
-        purchaseStatus,
-        "Criando compra...",
-        "info"
-      );
+      const message =
+        byId("purchaseMessage");
 
       const name =
-        document.getElementById(
-          "customerName"
-        ).value.trim();
+        byId("customerName")
+          .value
+          .trim();
 
       const phone =
-        document.getElementById(
-          "customerPhone"
-        ).value.trim();
-
-      const payment =
-        document.getElementById(
-          "paymentMethod"
-        ).value;
+        byId("customerPhone")
+          .value
+          .trim();
 
       const amount =
         Number(
-          document.getElementById(
-            "amountMzn"
-          ).value
+          byId("amountMzn")
+            .value
         );
 
-      if (
-        !name ||
-        !phone ||
-        !payment ||
-        !Number.isFinite(amount)
-      ) {
+      const payment =
+        byId("paymentMethod")
+          .value;
 
-        showStatus(
-          purchaseStatus,
-          "Preencha todos os campos.",
+      if (!name) {
+        setMessage(
+          message,
+          "Informe o nome.",
           "error"
         );
-
-        button.disabled = false;
         return;
+      }
 
+      if (!phone) {
+        setMessage(
+          message,
+          "Informe o telefone.",
+          "error"
+        );
+        return;
       }
 
       if (
+        !Number.isInteger(amount) ||
         amount < 64 ||
         amount > 40000
       ) {
-
-        showStatus(
-          purchaseStatus,
+        setMessage(
+          message,
           "O valor deve estar entre 64 MZN e 40.000 MZN.",
           "error"
         );
-
-        button.disabled = false;
         return;
-
       }
 
+      if (
+        payment !== "MPESA" &&
+        payment !== "EMOLA"
+      ) {
+        setMessage(
+          message,
+          "Selecione M-Pesa ou e-Mola.",
+          "error"
+        );
+        return;
+      }
+
+      button.disabled = true;
+
+      setMessage(
+        message,
+        "Criando pagamento...",
+        "info"
+      );
+
+      hideBinanceBox();
 
       try {
 
@@ -785,8 +906,8 @@
               body: JSON.stringify({
                 name,
                 phone,
-                payment,
-                amount
+                amount,
+                payment
               })
             }
           );
@@ -794,22 +915,19 @@
         const data =
           await readJson(response);
 
-        if (!response.ok) {
-
+        if (
+          !response.ok ||
+          data.success === false
+        ) {
           throw new Error(
             data.message ||
             "Não foi possível criar a compra."
           );
-
         }
 
-
         /*
-         * O backend pode retornar:
-         *
-         * data.order
-         *
-         * ou diretamente o objeto.
+         * O backend pode retornar a ordem
+         * em estruturas diferentes.
          */
 
         const order =
@@ -818,169 +936,170 @@
           data.data ||
           data;
 
+        const status =
+          String(
+            order.status ||
+            data.status ||
+            ""
+          )
+            .trim()
+            .toUpperCase();
 
-        currentPurchase = {
+        const orderId =
+          order.orderId ||
+          order.order_id ||
+          data.order_id;
 
-          orderId:
-            order.order_id ||
-            order.orderId,
+        const usdtAmount =
+          order.usdtAmount ??
+          order.usdt_amount ??
+          data.usdt_amount;
 
-          amount:
-            order.amount,
-
-          usdtAmount:
-            order.usdt_amount,
-
-          rate:
-            order.rate,
-
-          status:
-            String(
-              order.status ||
-              "PENDING"
-            ).toUpperCase()
-
-        };
-
-
-        document.getElementById(
-          "resultOrderId"
-        ).textContent =
-          currentPurchase.orderId ||
-          "—";
-
-        document.getElementById(
-          "resultMzn"
-        ).textContent =
-          currentPurchase.amount ??
-          amount;
-
-        document.getElementById(
-          "resultUsdt"
-        ).textContent =
-          currentPurchase.usdtAmount ??
-          (amount / 64).toFixed(6);
-
-        document.getElementById(
-          "resultRate"
-        ).textContent =
-          currentPurchase.rate ||
-          "64";
-
-        document.getElementById(
-          "resultStatus"
-        ).textContent =
-          currentPurchase.status;
-
-
-        purchaseResult.style.display =
-          "block";
-
-
-        showStatus(
-          purchaseStatus,
-          "Compra criada. Aguarde a confirmação do pagamento.",
+        setMessage(
+          message,
+          `Pagamento criado.\nOrdem: ${orderId || "—"}\nUSDT: ${usdtAmount || "—"}\nEstado: ${status || "PENDING"}`,
           "success"
         );
 
-
         /*
-         * Se já vier PAID, mostra Binance.
+         * Se o backend já retornar PAID,
+         * mostramos imediatamente o botão Binance.
          */
 
-        if (
-          currentPurchase.status ===
-          "PAID"
-        ) {
+        if (status === "PAID") {
 
-          showBinanceButton();
+          showBinanceBox({
+            ...order,
+            orderId,
+            usdtAmount
+          });
 
+        } else {
+
+          /*
+           * O pagamento ainda precisa
+           * ser confirmado pelo Pagar.
+           */
+
+          setMessage(
+            message,
+            `Pagamento criado.\nOrdem: ${orderId || "—"}\nEstado atual: ${status || "PENDING"}.\nAguardando confirmação do pagamento.`,
+            "info"
+          );
         }
+
+        await loadWithdrawals();
 
       } catch (error) {
 
-        showStatus(
-          purchaseStatus,
+        setMessage(
+          message,
           error.message ||
-          "Erro ao criar compra.",
+          "Erro ao criar pagamento.",
           "error"
         );
 
       } finally {
 
         button.disabled = false;
-
       }
 
     }
   );
 
 
-  /* ======================================================
-     MOSTRAR BOTÃO BINANCE
-     ====================================================== */
+/*
+ * =========================================================
+ * ENVIAR USDT PARA BINANCE
+ * =========================================================
+ */
 
-  function showBinanceButton() {
-
-    binanceBox.style.display =
-      "block";
-
-    binanceStatus.textContent =
-      "";
-
-    sendBinanceButton.disabled =
-      false;
-
-  }
-
-
-  /* ======================================================
-     ENVIAR PARA BINANCE
-     ====================================================== */
-
-  sendBinanceButton.addEventListener(
+byId("sendBinanceButton")
+  .addEventListener(
     "click",
     async function() {
 
-      if (
-        !currentPurchase ||
-        !currentPurchase.orderId
-      ) {
+      const button =
+        byId("sendBinanceButton");
 
-        showStatus(
-          binanceStatus,
-          "Não existe uma compra selecionada.",
+      const message =
+        byId("binanceMessage");
+
+      if (!currentPurchase) {
+
+        setMessage(
+          message,
+          "Nenhuma compra selecionada.",
           "error"
         );
 
         return;
-
       }
 
+      const orderId =
+        currentPurchase.orderId ||
+        currentPurchase.order_id;
+
+      if (!orderId) {
+
+        setMessage(
+          message,
+          "ID da ordem não encontrado.",
+          "error"
+        );
+
+        return;
+      }
+
+      const status =
+        String(
+          currentPurchase.status ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
+
+      /*
+       * Se soubermos que a ordem ainda não
+       * está PAID, não permitimos envio.
+       *
+       * O servidor também valida isso.
+       */
+
+      if (
+        status &&
+        status !== "PAID" &&
+        status !== "PROCESSING"
+      ) {
+
+        setMessage(
+          message,
+          `A ordem não está pronta para envio. Estado: ${status}.`,
+          "error"
+        );
+
+        return;
+      }
 
       const confirmed =
         window.confirm(
-          "CONFIRMAR ENVIO?\n\n" +
-          "Esta ação enviará " +
-          currentPurchase.usdtAmount +
-          " USDT para o endereço Binance configurado na rede TRON/TRC-20.\n\n" +
-          "Depois de enviado, não é possível cancelar a transação."
+          "Confirma o envio do USDT desta ordem para a Binance pela rede TRON TRC-20?"
         );
 
       if (!confirmed) {
         return;
       }
 
+      button.disabled = true;
 
-      sendBinanceButton.disabled =
-        true;
+      button.textContent =
+        "⏳ PROCESSANDO ENVIO...";
 
-      showStatus(
-        binanceStatus,
-        "Enviando USDT para a Binance. Aguarde...",
+      setMessage(
+        message,
+        "O servidor está processando o envio. Não feche a página.",
         "info"
       );
-
 
       try {
 
@@ -995,448 +1114,454 @@
                   "application/json"
               },
               body: JSON.stringify({
-
                 purchase_order_id:
-                  currentPurchase.orderId,
-
+                  orderId,
                 admin_binance_transfer:
                   true
-
               })
             }
           );
 
-
         const data =
           await readJson(response);
 
-
-        if (!response.ok) {
-
+        if (
+          !response.ok &&
+          !data.success
+        ) {
           throw new Error(
             data.message ||
-            data.error ||
-            "Não foi possível enviar o USDT para a Binance."
+            "Não foi possível processar o envio."
           );
-
         }
 
+        /*
+         * Atualizamos o estado local.
+         */
+
+        currentPurchase.status =
+          data.status ||
+          currentPurchase.status;
+
+        if (data.tx_hash) {
+          currentPurchase.tx_hash =
+            data.tx_hash;
+        }
 
         if (
-          data.tx_hash
+          data.status ===
+          "COMPLETED"
         ) {
 
-          showStatus(
-            binanceStatus,
-
-            "✓ USDT enviado.\n\n" +
-            "TX Hash:\n" +
-            data.tx_hash,
-
+          setMessage(
+            message,
+            `✅ USDT enviado e confirmado.\nTX Hash: ${data.tx_hash || "—"}`,
             "success"
           );
 
-        } else {
+          button.textContent =
+            "✅ USDT ENVIADO PARA BINANCE";
 
-          showStatus(
-            binanceStatus,
+          button.disabled = true;
 
-            data.message ||
-            "Transferência enviada para processamento.",
+        } else if (
+          data.tx_hash
+        ) {
 
-            "warning"
+          setMessage(
+            message,
+            `USDT enviado para a rede TRON.\nTX Hash: ${data.tx_hash}\nEstado: ${data.status || "PROCESSING"}.\nNão faça outro envio.`,
+            "success"
           );
 
+          button.textContent =
+            "⏳ ENVIO EM PROCESSAMENTO";
+
+          button.disabled = true;
+
+        } else if (
+          data.status ===
+          "PROCESSING"
+        ) {
+
+          setMessage(
+            message,
+            data.message ||
+            "A ordem já está sendo processada. Nenhum segundo envio foi realizado.",
+            "info"
+          );
+
+          button.textContent =
+            "⏳ PROCESSANDO";
+
+          button.disabled = true;
+
+        } else {
+
+          setMessage(
+            message,
+            data.message ||
+            "Processamento concluído.",
+            "info"
+          );
+
+          button.disabled = false;
+
+          button.textContent =
+            "🚀 ENVIAR USDT PARA BINANCE";
         }
 
-
-        document.getElementById(
-          "resultStatus"
-        ).textContent =
-          data.status ||
-          "PROCESSING";
-
+        await loadWithdrawals();
 
       } catch (error) {
 
-        showStatus(
-          binanceStatus,
-
+        setMessage(
+          message,
           error.message ||
-          "Erro ao enviar para Binance.",
-
+          "Erro ao enviar USDT para Binance.",
           "error"
         );
 
-        sendBinanceButton.disabled =
-          false;
+        /*
+         * Mesmo em erro, não fazemos
+         * uma segunda tentativa automática.
+         *
+         * O servidor é responsável por
+         * verificar TX Hash antes de qualquer
+         * novo envio.
+         */
 
+        button.disabled = false;
+
+        button.textContent =
+          "🚀 ENVIAR USDT PARA BINANCE";
       }
 
     }
   );
 
 
-  /* ======================================================
-     LEVANTAMENTOS
-     ====================================================== */
+/*
+ * =========================================================
+ * RETIRADAS
+ * =========================================================
+ */
 
-  async function loadWithdrawals() {
+async function loadWithdrawals() {
 
-    const table =
-      document.getElementById(
-        "withdrawalsTable"
+  const body =
+    byId("withdrawalsBody");
+
+  const message =
+    byId("withdrawalsMessage");
+
+  body.innerHTML =
+    `<tr>
+      <td colspan="8">
+        Carregando...
+      </td>
+    </tr>`;
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/admin-withdrawals",
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store"
+        }
       );
 
-    table.innerHTML =
-      `
-      <tr>
-        <td colspan="8">
-          Carregando...
-        </td>
-      </tr>
-      `;
-
-
-    try {
-
-      const response =
-        await fetch(
-          "/api/admin-withdrawals",
-          {
-            method: "GET",
-            credentials: "include"
-          }
-        );
-
-
-      const data =
-        await readJson(response);
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.message ||
-          "Não foi possível carregar os levantamentos."
-        );
-
-      }
-
-
-      const withdrawals =
-        data.withdrawals ||
-        data.data ||
-        [];
-
-
-      if (
-        !Array.isArray(
-          withdrawals
-        ) ||
-        withdrawals.length === 0
-      ) {
-
-        table.innerHTML =
-          `
-          <tr>
-            <td colspan="8">
-              Nenhum levantamento encontrado.
-            </td>
-          </tr>
-          `;
-
-        return;
-
-      }
-
-
-      table.innerHTML =
-        "";
-
-
-      for (
-        const withdrawal
-        of withdrawals
-      ) {
-
-        const tr =
-          document.createElement(
-            "tr"
-          );
-
-
-        const id =
-          withdrawal.withdrawal_id ||
-          withdrawal.id ||
-          "—";
-
-        const amount =
-          withdrawal.amount_to_send ??
-          withdrawal.amount ??
-          withdrawal.amount_requested ??
-          "—";
-
-        const destination =
-          withdrawal.destination_address ||
-          "—";
-
-        const network =
-          withdrawal.network ||
-          "—";
-
-        const created =
-          withdrawal.created_at ||
-          "—";
-
-        const status =
-          withdrawal.status ||
-          "—";
-
-        const txHash =
-          withdrawal.tx_hash ||
-          "—";
-
-
-        tr.innerHTML =
-          `
-          <td>${escapeHtml(id)}</td>
-
-          <td>${escapeHtml(amount)}</td>
-
-          <td>
-            ${escapeHtml(destination)}
-          </td>
-
-          <td>
-            ${escapeHtml(network)}
-          </td>
-
-          <td>
-            ${escapeHtml(created)}
-          </td>
-
-          <td>
-            ${escapeHtml(status)}
-          </td>
-
-          <td>
-            ${escapeHtml(txHash)}
-          </td>
-
-          <td>
-
-            <button
-              class="small-button"
-              type="button"
-              data-withdrawal-id="${escapeHtml(id)}">
-
-              Atualizar
-
-            </button>
-
-          </td>
-          `;
-
-
-        table.appendChild(tr);
-
-      }
-
-
-      table
-        .querySelectorAll(
-          "[data-withdrawal-id]"
-        )
-        .forEach(
-          button => {
-
-            button.addEventListener(
-              "click",
-              () => {
-
-                processWithdrawal(
-                  button.dataset.withdrawalId
-                );
-
-              }
-            );
-
-          }
-        );
-
-
-    } catch (error) {
-
-      table.innerHTML =
-        `
-        <tr>
-          <td colspan="8">
-            ${escapeHtml(
-              error.message ||
-              "Erro ao carregar levantamentos."
-            )}
-          </td>
-        </tr>
-        `;
-
-    }
-
-  }
-
-
-  /* ======================================================
-     PROCESSAR LEVANTAMENTO NORMAL
-     ====================================================== */
-
-  async function processWithdrawal(
-    withdrawalId
-  ) {
+    const data =
+      await readJson(response);
 
     if (
-      !window.confirm(
-        "Confirmar processamento deste levantamento?"
-      )
+      !response.ok ||
+      data.success === false
+    ) {
+      throw new Error(
+        data.message ||
+        "Não foi possível carregar as retiradas."
+      );
+    }
+
+    const withdrawals =
+      data.withdrawals ||
+      data.data ||
+      [];
+
+    if (
+      !Array.isArray(
+        withdrawals
+      ) ||
+      withdrawals.length === 0
     ) {
 
+      body.innerHTML =
+        `<tr>
+          <td colspan="8">
+            Nenhuma retirada encontrada.
+          </td>
+        </tr>`;
+
+      setMessage(
+        message,
+        ""
+      );
+
       return;
-
     }
 
+    body.innerHTML =
+      withdrawals
+        .map(
+          (item) => {
 
-    try {
+            const id =
+              item.withdrawal_id ||
+              item.id ||
+              "—";
 
-      const response =
-        await fetch(
-          "/api/admin-withdrawal-process",
-          {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type":
-                "application/json"
-            },
-            body: JSON.stringify({
+            const amount =
+              item.amount_to_send ??
+              item.amount ??
+              item.amount_requested ??
+              "—";
 
-              withdrawal_id:
-                withdrawalId
+            const destination =
+              item.destination_address ||
+              "—";
 
-            })
+            const network =
+              item.network ||
+              "—";
+
+            const status =
+              String(
+                item.status ||
+                ""
+              )
+                .trim()
+                .toUpperCase();
+
+            const txHash =
+              item.tx_hash ||
+              "—";
+
+            const date =
+              item.created_at
+                ? new Date(
+                    item.created_at
+                  ).toLocaleString(
+                    "pt-PT"
+                  )
+                : "—";
+
+            const canProcess =
+              status ===
+              "AUTHORIZED";
+
+            return `
+              <tr>
+
+                <td>
+                  ${escapeHtml(id)}
+                </td>
+
+                <td>
+                  ${escapeHtml(
+                    amount
+                  )}
+                </td>
+
+                <td>
+                  <div class="tx">
+                    ${escapeHtml(
+                      destination
+                    )}
+                  </div>
+                </td>
+
+                <td>
+                  ${escapeHtml(
+                    network
+                  )}
+                </td>
+
+                <td>
+                  <span class="status ${escapeHtml(status)}">
+                    ${escapeHtml(
+                      status || "—"
+                    )}
+                  </span>
+                </td>
+
+                <td>
+                  <div class="tx">
+                    ${escapeHtml(
+                      txHash
+                    )}
+                  </div>
+                </td>
+
+                <td>
+                  ${escapeHtml(
+                    date
+                  )}
+                </td>
+
+                <td>
+
+                  ${
+                    canProcess
+                      ? `
+                        <button
+                          class="btn-primary"
+                          type="button"
+                          onclick="processWithdrawal('${escapeHtml(id)}')">
+                          Processar
+                        </button>
+                      `
+                      : `
+                        <span class="small">
+                          ${status === "PROCESSING"
+                            ? "Em processamento"
+                            : "—"}
+                        </span>
+                      `
+                  }
+
+                </td>
+
+              </tr>
+            `;
           }
-        );
+        )
+        .join("");
 
-
-      const data =
-        await readJson(response);
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.message ||
-          data.error ||
-          "Erro ao processar levantamento."
-        );
-
-      }
-
-
-      alert(
-        data.message ||
-        "Processamento concluído."
-      );
-
-
-      await loadWithdrawals();
-      await loadWallet();
-
-
-    } catch (error) {
-
-      alert(
-        error.message ||
-        "Erro ao processar levantamento."
-      );
-
-    }
-
-  }
-
-
-  /* ======================================================
-     ESCAPAR HTML
-     ====================================================== */
-
-  function escapeHtml(
-    value
-  ) {
-
-    return String(
-      value ?? ""
-    )
-      .replace(
-        /&/g,
-        "&amp;"
-      )
-      .replace(
-        /</g,
-        "&lt;"
-      )
-      .replace(
-        />/g,
-        "&gt;"
-      )
-      .replace(
-        /"/g,
-        "&quot;"
-      )
-      .replace(
-        /'/g,
-        "&#039;"
-      );
-
-  }
-
-
-  /* ======================================================
-     LOGOUT
-     ====================================================== */
-
-  document
-    .getElementById(
-      "logoutButton"
-    )
-    .addEventListener(
-      "click",
-      async function() {
-
-        try {
-
-          await fetch(
-            "/api/admin-session",
-            {
-              method: "DELETE",
-              credentials: "include"
-            }
-          );
-
-        } catch {
-          // Ignorar erro de logout.
-        }
-
-        window.location.href =
-          "/admin-login.html";
-
-      }
+    setMessage(
+      message,
+      ""
     );
 
+  } catch (error) {
 
-  /* ======================================================
-     INICIALIZAÇÃO
-     ====================================================== */
+    body.innerHTML =
+      `<tr>
+        <td colspan="8">
+          Erro ao carregar retiradas.
+        </td>
+      </tr>`;
 
-  loadWallet();
-  loadWithdrawals();
+    setMessage(
+      message,
+      error.message ||
+      "Erro ao carregar retiradas.",
+      "error"
+    );
+  }
+}
+
+
+/*
+ * =========================================================
+ * PROCESSAR RETIRADA NORMAL
+ * =========================================================
+ */
+
+async function processWithdrawal(
+  withdrawalId
+) {
+
+  if (!withdrawalId) {
+    return;
+  }
+
+  const confirmed =
+    window.confirm(
+      "Confirma o processamento desta retirada USDT pela rede TRON?"
+    );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/admin-withdrawal-process",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            withdrawal_id:
+              withdrawalId
+          })
+        }
+      );
+
+    const data =
+      await readJson(response);
+
+    if (
+      !response.ok ||
+      data.success === false
+    ) {
+
+      throw new Error(
+        data.message ||
+        "Erro ao processar retirada."
+      );
+    }
+
+    window.alert(
+      data.message ||
+      "Retirada processada."
+    );
+
+    await loadWithdrawals();
+
+    await loadWallet();
+
+  } catch (error) {
+
+    window.alert(
+      error.message ||
+      "Erro ao processar retirada."
+    );
+  }
+}
+
+
+/*
+ * =========================================================
+ * EVENTOS
+ * =========================================================
+ */
+
+byId("refreshWalletButton")
+  .addEventListener(
+    "click",
+    loadWallet
+  );
+
+
+/*
+ * =========================================================
+ * INICIALIZAÇÃO
+ * =========================================================
+ */
+
+loadWallet();
+
+loadWithdrawals();
 
 </script>
 
