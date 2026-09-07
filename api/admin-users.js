@@ -14,6 +14,25 @@ function safeCompare(a, b) {
   return timingSafeEqual(A, B);
 }
 
+function getSessionToken(req) {
+  const cookies = req.headers.cookie || "";
+
+  const cookie = cookies
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) =>
+      item.startsWith(`${COOKIE_NAME}=`)
+    );
+
+  if (!cookie) {
+    return null;
+  }
+
+  return cookie.substring(
+    COOKIE_NAME.length + 1
+  );
+}
+
 function verifySession(token, secret) {
   if (!token || !secret) {
     return null;
@@ -27,7 +46,10 @@ function verifySession(token, secret) {
 
   const [data, signature] = parts;
 
-  const expectedSignature = createHmac("sha256", secret)
+  const expectedSignature = createHmac(
+    "sha256",
+    secret
+  )
     .update(data)
     .digest("base64url");
 
@@ -37,10 +59,17 @@ function verifySession(token, secret) {
 
   try {
     const payload = JSON.parse(
-      Buffer.from(data, "base64url").toString("utf8")
+      Buffer.from(
+        data,
+        "base64url"
+      ).toString("utf8")
     );
 
-    if (!payload.exp || Date.now() > payload.exp) {
+    if (!payload.exp) {
+      return null;
+    }
+
+    if (Date.now() > Number(payload.exp)) {
       return null;
     }
 
@@ -49,32 +78,27 @@ function verifySession(token, secret) {
     }
 
     return payload;
-
   } catch {
     return null;
   }
 }
 
-function getSessionToken(req) {
-  const cookies = req.headers.cookie || "";
-
-  const cookie = cookies
-    .split(";")
-    .map(item => item.trim())
-    .find(
-      item => item.startsWith(`${COOKIE_NAME}=`)
-    );
-
-  if (!cookie) {
-    return null;
-  }
-
-  return cookie.substring(
-    COOKIE_NAME.length + 1
+function getDatabaseUrl() {
+  return (
+    process.env.URL_DO_BANCO_DE_DADOS ||
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL_UNPOOLED
   );
 }
 
 export default async function handler(req, res) {
+  /*
+   * =====================================================
+   * MÉTODO
+   * =====================================================
+   */
 
   if (req.method !== "GET") {
     return res.status(405).json({
@@ -83,22 +107,40 @@ export default async function handler(req, res) {
     });
   }
 
+  /*
+   * =====================================================
+   * CONFIGURAÇÃO
+   * =====================================================
+   */
+
   const secret =
     process.env.ADMIN_SESSION_SECRET;
 
   const databaseUrl =
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED;
+    getDatabaseUrl();
 
-  if (!secret || !databaseUrl) {
+  if (!secret) {
     return res.status(500).json({
       success: false,
-      message: "Configuração do servidor incompleta."
+      authenticated: false,
+      message:
+        "ADMIN_SESSION_SECRET não configurado."
     });
   }
+
+  if (!databaseUrl) {
+    return res.status(500).json({
+      success: false,
+      message:
+        "URL do banco de dados não configurada."
+    });
+  }
+
+  /*
+   * =====================================================
+   * VERIFICAR ADMIN
+   * =====================================================
+   */
 
   const token =
     getSessionToken(req);
@@ -113,54 +155,58 @@ export default async function handler(req, res) {
     return res.status(401).json({
       success: false,
       authenticated: false,
-      message: "Sessão inválida ou expirada."
+      message:
+        "Sessão Admin inválida ou expirada."
     });
   }
 
-  try {
+  /*
+   * =====================================================
+   * CONSULTAR USUÁRIOS
+   * =====================================================
+   */
 
+  try {
     const sql =
       neon(databaseUrl);
 
-    const users = await sql`
-      SELECT
-        u.id,
-        u.name,
-        u.email,
-        u.phone,
-        u.status,
-        u.created_at,
-        COALESCE(w.balance, 0) AS usdt_balance
-      FROM users u
-      LEFT JOIN wallets w
-        ON w.user_id = u.id
-        AND w.asset = 'USDT'
-      ORDER BY u.created_at DESC
-    `;
+    const users =
+      await sql`
+        SELECT
+          id,
+          name,
+          phone,
+          email,
+          created_at
+        FROM users
+        ORDER BY created_at DESC
+      `;
 
-    const formattedUsers =
-      users.map(user => ({
-        ...user,
-        usdt_balance:
-          Number(user.usdt_balance || 0)
-      }));
+    /*
+     * ===================================================
+     * RESPOSTA
+     * ===================================================
+     */
 
     return res.status(200).json({
       success: true,
-      users: formattedUsers
+      authenticated: true,
+      users,
+      count: users.length
     });
-
   } catch (error) {
-
     console.error(
-      "Erro ao consultar utilizadores:",
+      "ADMIN USERS ERROR:",
       error
     );
 
     return res.status(500).json({
       success: false,
       message:
-        "Erro ao consultar os utilizadores."
+        "Erro ao consultar usuários.",
+      detail:
+        error?.message ||
+        "Erro desconhecido."
     });
   }
 }
