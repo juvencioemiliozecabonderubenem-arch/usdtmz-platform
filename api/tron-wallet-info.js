@@ -1,6 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { TronWeb } from "tronweb";
 
 const COOKIE_NAME = "usdtmz_admin_session";
+
+function json(res, status, body) {
+  return res.status(status).json(body);
+}
 
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
@@ -13,7 +18,25 @@ function safeCompare(a, b) {
   return timingSafeEqual(A, B);
 }
 
-function verifySession(token, secret) {
+function getCookie(req, name) {
+  const cookies = req.headers.cookie || "";
+
+  const cookie = cookies
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(`${name}=`));
+
+  if (!cookie) {
+    return null;
+  }
+
+  return cookie.substring(name.length + 1);
+}
+
+function verifyAdminSession(req) {
+  const token = getCookie(req, COOKIE_NAME);
+  const secret = process.env.ADMIN_SESSION_SECRET;
+
   if (!token || !secret) {
     return null;
   }
@@ -26,11 +49,11 @@ function verifySession(token, secret) {
 
   const [data, signature] = parts;
 
-  const expectedSignature = createHmac("sha256", secret)
+  const expected = createHmac("sha256", secret)
     .update(data)
     .digest("base64url");
 
-  if (!safeCompare(signature, expectedSignature)) {
+  if (!safeCompare(signature, expected)) {
     return null;
   }
 
@@ -39,7 +62,7 @@ function verifySession(token, secret) {
       Buffer.from(data, "base64url").toString("utf8")
     );
 
-    if (!payload.exp || Date.now() > payload.exp) {
+    if (!payload.exp || Date.now() > Number(payload.exp)) {
       return null;
     }
 
@@ -48,67 +71,101 @@ function verifySession(token, secret) {
     }
 
     return payload;
-
   } catch {
     return null;
   }
 }
 
-function getSessionToken(req) {
-  const cookies = req.headers.cookie || "";
-
-  const cookie = cookies
-    .split(";")
-    .map(item => item.trim())
-    .find(item => item.startsWith(`${COOKIE_NAME}=`));
-
-  if (!cookie) {
-    return null;
-  }
-
-  return cookie.substring(COOKIE_NAME.length + 1);
-}
-
-export default function handler(req, res) {
-
+export default async function handler(req, res) {
   if (req.method !== "GET") {
-    return res.status(405).json({
+    return json(res, 405, {
       success: false,
       message: "Método não permitido."
     });
   }
 
-  const secret = process.env.ADMIN_SESSION_SECRET;
-
-  const walletAddress =
-    process.env.USDTMZ_TRON_WALLET_ADDRESS;
-
-  if (!secret || !walletAddress) {
-    return res.status(500).json({
-      success: false,
-      message: "Carteira TRON não configurada."
-    });
-  }
-
-  const token = getSessionToken(req);
-
-  const session = verifySession(
-    token,
-    secret
-  );
+  const session = verifyAdminSession(req);
 
   if (!session) {
-    return res.status(401).json({
+    return json(res, 401, {
       success: false,
       authenticated: false,
-      message: "Sessão inválida ou expirada."
+      message: "Sessão Admin inválida ou expirada."
     });
   }
 
-  return res.status(200).json({
-    success: true,
-    network: "TRON",
-    standard: "TRC-20",
-    wallet_address: walletAddress
-  });
+  const walletAddress = String(
+    process.env.USDTMZ_TRON_WALLET_ADDRESS || ""
+  ).trim();
+
+  if (!walletAddress) {
+    return json(res, 500, {
+      success: false,
+      ready: false,
+      message:
+        "USDTMZ_TRON_WALLET_ADDRESS não configurado."
+    });
+  }
+
+  try {
+    if (!TronWeb.isAddress(walletAddress)) {
+      return json(res, 500, {
+        success: false,
+        ready: false,
+        message:
+          "USDTMZ_TRON_WALLET_ADDRESS não é um endereço TRON válido."
+      });
+    }
+
+    const walletHex = TronWeb.address.toHex(walletAddress);
+
+    return json(res, 200, {
+      success: true,
+      ready: true,
+
+      network: "TRON",
+      network_name: "TRON Mainnet",
+
+      wallet: {
+        address: walletAddress,
+        address_hex: walletHex,
+        type: "USDTMZ_TRON_WALLET"
+      },
+
+      assets: {
+        USDT: {
+          standard: "TRC-20",
+          contract:
+            "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+          decimals: 6
+        },
+
+        TRX: {
+          native: true,
+          decimals: 6
+        }
+      },
+
+      configured: {
+        wallet: true,
+        network: true
+      },
+
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error(
+      "TRON WALLET INFO ERROR:",
+      error
+    );
+
+    return json(res, 500, {
+      success: false,
+      ready: false,
+      message:
+        "Não foi possível obter as informações da carteira TRON.",
+      detail:
+        error?.message || "Erro desconhecido."
+    });
+  }
 }
