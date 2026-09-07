@@ -1,177 +1,314 @@
 import { neon } from "@neondatabase/serverless";
-import { scryptSync, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 
-function hashPassword(password) {
-  const salt = randomBytes(16).toString("hex");
+/* =========================================================
+   DATABASE
+   ========================================================= */
 
-  const hash = scryptSync(
-    password,
-    salt,
-    64
-  ).toString("hex");
-
-  return `${salt}:${hash}`;
-}
-
-export default async function handler(req, res) {
-
-  if (req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      message: "Método não permitido."
-    });
-  }
-
-  const databaseUrl =
+function getDatabaseUrl() {
+  return (
     process.env.URL_DO_BANCO_DE_DADOS ||
     process.env.POSTGRES_URL ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED;
+    process.env.DATABASE_URL_UNPOOLED
+  );
+}
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizePhone(value) {
+  return normalizeText(value)
+    .replace(/\s+/g, "")
+    .replace(/-/g, "");
+}
+
+function normalizeEmail(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function hashPassword(password) {
+  return createHash("sha256")
+    .update(password)
+    .digest("hex");
+}
+
+function isValidPhone(phone) {
+  /*
+   * Aceita números moçambicanos
+   * com ou sem +258.
+   */
+  const cleaned = normalizePhone(phone);
+
+  return (
+    /^(?:\+258|258)?8[2-7]\d{7}$/.test(
+      cleaned
+    )
+  );
+}
+
+function isValidEmail(email) {
+  if (!email) {
+    return true;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email
+  );
+}
+
+/* =========================================================
+   HANDLER
+   ========================================================= */
+
+export default async function handler(
+  req,
+  res
+) {
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      success: false,
+      message:
+        "Método não permitido."
+    });
+  }
+
+  const databaseUrl =
+    getDatabaseUrl();
 
   if (!databaseUrl) {
     return res.status(500).json({
       success: false,
-      message: "Banco de dados não configurado."
+      message:
+        "Banco de dados não configurado."
     });
   }
 
-  const {
-    name,
-    email,
-    phone,
-    password
-  } = req.body || {};
+  const body =
+    req.body || {};
 
-  if (!name || !email || !password) {
+  const name =
+    normalizeText(
+      body.name
+    );
+
+  const phone =
+    normalizePhone(
+      body.phone
+    );
+
+  const email =
+    normalizeEmail(
+      body.email
+    );
+
+  const password =
+    normalizeText(
+      body.password
+    );
+
+  /* =======================================================
+     VALIDAÇÃO
+     ======================================================= */
+
+  if (!name) {
     return res.status(400).json({
       success: false,
-      message: "Nome, email e senha são obrigatórios."
+      message:
+        "Nome é obrigatório."
     });
   }
 
-  if (password.length < 8) {
+  if (name.length < 2) {
     return res.status(400).json({
       success: false,
-      message: "A senha deve ter pelo menos 8 caracteres."
+      message:
+        "O nome deve ter pelo menos 2 caracteres."
+    });
+  }
+
+  if (!phone) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Telefone é obrigatório."
+    });
+  }
+
+  if (!isValidPhone(phone)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Número de telefone moçambicano inválido."
+    });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "E-mail inválido."
+    });
+  }
+
+  if (!password) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Palavra-passe é obrigatória."
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "A palavra-passe deve ter pelo menos 6 caracteres."
     });
   }
 
   try {
+    const sql =
+      neon(databaseUrl);
 
-    const sql = neon(databaseUrl);
+    /* =====================================================
+       VERIFICAR TELEFONE
+       ===================================================== */
 
-    const normalizedEmail =
-      email.trim().toLowerCase();
-
-    const normalizedPhone =
-      phone ? phone.trim() : null;
-
-
-    const existingEmail = await sql`
-      SELECT id
-      FROM users
-      WHERE email = ${normalizedEmail}
-      LIMIT 1
-    `;
-
-    if (existingEmail.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: "Este email já está cadastrado."
-      });
-    }
-
-
-    if (normalizedPhone) {
-
-      const existingPhone = await sql`
-        SELECT id
+    const phoneExists =
+      await sql`
+        SELECT
+          id
         FROM users
-        WHERE phone = ${normalizedPhone}
+        WHERE phone =
+          ${phone}
         LIMIT 1
       `;
 
-      if (existingPhone.length > 0) {
+    if (phoneExists.length) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Este número de telefone já está registado."
+      });
+    }
+
+    /* =====================================================
+       VERIFICAR E-MAIL
+       ===================================================== */
+
+    if (email) {
+      const emailExists =
+        await sql`
+          SELECT
+            id
+          FROM users
+          WHERE LOWER(email) =
+            ${email}
+          LIMIT 1
+        `;
+
+      if (emailExists.length) {
         return res.status(409).json({
           success: false,
-          message: "Este telefone já está cadastrado."
+          message:
+            "Este e-mail já está registado."
         });
       }
     }
 
+    /* =====================================================
+       PASSWORD
+       ===================================================== */
 
     const passwordHash =
-      hashPassword(password);
+      hashPassword(
+        password
+      );
 
+    /* =====================================================
+       CRIAR UTILIZADOR
+       ===================================================== */
 
-    const result = await sql`
-      INSERT INTO users (
-        name,
-        email,
-        phone,
-        password_hash,
-        status
-      )
-      VALUES (
-        ${name.trim()},
-        ${normalizedEmail},
-        ${normalizedPhone},
-        ${passwordHash},
-        'ACTIVE'
-      )
-      RETURNING
-        id,
-        name,
-        email,
-        phone,
-        status,
-        created_at
-    `;
+    const created =
+      await sql`
+        INSERT INTO users (
+          name,
+          phone,
+          email,
+          password
+        )
+        VALUES (
+          ${name},
+          ${phone},
+          ${email || null},
+          ${passwordHash}
+        )
+        RETURNING
+          id,
+          name,
+          phone,
+          email,
+          created_at
+      `;
 
+    if (!created.length) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "Não foi possível criar o utilizador."
+      });
+    }
 
-    const user = result[0];
+    const user =
+      created[0];
 
-
-    await sql`
-      INSERT INTO wallets (
-        user_id,
-        wallet_address,
-        network,
-        asset,
-        balance,
-        status
-      )
-      VALUES (
-        ${user.id},
-        NULL,
-        'TRON',
-        'USDT',
-        0,
-        'ACTIVE'
-      )
-      ON CONFLICT (user_id)
-      DO NOTHING
-    `;
-
+    /*
+     * Nunca devolvemos password ou
+     * password_hash para o frontend.
+     */
 
     return res.status(201).json({
       success: true,
-      message: "Utilizador criado com sucesso.",
+      message:
+        "Utilizador registado com sucesso.",
       user
     });
-
-
   } catch (error) {
-
     console.error(
-      "Erro ao criar utilizador:",
+      "REGISTER USER ERROR:",
       error
     );
 
+    /*
+     * Trata possíveis erros de
+     * constraint UNIQUE do PostgreSQL.
+     */
+    if (
+      String(error?.message || "")
+        .toLowerCase()
+        .includes("unique")
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Telefone ou e-mail já está registado."
+      });
+    }
+
     return res.status(500).json({
       success: false,
-      message: "Erro ao criar utilizador."
+      message:
+        "Erro interno ao registar utilizador.",
+      detail:
+        error?.message ||
+        "Erro desconhecido."
     });
   }
 }
