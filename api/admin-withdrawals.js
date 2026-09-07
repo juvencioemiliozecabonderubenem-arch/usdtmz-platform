@@ -314,10 +314,7 @@ function getTronApiKey() {
   return process.env.TRON_PRO_API_KEY;
 }
 
-async function tronPost(
-  path,
-  body
-) {
+async function tronPost(path, body) {
   const apiKey =
     getTronApiKey();
 
@@ -455,9 +452,7 @@ function base58Decode(value) {
   return bytes;
 }
 
-function tronAddressToHex(
-  address
-) {
+function tronAddressToHex(address) {
   if (
     !isValidTronAddress(
       address
@@ -517,9 +512,7 @@ function tronAddressToHex(
     .toUpperCase();
 }
 
-function tronContractToLogAddress(
-  address
-) {
+function tronContractToLogAddress(address) {
   return tronAddressToHex(
     address
   )
@@ -527,9 +520,7 @@ function tronContractToLogAddress(
     .toLowerCase();
 }
 
-function decodeTopicAddress(
-  topic
-) {
+function decodeTopicAddress(topic) {
   const value =
     String(topic || "")
       .replace(/^0x/i, "")
@@ -611,9 +602,7 @@ function decodeTopicAddress(
   return encoded;
 }
 
-function decodeUint256(
-  data
-) {
+function decodeUint256(data) {
   const value =
     String(data || "")
       .replace(/^0x/i, "")
@@ -634,9 +623,7 @@ function decodeUint256(
   );
 }
 
-function rawUSDTToNumber(
-  raw
-) {
+function rawUSDTToNumber(raw) {
   const base =
     10n ** BigInt(
       USDT_DECIMALS
@@ -655,9 +642,7 @@ function rawUSDTToNumber(
   );
 }
 
-async function getSolidifiedReceipt(
-  txHash
-) {
+async function getSolidifiedReceipt(txHash) {
   return tronPost(
     "/walletsolidity/gettransactioninfobyid",
     {
@@ -710,7 +695,9 @@ async function verifyUSDTDeposit(
   }
 
   if (
-    receipt.result ===
+    String(
+      receipt.result || ""
+    ).toUpperCase() ===
     "FAILED"
   ) {
     throw new Error(
@@ -806,17 +793,6 @@ async function verifyUSDTDeposit(
     ) {
       continue;
     }
-
-    const fromHex =
-      String(
-        topics[1] || ""
-      )
-        .replace(
-          /^0x/i,
-          ""
-        )
-        .toLowerCase()
-        .slice(-40);
 
     const toHex =
       String(
@@ -979,8 +955,9 @@ async function registerRealUSDTDeposit(
   }
 
   /*
-   * Primeiro verificamos se a TX já
-   * entrou no ledger.
+   * Verificação rápida antes da blockchain.
+   * A proteção definitiva contra duplicação
+   * acontece dentro da transação atômica.
    */
   const alreadyRegistered =
     await sql`
@@ -1012,7 +989,10 @@ async function registerRealUSDTDeposit(
   }
 
   /*
-   * Confirmação REAL na blockchain.
+   * Primeiro confirmamos a blockchain.
+   *
+   * Nenhum saldo interno é alterado
+   * antes desta verificação.
    */
   const verified =
     await verifyUSDTDeposit(
@@ -1021,103 +1001,171 @@ async function registerRealUSDTDeposit(
       requestedAmount
     );
 
-  /*
-   * =====================================================
-   * TRANSAÇÃO ATÔMICA DO LEDGER
-   * =====================================================
-   *
-   * O advisory lock usa a própria TX como
-   * chave lógica. Assim duas requisições
-   * simultâneas para a mesma TX não podem
-   * contabilizar o depósito duas vezes.
-   */
-
   const transactionReference =
     `RESERVE_USDT:${txHash}`;
 
-  const transactionResults =
+  /*
+   * =====================================================
+   * LEDGER ATÔMICO
+   * =====================================================
+   *
+   * A carteira e a transação são tratadas
+   * dentro da mesma operação SQL.
+   *
+   * Se a carteira não existir:
+   *   - nenhum INSERT acontece
+   *   - nenhum saldo é alterado
+   *
+   * Se a TX já existir:
+   *   - nenhum segundo crédito acontece
+   *
+   * Se ambos forem válidos:
+   *   - saldo aumenta
+   *   - transação é registrada
+   */
+  const atomicResult =
     await sql.transaction(
       (txn) => [
         txn`
-          SELECT
-            pg_advisory_xact_lock(
-              hashtext(${txHash})
-            )
-        `,
+          WITH lock AS (
+            SELECT
+              pg_advisory_xact_lock(
+                hashtext(${txHash})
+              )
+          ),
 
-        txn`
-          SELECT
-            id
-          FROM transactions
-          WHERE
-            blockchain_tx_hash =
-              ${txHash}
-          LIMIT 1
-        `,
+          wallet_update AS (
+            UPDATE wallets
+            SET
+              balance =
+                balance +
+                ${verified.amount_usdt},
 
-        txn`
-          INSERT INTO transactions (
-            user_id,
-            type,
-            asset,
-            amount,
-            status,
-            reference,
-            blockchain_tx_hash,
-            created_at
-          )
-          SELECT
-            NULL,
-            'DEPOSIT_USDT',
-            'USDT',
-            ${verified.amount_usdt},
-            'COMPLETED',
-            ${transactionReference},
-            ${txHash},
-            NOW()
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM transactions
+              status =
+                'ACTIVE',
+
+              updated_at =
+                NOW()
+
             WHERE
-              blockchain_tx_hash =
-                ${txHash}
-          )
-          RETURNING
-            id,
-            type,
-            asset,
-            amount,
-            status,
-            reference,
-            blockchain_tx_hash,
-            created_at
-        `,
+              wallet_address =
+                ${companyAddress}
 
-        txn`
-          UPDATE wallets
-          SET
-            balance =
-              balance +
+              AND network =
+                ${TRON_NETWORK}
+
+              AND asset =
+                'USDT'
+
+              AND EXISTS (
+                SELECT 1
+                FROM lock
+              )
+
+              AND NOT EXISTS (
+                SELECT 1
+                FROM transactions
+                WHERE
+                  blockchain_tx_hash =
+                    ${txHash}
+              )
+
+            RETURNING
+              id,
+              wallet_address,
+              network,
+              asset,
+              balance,
+              status,
+              updated_at
+          ),
+
+          transaction_insert AS (
+            INSERT INTO transactions (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+            SELECT
+              NULL,
+              'DEPOSIT_USDT',
+              'USDT',
               ${verified.amount_usdt},
-            status =
-              'ACTIVE',
-            updated_at =
+              'COMPLETED',
+              ${transactionReference},
+              ${txHash},
               NOW()
-          WHERE
-            wallet_address =
-              ${companyAddress}
-            AND network =
-              ${TRON_NETWORK}
-            AND asset =
-              'USDT'
-          RETURNING
-            id,
-            wallet_address,
-            network,
-            asset,
-            balance,
-            status,
-            updated_at
+
+            FROM wallet_update
+
+            RETURNING
+              id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+          )
+
+          SELECT
+            (
+              SELECT
+                json_build_object(
+                  'id',
+                  id,
+                  'wallet_address',
+                  wallet_address,
+                  'network',
+                  network,
+                  'asset',
+                  asset,
+                  'balance',
+                  balance,
+                  'status',
+                  status,
+                  'updated_at',
+                  updated_at
+                )
+              FROM wallet_update
+            ) AS wallet,
+
+            (
+              SELECT
+                json_build_object(
+                  'id',
+                  id,
+                  'type',
+                  type,
+                  'asset',
+                  asset,
+                  'amount',
+                  amount,
+                  'status',
+                  status,
+                  'reference',
+                  reference,
+                  'blockchain_tx_hash',
+                  blockchain_tx_hash,
+                  'created_at',
+                  created_at
+                )
+              FROM transaction_insert
+            ) AS transaction,
+
+            EXISTS (
+              SELECT 1
+              FROM transactions
+              WHERE
+                blockchain_tx_hash =
+                  ${txHash}
+            ) AS tx_exists
         `
       ],
       {
@@ -1126,18 +1174,17 @@ async function registerRealUSDTDeposit(
       }
     );
 
-  const transactionInsert =
-    transactionResults[2] || [];
-
-  const walletUpdate =
-    transactionResults[3] || [];
+  const result =
+    atomicResult?.[0]?.[0] ||
+    {};
 
   /*
-   * Se já havia TX registrada, nada
-   * mais deve ser contabilizado.
+   * Se a TX foi registrada por outra
+   * requisição, não fazemos segundo crédito.
    */
   if (
-    transactionInsert.length === 0
+    result.tx_exists &&
+    !result.transaction
   ) {
     return json(res, 409, {
       ok: false,
@@ -1147,14 +1194,14 @@ async function registerRealUSDTDeposit(
   }
 
   /*
-   * A carteira USDT da empresa precisa
-   * existir no ledger.
-   *
-   * Não criamos uma carteira silenciosamente
-   * durante um depósito financeiro.
+   * A carteira precisa existir.
+   * Como o UPDATE e INSERT são atômicos,
+   * neste ponto nenhum saldo foi criado
+   * artificialmente.
    */
   if (
-    walletUpdate.length === 0
+    !result.wallet ||
+    !result.transaction
   ) {
     return json(res, 500, {
       ok: false,
@@ -1163,10 +1210,13 @@ async function registerRealUSDTDeposit(
     });
   }
 
-  const previousBalance =
+  const newBalance =
     normalizeNumber(
-      walletUpdate[0].balance
-    ) -
+      result.wallet.balance
+    );
+
+  const previousBalance =
+    newBalance -
     verified.amount_usdt;
 
   return json(res, 200, {
@@ -1209,13 +1259,11 @@ async function registerRealUSDTDeposit(
         verified.amount_usdt,
 
       new_balance:
-        normalizeNumber(
-          walletUpdate[0].balance
-        )
+        newBalance
     },
 
     transaction:
-      transactionInsert[0]
+      result.transaction
   });
 }
 
