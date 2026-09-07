@@ -1,13 +1,26 @@
 import { neon } from "@neondatabase/serverless";
 import {
   createHmac,
-  timingSafeEqual,
-  randomUUID
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual
 } from "node:crypto";
 
 import {
   processAdminPurchaseToBinanceInternal
 } from "./admin-withdrawal-process.js";
+
+/* =========================================================
+   VERCEL
+   Precisamos do body bruto para validar o webhook da Pagar.
+   ========================================================= */
+
+export const config = {
+  api: {
+    bodyParser: false
+  }
+};
 
 /* =========================================================
    CONFIGURAÇÃO USDTMZ
@@ -24,6 +37,7 @@ const ALLOWED_PAYMENT_METHODS = [
 ];
 
 const PAGAR_BASE_URL = (
+  process.env.PAGAR_API_BASE_URL ||
   process.env.PAGAR_BASE_URL ||
   "https://api.pagar.co.mz/api/v1"
 ).replace(/\/+$/, "");
@@ -99,10 +113,6 @@ function getErrorMessage(error) {
   );
 }
 
-/* =========================================================
-   HMAC
-   ========================================================= */
-
 function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
@@ -114,34 +124,17 @@ function safeCompare(a, b) {
   return timingSafeEqual(A, B);
 }
 
-function hmacHex(secret, payload) {
-  return createHmac("sha256", secret)
-    .update(payload)
-    .digest("hex");
-}
-
-function hmacBase64(secret, payload) {
-  return createHmac("sha256", secret)
-    .update(payload)
-    .digest("base64");
-}
-
 /* =========================================================
-   BODY
+   BODY RAW
    ========================================================= */
 
 async function readRawBody(req) {
-  if (
-    typeof req.body === "string"
-  ) {
-    return req.body;
+  if (Buffer.isBuffer(req.body)) {
+    return req.body.toString("utf8");
   }
 
-  if (
-    req.body &&
-    typeof req.body === "object"
-  ) {
-    return JSON.stringify(req.body);
+  if (typeof req.body === "string") {
+    return req.body;
   }
 
   let body = "";
@@ -166,103 +159,146 @@ function parseJsonBody(rawBody) {
 }
 
 /* =========================================================
-   PAGAR — WEBHOOK SIGNATURE
+   PAGAR — POST ASSINADO
+   Conforme documentação atual:
+   timestamp
+   nonce
+   method
+   pathname
+   sha256(body)
    ========================================================= */
 
-function verifyWebhookSignature(
-  req,
-  rawBody
-) {
-  const secret =
-    process.env.PAGAR_WEBHOOK_SECRET;
-
-  if (!secret) {
-    return false;
-  }
-
-  const received =
-    getHeader(req, "x-pagar-signature") ||
-    getHeader(req, "x-webhook-signature") ||
-    getHeader(req, "x-signature") ||
-    getHeader(req, "Pagar-Signature");
-
-  if (!received) {
-    return false;
-  }
-
-  const clean =
-    received
-      .replace(/^sha256=/i, "")
-      .trim();
-
-  const expectedHex =
-    hmacHex(secret, rawBody);
-
-  const expectedBase64 =
-    hmacBase64(secret, rawBody);
-
-  return (
-    safeCompare(clean, expectedHex) ||
-    safeCompare(clean, expectedBase64)
-  );
-}
-
-/* =========================================================
-   PAGAR — EXTRAIR DADOS
-   ========================================================= */
-
-function getWebhookEventId(body) {
-  return normalizeText(
-    body?.event_id ||
-    body?.eventId ||
-    body?.id ||
-    body?.data?.event_id ||
-    body?.data?.eventId
-  );
-}
-
-function getPaymentId(body) {
-  return normalizeText(
-    body?.payment_id ||
-    body?.paymentId ||
-    body?.payment?.id ||
-    body?.data?.payment_id ||
-    body?.data?.paymentId ||
-    body?.data?.payment?.id
-  );
-}
-
-function getReference(body) {
-  return normalizeText(
-    body?.reference ||
-    body?.payment?.reference ||
-    body?.data?.reference ||
-    body?.data?.payment?.reference
-  );
-}
-
-function getPaymentStatus(body) {
-  const value =
-    body?.status ||
-    body?.payment_status ||
-    body?.paymentStatus ||
-    body?.payment?.status ||
-    body?.data?.status ||
-    body?.data?.payment_status ||
-    body?.data?.paymentStatus ||
-    body?.data?.payment?.status;
-
-  return normalizeText(value).toUpperCase();
-}
-
-/* =========================================================
-   PAGAR API
-   ========================================================= */
-
-async function pagarRequest(
+async function pagarPost(
   path,
-  options = {}
+  body,
+  idempotencyKey
 ) {
+  const apiKey =
+    process.env.PAGAR_API_KEY;
+
+  const signingSecret =
+    process.env.PAGAR_SIGNING_SECRET;
+
+  if (!apiKey) {
+    throw new Error(
+      "PAGAR_API_KEY não configurada."
+    );
+  }
+
+  if (!signingSecret) {
+    throw new Error(
+      "PAGAR_SIGNING_SECRET não configurada."
+    );
+  }
+
+  const url =
+    `${PAGAR_BASE_URL}${path}`;
+
+  const timestamp =
+    Date.now().toString();
+
+  const nonce =
+    randomBytes(18).toString("base64url");
+
+  const rawBody =
+    JSON.stringify(body);
+
+  const bodyHash =
+    createHash("sha256")
+      .update(rawBody)
+      .digest("hex");
+
+  const canonicalPath =
+    new URL(url).pathname;
+
+  const canonical = [
+    timestamp,
+    nonce,
+    "POST",
+    canonicalPath,
+    bodyHash
+  ].join("\n");
+
+  const signature =
+    createHmac(
+      "sha256",
+      signingSecret
+    )
+      .update(canonical)
+      .digest("hex");
+
+  const response =
+    await fetch(url, {
+      method: "POST",
+
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+
+        Authorization:
+          `Bearer ${apiKey}`,
+
+        "Idempotency-Key":
+          idempotencyKey,
+
+        "X-Pagar-Timestamp":
+          timestamp,
+
+        "X-Pagar-Nonce":
+          nonce,
+
+        "X-Pagar-Signature":
+          `v1=${signature}`
+      },
+
+      body: rawBody
+    });
+
+  const text =
+    await response.text();
+
+  let data = {};
+
+  try {
+    data =
+      text
+        ? JSON.parse(text)
+        : {};
+  } catch {
+    data = {
+      raw: text
+    };
+  }
+
+  if (!response.ok) {
+    const error = new Error(
+      data?.message ||
+      data?.error ||
+      data?.detail ||
+      text ||
+      `Pagar HTTP ${response.status}`
+    );
+
+    error.status =
+      response.status;
+
+    error.code =
+      data?.error || null;
+
+    error.requestId =
+      data?.requestId || null;
+
+    throw error;
+  }
+
+  return data;
+}
+
+/* =========================================================
+   PAGAR — GET
+   ========================================================= */
+
+async function pagarGet(path) {
   const apiKey =
     process.env.PAGAR_API_KEY;
 
@@ -276,17 +312,11 @@ async function pagarRequest(
     await fetch(
       `${PAGAR_BASE_URL}${path}`,
       {
-        ...options,
-
+        method: "GET",
         headers: {
           Accept: "application/json",
-          "Content-Type":
-            "application/json",
-
           Authorization:
-            `Bearer ${apiKey}`,
-
-          ...options.headers
+            `Bearer ${apiKey}`
         }
       }
     );
@@ -309,13 +339,11 @@ async function pagarRequest(
 
   if (!response.ok) {
     throw new Error(
-      `Pagar HTTP ${response.status}: ${
-        data?.message ||
-        data?.error ||
-        data?.detail ||
-        text ||
-        "erro desconhecido"
-      }`
+      data?.message ||
+      data?.error ||
+      data?.detail ||
+      text ||
+      `Pagar HTTP ${response.status}`
     );
   }
 
@@ -336,45 +364,276 @@ async function createPagarPayment({
   const payload = {
     reference: orderId,
 
-    amount: amountMzn,
-
-    currency: "MZN",
+    title:
+      "Compra de USDT",
 
     description:
       `Compra de USDT - ${orderId}`,
 
-    customer: {
-      name,
-      phone
-    },
+    amountMzn:
+      amountMzn,
 
-    payment_method:
-      paymentMethod
+    method:
+      paymentMethod,
+
+    payerPhone:
+      phone
   };
 
-  return pagarRequest(
+  /*
+   * A mesma orderId produz sempre a mesma
+   * Idempotency-Key para esta tentativa.
+   */
+  const idempotencyKey =
+    `payment:${orderId}`;
+
+  return pagarPost(
     "/payments",
-    {
-      method: "POST",
-      body: JSON.stringify(payload)
-    }
+    payload,
+    idempotencyKey
   );
 }
 
 /* =========================================================
-   EXTRAIR PAYMENT ID
+   EXTRAIR PAYMENT
    ========================================================= */
 
+function extractPayment(data) {
+  return (
+    data?.payment ||
+    data?.data?.payment ||
+    data
+  );
+}
+
 function extractPaymentId(data) {
+  const payment =
+    extractPayment(data);
+
   return normalizeText(
+    payment?.id ||
     data?.payment_id ||
     data?.paymentId ||
-    data?.id ||
-    data?.payment?.id ||
     data?.data?.payment_id ||
-    data?.data?.paymentId ||
-    data?.data?.id ||
-    data?.data?.payment?.id
+    data?.data?.paymentId
+  );
+}
+
+function extractPaymentStatus(data) {
+  const payment =
+    extractPayment(data);
+
+  return normalizeText(
+    payment?.status ||
+    data?.status ||
+    data?.payment_status ||
+    data?.paymentStatus
+  ).toUpperCase();
+}
+
+/* =========================================================
+   WEBHOOK — EVENT ID
+   ========================================================= */
+
+function getWebhookEventId(
+  req,
+  body
+) {
+  return normalizeText(
+    getHeader(
+      req,
+      "pagar-event-id"
+    ) ||
+    body?.event_id ||
+    body?.eventId ||
+    body?.id
+  );
+}
+
+/* =========================================================
+   WEBHOOK — EVENT TYPE
+   ========================================================= */
+
+function getWebhookEventType(body) {
+  return normalizeText(
+    body?.type ||
+    body?.event ||
+    body?.event_type ||
+    body?.eventType
+  ).toLowerCase();
+}
+
+/* =========================================================
+   WEBHOOK — PAYMENT
+   ========================================================= */
+
+function getWebhookPayment(body) {
+  return (
+    body?.payment ||
+    body?.data?.payment ||
+    body?.data ||
+    body
+  );
+}
+
+function getPaymentId(body) {
+  const payment =
+    getWebhookPayment(body);
+
+  return normalizeText(
+    payment?.id ||
+    body?.payment_id ||
+    body?.paymentId
+  );
+}
+
+function getReference(body) {
+  const payment =
+    getWebhookPayment(body);
+
+  return normalizeText(
+    payment?.reference ||
+    body?.reference ||
+    body?.data?.reference
+  );
+}
+
+function getPaymentStatus(body) {
+  const payment =
+    getWebhookPayment(body);
+
+  return normalizeText(
+    payment?.status ||
+    body?.status ||
+    body?.payment_status ||
+    body?.paymentStatus
+  ).toUpperCase();
+}
+
+/* =========================================================
+   WEBHOOK — ASSINATURA PAGAR
+   Formato oficial:
+   Pagar-Signature:
+   t=timestamp,v1=signature
+   ========================================================= */
+
+function verifyWebhookSignature(
+  req,
+  rawBody
+) {
+  const secret =
+    process.env.PAGAR_WEBHOOK_SECRET;
+
+  if (!secret) {
+    console.error(
+      "PAGAR_WEBHOOK_SECRET não configurada."
+    );
+
+    return false;
+  }
+
+  const eventId =
+    getHeader(
+      req,
+      "pagar-event-id"
+    );
+
+  if (!eventId) {
+    return false;
+  }
+
+  const signatureHeader =
+    getHeader(
+      req,
+      "pagar-signature"
+    );
+
+  if (!signatureHeader) {
+    return false;
+  }
+
+  const parts =
+    signatureHeader
+      .split(",")
+      .map(part => {
+        const index =
+          part.indexOf("=");
+
+        if (index === -1) {
+          return null;
+        }
+
+        return [
+          part.slice(0, index).trim(),
+          part.slice(index + 1).trim()
+        ];
+      })
+      .filter(Boolean);
+
+  const parsed =
+    Object.fromEntries(parts);
+
+  const timestamp =
+    parsed.t;
+
+  const received =
+    parsed.v1;
+
+  if (
+    !timestamp ||
+    !received
+  ) {
+    return false;
+  }
+
+  if (
+    !/^\d+$/.test(timestamp)
+  ) {
+    return false;
+  }
+
+  if (
+    !/^[a-f0-9]{64}$/i.test(received)
+  ) {
+    return false;
+  }
+
+  const timestampSeconds =
+    Number(timestamp);
+
+  if (
+    !Number.isFinite(
+      timestampSeconds
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * Rejeita webhooks antigos.
+   */
+  if (
+    Math.abs(
+      Date.now() / 1000 -
+      timestampSeconds
+    ) > 300
+  ) {
+    return false;
+  }
+
+  const expected =
+    createHmac(
+      "sha256",
+      secret
+    )
+      .update(
+        `${timestamp}.${rawBody}`
+      )
+      .digest("hex");
+
+  return safeCompare(
+    received.toLowerCase(),
+    expected.toLowerCase()
   );
 }
 
@@ -405,19 +664,24 @@ async function processPaidOrder(
     );
   }
 
-  const order = rows[0];
+  const order =
+    rows[0];
 
-  if (order.blockchain_tx_hash) {
+  if (
+    order.blockchain_tx_hash
+  ) {
     return {
       status: "COMPLETED",
+
       tx_hash:
         order.blockchain_tx_hash
     };
   }
 
   if (
-    String(order.operation || "")
-      .toUpperCase() !==
+    String(
+      order.operation || ""
+    ).toUpperCase() !==
     "BUY_USDT_ADMIN"
   ) {
     throw new Error(
@@ -453,11 +717,29 @@ async function handleWebhook(
     });
   }
 
-  const body =
-    parseJsonBody(rawBody);
+  let body;
+
+  try {
+    body =
+      JSON.parse(rawBody);
+  } catch {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Webhook JSON inválido."
+    });
+  }
 
   const eventId =
-    getWebhookEventId(body);
+    getWebhookEventId(
+      req,
+      body
+    );
+
+  const eventType =
+    getWebhookEventType(
+      body
+    );
 
   const paymentId =
     getPaymentId(body);
@@ -472,7 +754,7 @@ async function handleWebhook(
     return res.status(400).json({
       success: false,
       message:
-        "event_id não informado."
+        "Pagar-Event-Id não informado."
     });
   }
 
@@ -481,18 +763,18 @@ async function handleWebhook(
       success: false,
       message:
         "Referência da ordem não encontrada.",
-      event_id: eventId
+      event_id:
+        eventId
     });
   }
 
   /* =======================================================
-     IDEMPOTÊNCIA
+     IDEMPOTÊNCIA DO WEBHOOK
      ======================================================= */
 
   const existing =
     await sql`
-      SELECT
-        event_id
+      SELECT event_id
       FROM pagar_webhook_events
       WHERE event_id = ${eventId}
       LIMIT 1
@@ -502,7 +784,8 @@ async function handleWebhook(
     return res.status(200).json({
       success: true,
       duplicate: true,
-      event_id: eventId,
+      event_id:
+        eventId,
       message:
         "Evento já processado."
     });
@@ -533,11 +816,13 @@ async function handleWebhook(
       message:
         "Ordem USDTMZ não encontrada.",
       reference,
-      event_id: eventId
+      event_id:
+        eventId
     });
   }
 
-  const order = orders[0];
+  const order =
+    orders[0];
 
   /* =======================================================
      GUARDAR EVENTO
@@ -554,7 +839,7 @@ async function handleWebhook(
     )
     VALUES (
       ${eventId},
-      ${pagarStatus || "UNKNOWN"},
+      ${eventType || "UNKNOWN"},
       ${paymentId || null},
       ${reference},
       ${JSON.stringify(body)},
@@ -565,10 +850,12 @@ async function handleWebhook(
   `;
 
   /* =======================================================
-     JÁ TEM TX
+     JÁ TEM TX HASH
      ======================================================= */
 
-  if (order.blockchain_tx_hash) {
+  if (
+    order.blockchain_tx_hash
+  ) {
     await sql`
       UPDATE pagar_webhook_events
       SET processed_at = NOW()
@@ -603,22 +890,30 @@ async function handleWebhook(
       pagar_event_id =
         ${eventId},
 
-      updated_at = NOW()
+      updated_at =
+        NOW()
 
-    WHERE order_id = ${reference}
+    WHERE order_id =
+      ${reference}
   `;
 
   /* =======================================================
-     PAID
+     SUCESSO
      ======================================================= */
 
-  if (pagarStatus === "PAID") {
+  const paymentSucceeded =
+    eventType ===
+      "payment.succeeded" ||
+    pagarStatus === "PAID";
+
+  if (paymentSucceeded) {
     await sql`
       UPDATE orders
       SET
         status = 'PAID',
         updated_at = NOW()
-      WHERE order_id = ${reference}
+      WHERE order_id =
+        ${reference}
       AND (
         blockchain_tx_hash IS NULL
         OR blockchain_tx_hash = ''
@@ -640,7 +935,11 @@ async function handleWebhook(
 
       return res.status(200).json({
         success: true,
-        payment_status: "PAID",
+        payment_status:
+          "PAID",
+
+        event_type:
+          eventType,
 
         order_status:
           transfer?.body?.status ||
@@ -660,6 +959,7 @@ async function handleWebhook(
           transfer?.message ||
           "Pagamento confirmado."
       });
+
     } catch (error) {
       console.error(
         "PAGAR PAID -> BINANCE ERROR:",
@@ -668,8 +968,10 @@ async function handleWebhook(
 
       /*
        * O pagamento foi confirmado.
-       * Não marcamos como FAILED porque
-       * pode ter ocorrido broadcast.
+       *
+       * Nunca marcamos como FAILED
+       * simplesmente porque a transferência
+       * USDT falhou ou ficou inconclusiva.
        */
 
       await sql`
@@ -677,7 +979,8 @@ async function handleWebhook(
         SET
           status = 'PROCESSING',
           updated_at = NOW()
-        WHERE order_id = ${reference}
+        WHERE order_id =
+          ${reference}
         AND (
           blockchain_tx_hash IS NULL
           OR blockchain_tx_hash = ''
@@ -692,62 +995,42 @@ async function handleWebhook(
 
       return res.status(202).json({
         success: true,
-        payment_status: "PAID",
-        order_status: "PROCESSING",
-        order_id: reference,
-        requires_reconciliation: true,
+
+        payment_status:
+          "PAID",
+
+        order_status:
+          "PROCESSING",
+
+        order_id:
+          reference,
+
+        requires_reconciliation:
+          true,
+
         message:
-          "Pagamento confirmado. Transferência USDT requer processamento."
+          "Pagamento confirmado. A transferência USDT requer processamento."
       });
     }
   }
 
   /* =======================================================
-     CANCELLED
+     PAGAMENTO FALHOU
      ======================================================= */
 
-  if (
-    pagarStatus === "CANCELLED"
-  ) {
-    await sql`
-      UPDATE orders
-      SET
-        status = 'CANCELLED',
-        updated_at = NOW()
-      WHERE order_id = ${reference}
-      AND (
-        blockchain_tx_hash IS NULL
-        OR blockchain_tx_hash = ''
-      )
-    `;
+  const paymentFailed =
+    eventType ===
+      "payment.failed" ||
+    pagarStatus === "FAILED";
 
-    await sql`
-      UPDATE pagar_webhook_events
-      SET processed_at = NOW()
-      WHERE event_id = ${eventId}
-    `;
-
-    return res.status(200).json({
-      success: true,
-      payment_status: "CANCELLED",
-      order_status: "CANCELLED",
-      order_id: reference
-    });
-  }
-
-  /* =======================================================
-     FAILED
-     ======================================================= */
-
-  if (
-    pagarStatus === "FAILED"
-  ) {
+  if (paymentFailed) {
     await sql`
       UPDATE orders
       SET
         status = 'FAILED',
         updated_at = NOW()
-      WHERE order_id = ${reference}
+      WHERE order_id =
+        ${reference}
       AND (
         blockchain_tx_hash IS NULL
         OR blockchain_tx_hash = ''
@@ -762,9 +1045,51 @@ async function handleWebhook(
 
     return res.status(200).json({
       success: true,
-      payment_status: "FAILED",
-      order_status: "FAILED",
-      order_id: reference
+      payment_status:
+        "FAILED",
+      order_status:
+        "FAILED",
+      order_id:
+        reference
+    });
+  }
+
+  /* =======================================================
+     PAGAMENTO CANCELADO
+     ======================================================= */
+
+  const paymentCancelled =
+    pagarStatus ===
+      "CANCELLED";
+
+  if (paymentCancelled) {
+    await sql`
+      UPDATE orders
+      SET
+        status = 'CANCELLED',
+        updated_at = NOW()
+      WHERE order_id =
+        ${reference}
+      AND (
+        blockchain_tx_hash IS NULL
+        OR blockchain_tx_hash = ''
+      )
+    `;
+
+    await sql`
+      UPDATE pagar_webhook_events
+      SET processed_at = NOW()
+      WHERE event_id = ${eventId}
+    `;
+
+    return res.status(200).json({
+      success: true,
+      payment_status:
+        "CANCELLED",
+      order_status:
+        "CANCELLED",
+      order_id:
+        reference
     });
   }
 
@@ -782,9 +1107,15 @@ async function handleWebhook(
   await sql`
     UPDATE orders
     SET
-      status = ${safeStatus},
-      updated_at = NOW()
-    WHERE order_id = ${reference}
+      status =
+        ${safeStatus},
+
+      updated_at =
+        NOW()
+
+    WHERE order_id =
+      ${reference}
+
     AND (
       blockchain_tx_hash IS NULL
       OR blockchain_tx_hash = ''
@@ -799,29 +1130,30 @@ async function handleWebhook(
 
   return res.status(200).json({
     success: true,
+
     payment_status:
-      pagarStatus || "PROCESSING",
+      pagarStatus ||
+      "PROCESSING",
+
     order_status:
       safeStatus,
+
     order_id:
       reference
   });
 }
 
 /* =========================================================
-   CONSULTAR PAGAMENTO NO PAGAR
+   CONSULTAR PAGAMENTO
    ========================================================= */
 
 async function getPagarPaymentStatus(
   paymentId
 ) {
-  return pagarRequest(
+  return pagarGet(
     `/payments/${encodeURIComponent(
       paymentId
-    )}`,
-    {
-      method: "GET"
-    }
+    )}`
   );
 }
 
@@ -887,7 +1219,8 @@ async function handleStatusCheck(
         pagar_payment_id,
         blockchain_tx_hash
       FROM orders
-      WHERE order_id = ${orderId}
+      WHERE order_id =
+        ${orderId}
       LIMIT 1
     `;
 
@@ -899,9 +1232,12 @@ async function handleStatusCheck(
     });
   }
 
-  const order = rows[0];
+  const order =
+    rows[0];
 
-  if (order.blockchain_tx_hash) {
+  if (
+    order.blockchain_tx_hash
+  ) {
     return res.status(200).json({
       success: true,
       order_id:
@@ -913,7 +1249,9 @@ async function handleStatusCheck(
     });
   }
 
-  if (!order.pagar_payment_id) {
+  if (
+    !order.pagar_payment_id
+  ) {
     return res.status(409).json({
       success: false,
       message:
@@ -927,15 +1265,20 @@ async function handleStatusCheck(
     );
 
   const status =
-    getPaymentStatus(payment);
+    extractPaymentStatus(
+      payment
+    );
 
-  if (status === "PAID") {
+  if (
+    status === "PAID"
+  ) {
     await sql`
       UPDATE orders
       SET
         status = 'PAID',
         updated_at = NOW()
-      WHERE order_id = ${orderId}
+      WHERE order_id =
+        ${orderId}
       AND (
         blockchain_tx_hash IS NULL
         OR blockchain_tx_hash = ''
@@ -951,7 +1294,9 @@ async function handleStatusCheck(
 
       return res.status(200).json({
         success: true,
-        payment_status: "PAID",
+
+        payment_status:
+          "PAID",
 
         order_status:
           transfer?.body?.status ||
@@ -966,6 +1311,7 @@ async function handleStatusCheck(
           transfer?.tx_hash ||
           null
       });
+
     } catch (error) {
       console.error(
         "PAGAR STATUS -> BINANCE ERROR:",
@@ -977,7 +1323,8 @@ async function handleStatusCheck(
         SET
           status = 'PROCESSING',
           updated_at = NOW()
-        WHERE order_id = ${orderId}
+        WHERE order_id =
+          ${orderId}
         AND (
           blockchain_tx_hash IS NULL
           OR blockchain_tx_hash = ''
@@ -986,10 +1333,19 @@ async function handleStatusCheck(
 
       return res.status(202).json({
         success: true,
-        payment_status: "PAID",
-        order_status: "PROCESSING",
-        order_id: orderId,
-        requires_reconciliation: true,
+
+        payment_status:
+          "PAID",
+
+        order_status:
+          "PROCESSING",
+
+        order_id:
+          orderId,
+
+        requires_reconciliation:
+          true,
+
         message:
           "Pagamento confirmado. Transferência requer processamento."
       });
@@ -997,16 +1353,24 @@ async function handleStatusCheck(
   }
 
   const finalStatus =
-    PAGAR_STATUSES.includes(status)
+    PAGAR_STATUSES.includes(
+      status
+    )
       ? status
       : "PROCESSING";
 
   await sql`
     UPDATE orders
     SET
-      status = ${finalStatus},
-      updated_at = NOW()
-    WHERE order_id = ${orderId}
+      status =
+        ${finalStatus},
+
+      updated_at =
+        NOW()
+
+    WHERE order_id =
+      ${orderId}
+
     AND (
       blockchain_tx_hash IS NULL
       OR blockchain_tx_hash = ''
@@ -1015,10 +1379,14 @@ async function handleStatusCheck(
 
   return res.status(200).json({
     success: true,
+
     payment_status:
-      status || "PROCESSING",
+      status ||
+      "PROCESSING",
+
     order_status:
       finalStatus,
+
     order_id:
       orderId
   });
@@ -1033,13 +1401,13 @@ async function createPurchase(
   res,
   sql
 ) {
+  const rawBody =
+    await readRawBody(req);
+
   const body =
-    req.body &&
-    typeof req.body === "object"
-      ? req.body
-      : parseJsonBody(
-          await readRawBody(req)
-        );
+    parseJsonBody(
+      rawBody
+    );
 
   const name =
     normalizeText(
@@ -1086,12 +1454,29 @@ async function createPurchase(
   }
 
   if (
-    !Number.isFinite(amountMzn)
+    !Number.isFinite(
+      amountMzn
+    )
   ) {
     return res.status(400).json({
       success: false,
       message:
         "Valor em MZN inválido."
+    });
+  }
+
+  /*
+   * Pagar exige valor inteiro.
+   */
+  if (
+    !Number.isInteger(
+      amountMzn
+    )
+  ) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "O valor em MZN deve ser inteiro."
     });
   }
 
@@ -1128,7 +1513,7 @@ async function createPurchase(
   }
 
   /* =======================================================
-     CÁLCULO
+     CÁLCULO USDT
      ======================================================= */
 
   const usdtAmount =
@@ -1140,7 +1525,7 @@ async function createPurchase(
     createOrderId();
 
   /* =======================================================
-     CRIAR ORDEM NO NEON
+     CRIAR ORDEM
      ======================================================= */
 
   let created;
@@ -1195,14 +1580,18 @@ async function createPurchase(
 
     return res.status(500).json({
       success: false,
+
       message:
         "Não foi possível criar a ordem no banco de dados.",
+
       detail:
         getErrorMessage(error)
     });
   }
 
-  if (!created?.length) {
+  if (
+    !created?.length
+  ) {
     return res.status(500).json({
       success: false,
       message:
@@ -1214,7 +1603,7 @@ async function createPurchase(
     created[0];
 
   /* =======================================================
-     CRIAR PAGAMENTO NO PAGAR
+     CRIAR PAGAMENTO PAGAR
      ======================================================= */
 
   try {
@@ -1232,15 +1621,20 @@ async function createPurchase(
         paymentMethod
       });
 
+    const payment =
+      extractPayment(
+        pagar
+      );
+
     const paymentId =
       extractPaymentId(
         pagar
       );
 
-    /*
-     * Se o Pagar não devolver ID,
-     * não fingimos que o pagamento foi criado.
-     */
+    const paymentStatus =
+      extractPaymentStatus(
+        pagar
+      );
 
     if (!paymentId) {
       console.error(
@@ -1253,17 +1647,16 @@ async function createPurchase(
         SET
           status = 'FAILED',
           updated_at = NOW()
-        WHERE order_id = ${order.order_id}
-        AND (
-          blockchain_tx_hash IS NULL
-          OR blockchain_tx_hash = ''
-        )
+        WHERE order_id =
+          ${order.order_id}
       `;
 
       return res.status(502).json({
         success: false,
+
         message:
-          "O Pagar respondeu sem payment_id.",
+          "A Pagar respondeu sem payment_id.",
+
         order_id:
           order.order_id
       });
@@ -1273,15 +1666,24 @@ async function createPurchase(
        ATUALIZAR ORDEM
        ===================================================== */
 
+    const safeInitialStatus =
+      PAGAR_STATUSES.includes(
+        paymentStatus
+      )
+        ? paymentStatus
+        : "PROCESSING";
+
     await sql`
       UPDATE orders
       SET
         pagar_payment_id =
           ${paymentId},
 
-        status = 'PROCESSING',
+        status =
+          ${safeInitialStatus},
 
-        updated_at = NOW()
+        updated_at =
+          NOW()
 
       WHERE order_id =
         ${order.order_id}
@@ -1291,11 +1693,11 @@ async function createPurchase(
        RESPOSTA
        ===================================================== */
 
-    return res.status(201).json({
+    return res.status(202).json({
       success: true,
 
       message:
-        "Ordem criada e pagamento enviado ao Pagar.",
+        "Pagamento enviado para a Pagar. Aguarde a confirmação.",
 
       order: {
         order_id:
@@ -1314,15 +1716,19 @@ async function createPurchase(
           order.payment,
 
         status:
-          "PROCESSING"
+          safeInitialStatus
       },
 
       pagar: {
         payment_id:
           paymentId,
 
+        status:
+          paymentStatus ||
+          safeInitialStatus,
+
         data:
-          pagar
+          payment
       }
     });
 
@@ -1333,33 +1739,58 @@ async function createPurchase(
     );
 
     /*
-     * A ordem continua registrada no banco,
-     * mas o pagamento não foi criado.
+     * IMPORTANTE:
+     *
+     * 5xx / timeout pode significar que a Pagar
+     * recebeu a operação mas a resposta foi perdida.
+     *
+     * Por segurança não apagamos a ordem e não
+     * criamos outra automaticamente.
      */
+
+    const uncertain =
+      Number(error?.status || 0) >= 500 ||
+      !error?.status;
 
     await sql`
       UPDATE orders
       SET
-        status = 'FAILED',
-        updated_at = NOW()
-      WHERE order_id = ${order.order_id}
-      AND (
-        blockchain_tx_hash IS NULL
-        OR blockchain_tx_hash = ''
-      )
+        status =
+          ${uncertain
+            ? "RECONCILIATION_REQUIRED"
+            : "FAILED"},
+
+        updated_at =
+          NOW()
+
+      WHERE order_id =
+        ${order.order_id}
     `;
 
-    return res.status(502).json({
+    return res.status(
+      uncertain ? 202 : 502
+    ).json({
       success: false,
 
       message:
-        "A ordem foi criada, mas não foi possível criar o pagamento no Pagar.",
+        uncertain
+          ? "A tentativa de pagamento ficou inconclusiva. A operação não será repetida automaticamente."
+          : "A Pagar recusou a criação do pagamento.",
 
       order_id:
         order.order_id,
 
+      status:
+        uncertain
+          ? "RECONCILIATION_REQUIRED"
+          : "FAILED",
+
       detail:
-        getErrorMessage(error)
+        getErrorMessage(error),
+
+      request_id:
+        error?.requestId ||
+        null
     });
   }
 }
@@ -1388,28 +1819,18 @@ export default async function handler(
       neon(databaseUrl);
 
     /* =====================================================
-       WEBHOOK PAGAR
+       WEBHOOK
        ===================================================== */
 
     if (
       req.method === "POST" &&
-      (
-        getHeader(
-          req,
-          "x-pagar-signature"
-        ) ||
-        getHeader(
-          req,
-          "x-webhook-signature"
-        ) ||
-        getHeader(
-          req,
-          "x-signature"
-        ) ||
-        getHeader(
-          req,
-          "Pagar-Signature"
-        )
+      getHeader(
+        req,
+        "pagar-event-id"
+      ) &&
+      getHeader(
+        req,
+        "pagar-signature"
       )
     ) {
       const rawBody =
@@ -1455,10 +1876,6 @@ export default async function handler(
       );
     }
 
-    /* =====================================================
-       MÉTODO NÃO PERMITIDO
-       ===================================================== */
-
     return res.status(405).json({
       success: false,
       message:
@@ -1473,10 +1890,50 @@ export default async function handler(
 
     return res.status(500).json({
       success: false,
+
       message:
         "Erro interno ao processar a operação.",
+
       detail:
         getErrorMessage(error)
     });
   }
 }
+
+Agora atenção às variáveis da Vercel
+
+No projeto, precisamos ter estas quatro:
+
+PAGAR_API_BASE_URL
+PAGAR_API_KEY
+PAGAR_SIGNING_SECRET
+PAGAR_WEBHOOK_SECRET
+
+A documentação atual confirma exatamente essas credenciais e explica que "PAGAR_SIGNING_SECRET" assina os "POST", enquanto "PAGAR_WEBHOOK_SECRET" valida os webhooks.
+
+Não me envie os valores das chaves. Apenas confirme se as quatro existem na Vercel.
+
+O primeiro teste
+
+Depois de substituir o arquivo:
+
+1. Deploy na Vercel.
+2. Abra o Admin.
+3. Coloque:
+   - Nome: qualquer nome
+   - Telefone de teste da Pagar
+   - 640 MZN
+   - M-Pesa
+4. Clique CRIAR PAGAMENTO.
+
+O resultado esperado agora é aproximadamente:
+
+640 MZN → 10 USDT → Pagar → PROCESSING
+
+Não deve aparecer mais o antigo payload "amount/payment_method/customer".
+
+A própria Pagar documenta que uma criação normal retorna HTTP 202 e estado inicialmente "PENDING" ou "PROCESSING"; só devemos considerar o pagamento concluído quando houver "payment.succeeded"/"PAID".
+
+Não faça ainda o envio para Binance. Primeiro vamos confirmar que o pagamento M-Pesa/e-Mola está sendo criado corretamente. Depois fechamos o webhook e a liquidez.
+
+"Documentação oficial da Pagar API" (https://pagar.co.mz/docs?utm_source=chatgpt.com)
