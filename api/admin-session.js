@@ -6,21 +6,49 @@ function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
 
-  if (A.length !== B.length) return false;
+  if (A.length !== B.length) {
+    return false;
+  }
 
   return timingSafeEqual(A, B);
 }
 
+function getSessionToken(req) {
+  const cookies = req.headers.cookie || "";
+
+  const cookie = cookies
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) =>
+      item.startsWith(`${COOKIE_NAME}=`)
+    );
+
+  if (!cookie) {
+    return null;
+  }
+
+  return cookie.substring(
+    COOKIE_NAME.length + 1
+  );
+}
+
 function verifySession(token, secret) {
-  if (!token || !secret) return null;
+  if (!token || !secret) {
+    return null;
+  }
 
   const parts = token.split(".");
 
-  if (parts.length !== 2) return null;
+  if (parts.length !== 2) {
+    return null;
+  }
 
   const [data, signature] = parts;
 
-  const expectedSignature = createHmac("sha256", secret)
+  const expectedSignature = createHmac(
+    "sha256",
+    secret
+  )
     .update(data)
     .digest("base64url");
 
@@ -30,10 +58,17 @@ function verifySession(token, secret) {
 
   try {
     const payload = JSON.parse(
-      Buffer.from(data, "base64url").toString("utf8")
+      Buffer.from(
+        data,
+        "base64url"
+      ).toString("utf8")
     );
 
-    if (!payload.exp || Date.now() > payload.exp) {
+    if (!payload.exp) {
+      return null;
+    }
+
+    if (Date.now() > Number(payload.exp)) {
       return null;
     }
 
@@ -42,7 +77,6 @@ function verifySession(token, secret) {
     }
 
     return payload;
-
   } catch {
     return null;
   }
@@ -56,39 +90,33 @@ export default function handler(req, res) {
     });
   }
 
-  const secret = process.env.ADMIN_SESSION_SECRET;
+  const secret =
+    process.env.ADMIN_SESSION_SECRET;
 
   if (!secret) {
     return res.status(500).json({
       success: false,
-      message: "Configuração do servidor incompleta."
-    });
-  }
-
-  const cookies = req.headers.cookie || "";
-
-  const cookie = cookies
-    .split(";")
-    .map(item => item.trim())
-    .find(item => item.startsWith(COOKIE_NAME + "="));
-
-  if (!cookie) {
-    return res.status(401).json({
-      success: false,
       authenticated: false,
-      message: "Sessão não encontrada."
+      message:
+        "ADMIN_SESSION_SECRET não configurado."
     });
   }
 
-  const token = cookie.substring(COOKIE_NAME.length + 1);
+  const token =
+    getSessionToken(req);
 
-  const session = verifySession(token, secret);
+  const session =
+    verifySession(
+      token,
+      secret
+    );
 
   if (!session) {
     return res.status(401).json({
       success: false,
       authenticated: false,
-      message: "Sessão inválida ou expirada."
+      message:
+        "Sessão Admin inválida ou expirada."
     });
   }
 
@@ -96,8 +124,12 @@ export default function handler(req, res) {
     success: true,
     authenticated: true,
     admin: {
-      id: session.id,
-      email: session.email
-    }
+      id: "admin",
+      email: session.email || null
+    },
+    expires_at:
+      new Date(
+        Number(session.exp)
+      ).toISOString()
   });
 }
