@@ -429,7 +429,7 @@
           <div
             class="conversion-result"
             id="usdtPreview">
-            0.000000 USDT
+            0 USDT
           </div>
 
           <div
@@ -634,6 +634,17 @@ function setMessage(
 }
 
 
+/*
+ * FORMATAÇÃO SEM ZEROS DESNECESSÁRIOS
+ *
+ * 1      → 1
+ * 10     → 10
+ * 10.5   → 10,5
+ * 100.25 → 100,25
+ *
+ * Nunca força 6 casas decimais.
+ */
+
 function formatNumber(value) {
 
   const number =
@@ -646,8 +657,27 @@ function formatNumber(value) {
   return number.toLocaleString(
     "pt-PT",
     {
-      minimumFractionDigits: 6,
+      minimumFractionDigits: 0,
       maximumFractionDigits: 6
+    }
+  );
+}
+
+
+function formatMzn(value) {
+
+  const number =
+    Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "—";
+  }
+
+  return number.toLocaleString(
+    "pt-PT",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
     }
   );
 }
@@ -703,6 +733,10 @@ function updateConversion() {
   const help =
     byId("conversionHelp");
 
+  if (!input || !preview || !help) {
+    return;
+  }
+
   const raw =
     input.value.trim();
 
@@ -710,7 +744,7 @@ function updateConversion() {
   if (raw === "") {
 
     preview.textContent =
-      "0.000000 USDT";
+      "0 USDT";
 
     help.textContent =
       "Digite o valor em MZN.";
@@ -728,10 +762,13 @@ function updateConversion() {
   if (!Number.isFinite(amount)) {
 
     preview.textContent =
-      "0.000000 USDT";
+      "0 USDT";
 
     help.textContent =
       "Valor inválido.";
+
+    help.style.color =
+      "#991b1b";
 
     return;
   }
@@ -740,7 +777,7 @@ function updateConversion() {
   if (amount < MIN_MZN) {
 
     preview.textContent =
-      "0.000000 USDT";
+      "0 USDT";
 
     help.textContent =
       "Mínimo: 64 MZN.";
@@ -755,7 +792,7 @@ function updateConversion() {
   if (amount > MAX_MZN) {
 
     preview.textContent =
-      "0.000000 USDT";
+      "0 USDT";
 
     help.textContent =
       "Máximo: 40.000 MZN.";
@@ -777,7 +814,7 @@ function updateConversion() {
 
 
   help.textContent =
-    `${amount.toLocaleString("pt-PT")} MZN ÷ 64 = ${formatNumber(usdt)} USDT`;
+    `${formatMzn(amount)} MZN ÷ 64 = ${formatNumber(usdt)} USDT`;
 
 
   help.style.color =
@@ -802,11 +839,6 @@ async function loadWallet() {
 
 
   try {
-
-    /*
-     * IMPORTANTE:
-     * usamos a API de SALDO e não tron-wallet-info.
-     */
 
     const response =
       await fetch(
@@ -1028,10 +1060,6 @@ byId("purchaseForm")
         .value;
 
 
-    /*
-     * VALIDAÇÕES
-     */
-
     if (!name) {
 
       setMessage(
@@ -1100,16 +1128,12 @@ byId("purchaseForm")
 
     setMessage(
       message,
-      `Criando ordem...\n\nValor: ${amount.toLocaleString("pt-PT")} MZN\nConversão: ${formatNumber(usdt)} USDT\nPagamento: ${payment === "MPESA" ? "M-Pesa" : "e-Mola"}`,
+      `Criando ordem...\n\nValor: ${formatMzn(amount)} MZN\nConversão: ${formatNumber(usdt)} USDT\nPagamento: ${payment === "MPESA" ? "M-Pesa" : "e-Mola"}`,
       "info"
     );
 
 
     try {
-
-      /*
-       * A ordem é criada pela API 07.
-       */
 
       const response =
         await fetch(
@@ -1140,10 +1164,6 @@ byId("purchaseForm")
         await readJson(response);
 
 
-      /*
-       * ERRO DO SERVIDOR
-       */
-
       if (
         !response.ok ||
         data.success === false
@@ -1154,11 +1174,6 @@ byId("purchaseForm")
           data.error ||
           "Não foi possível criar o pagamento.";
 
-
-        /*
-         * Mensagem mais clara para
-         * API Pagar/M-Pesa/e-Mola.
-         */
 
         if (
           response.status >= 500 ||
@@ -1186,10 +1201,6 @@ Nenhum USDT foi enviado.`;
         );
       }
 
-
-      /*
-       * ORDEM RETORNADA
-       */
 
       const order =
         data.order ||
@@ -1234,10 +1245,6 @@ Nenhum USDT foi enviado.`;
       };
 
 
-      /*
-       * PAGAMENTO CRIADO
-       */
-
       if (status === "PAID") {
 
         setMessage(
@@ -1245,7 +1252,7 @@ Nenhum USDT foi enviado.`;
           `✅ Pagamento confirmado!
 
 Ordem: ${orderId}
-Valor: ${amount.toLocaleString("pt-PT")} MZN
+Valor: ${formatMzn(amount)} MZN
 USDT: ${formatNumber(usdtAmount)}
 Método: ${payment === "MPESA" ? "M-Pesa" : "e-Mola"}
 Estado: PAID`,
@@ -1265,7 +1272,7 @@ Estado: PAID`,
           `✅ Ordem criada!
 
 Ordem: ${orderId}
-Valor: ${amount.toLocaleString("pt-PT")} MZN
+Valor: ${formatMzn(amount)} MZN
 USDT: ${formatNumber(usdtAmount)}
 Método: ${payment === "MPESA" ? "M-Pesa" : "e-Mola"}
 Estado: ${status}
