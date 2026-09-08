@@ -1,387 +1,323 @@
 import { neon } from "@neondatabase/serverless";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { TronWeb } from "tronweb";
 
-const COOKIE_NAME = "usdtmz_admin_session";
+const COOKIE = "usdtmz_admin_session";
+const USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const FEE_LIMIT = 100_000_000;
 
-function safeCompare(a, b) {
-  const A = Buffer.from(String(a));
-  const B = Buffer.from(String(b));
+const dbUrl = () =>
+  process.env.URL_DO_BANCO_DE_DADOS ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.DATABASE_URL_UNPOOLED;
 
-  if (A.length !== B.length) {
-    return false;
-  }
+const compare = (a, b) => {
+  const A = Buffer.from(String(a)), B = Buffer.from(String(b));
+  return A.length === B.length && timingSafeEqual(A, B);
+};
 
-  return timingSafeEqual(A, B);
-}
+function session(req) {
+  const raw = req.headers.cookie || "";
+  const item = raw.split(";").map(x => x.trim()).find(x => x.startsWith(`${COOKIE}=`));
+  if (!item || !process.env.ADMIN_SESSION_SECRET) return null;
 
-function getSessionToken(req) {
-  const cookies = req.headers.cookie || "";
+  const token = item.slice(COOKIE.length + 1).split(".");
+  if (token.length !== 2) return null;
 
-  const cookie = cookies
-    .split(";")
-    .map((item) => item.trim())
-    .find((item) =>
-      item.startsWith(`${COOKIE_NAME}=`)
-    );
+  const [data, sig] = token;
+  const expected = createHmac("sha256", process.env.ADMIN_SESSION_SECRET)
+    .update(data).digest("base64url");
 
-  if (!cookie) {
-    return null;
-  }
-
-  return cookie.substring(COOKIE_NAME.length + 1);
-}
-
-function verifySession(token, secret) {
-  if (!token || !secret) {
-    return null;
-  }
-
-  const parts = token.split(".");
-
-  if (parts.length !== 2) {
-    return null;
-  }
-
-  const [data, signature] = parts;
-
-  const expectedSignature = createHmac(
-    "sha256",
-    secret
-  )
-    .update(data)
-    .digest("base64url");
-
-  if (!safeCompare(signature, expectedSignature)) {
-    return null;
-  }
+  if (!compare(sig, expected)) return null;
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(data, "base64url").toString("utf8")
-    );
-
-    if (!payload.exp || Date.now() > Number(payload.exp)) {
-      return null;
-    }
-
-    if (payload.id !== "admin") {
-      return null;
-    }
-
-    return payload;
+    const p = JSON.parse(Buffer.from(data, "base64url").toString());
+    return p.id === "admin" && Number(p.exp) > Date.now() ? p : null;
   } catch {
     return null;
   }
 }
 
-function getDatabaseUrl() {
-  return (
-    process.env.URL_DO_BANCO_DE_DADOS ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL_UNPOOLED
-  );
+function getTron() {
+  const privateKey = process.env.USDTMZ_TRON_PRIVATE_KEY;
+  if (!privateKey) throw new Error("USDTMZ_TRON_PRIVATE_KEY não configurada.");
+
+  const tron = new TronWeb({
+    fullHost: "https://api.trongrid.io",
+    privateKey
+  });
+
+  const address =
+    process.env.USDTMZ_TRON_WALLET_ADDRESS ||
+    tron.address.fromPrivateKey(privateKey);
+
+  if (!tron.isAddress(address)) {
+    throw new Error("Carteira TRON da tesouraria inválida.");
+  }
+
+  return { tron, address };
 }
 
-function normalizeStatus(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase();
+async function sendUSDT(to, amount) {
+  const { tron, address } = getTron();
+
+  if (!tron.isAddress(to)) throw new Error("Endereço TRON inválido.");
+
+  const value = Math.round(Number(amount) * 1_000_000);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("Quantidade USDT inválida.");
+  }
+
+  const trx = Number(await tron.trx.getBalance(address)) / 1_000_000;
+  if (trx <= 0) throw new Error("Saldo TRX insuficiente para pagar a rede.");
+
+  const contract = await tron.contract().at(USDT);
+  const result = await contract.transfer(to, value).send({
+    feeLimit: FEE_LIMIT
+  });
+
+  if (!result) throw new Error("TRON não devolveu TX hash.");
+
+  return String(result);
 }
 
+async function markProcessing(sql, orderId) {
+  const rows = await sql`
+    UPDATE orders
+    SET status = 'PROCESSING', updated_at = NOW()
+    WHERE order_id = ${orderId}
+      AND status IN ('PAID', 'PROCESSING')
+      AND blockchain_tx_hash IS NULL
+    RETURNING order_id, usdt_amount, status
+  `;
+  return rows[0] || null;
+}
+
+async function markCompleted(sql, orderId, txHash) {
+  await sql`
+    UPDATE orders
+    SET status = 'COMPLETED',
+        blockchain_tx_hash = ${txHash},
+        updated_at = NOW()
+    WHERE order_id = ${orderId}
+      AND blockchain_tx_hash IS NULL
+  `;
+}
+
+async function markFailed(sql, orderId, message) {
+  await sql`
+    UPDATE orders
+    SET status = 'FAILED',
+        updated_at = NOW()
+    WHERE order_id = ${orderId}
+      AND blockchain_tx_hash IS NULL
+      AND status <> 'PROCESSING'
+  `;
+  console.error("USDTMZ TRANSFER FAILED:", orderId, message);
+}
+
+/*
+ * ==========================================================
+ * API INTERNO USADO PELO CRIAR-COMPRA.JS
+ * ==========================================================
+ */
+export async function processAdminPurchaseToBinanceInternal(orderId) {
+  if (!orderId) throw new Error("orderId obrigatório.");
+
+  const databaseUrl = dbUrl();
+  if (!databaseUrl) throw new Error("Banco de dados não configurado.");
+
+  const sql = neon(databaseUrl);
+
+  const orders = await sql`
+    SELECT order_id, usdt_amount, status, blockchain_tx_hash
+    FROM orders
+    WHERE order_id = ${orderId}
+      AND operation = 'BUY_USDT_ADMIN'
+    LIMIT 1
+  `;
+
+  const order = orders[0];
+  if (!order) throw new Error("Compra não encontrada.");
+
+  if (order.blockchain_tx_hash) {
+    return {
+      success: true,
+      already_sent: true,
+      tx_hash: order.blockchain_tx_hash
+    };
+  }
+
+  if (!["PAID", "PROCESSING"].includes(String(order.status).toUpperCase())) {
+    throw new Error(`Compra não está PAID. Estado atual: ${order.status}`);
+  }
+
+  const destination = process.env.BINANCE_USDT_TRON_ADDRESS;
+  if (!destination) throw new Error("BINANCE_USDT_TRON_ADDRESS não configurado.");
+
+  if (String(order.status).toUpperCase() === "PAID") {
+    const locked = await markProcessing(sql, orderId);
+    if (!locked) {
+      const again = await sql`
+        SELECT status, blockchain_tx_hash
+        FROM orders WHERE order_id = ${orderId}
+      `;
+      if (again[0]?.blockchain_tx_hash) {
+        return { success: true, already_sent: true, tx_hash: again[0].blockchain_tx_hash };
+      }
+    }
+  }
+
+  try {
+    const txHash = await sendUSDT(destination, order.usdt_amount);
+
+    await markCompleted(sql, orderId, txHash);
+
+    return {
+      success: true,
+      status: "COMPLETED",
+      tx_hash: txHash
+    };
+  } catch (error) {
+    /*
+     * Se a transmissão chegou à blockchain mas não sabemos
+     * o resultado, NÃO marcamos como FAILED automaticamente.
+     */
+    console.error("BINANCE TRANSFER ERROR:", error);
+
+    if (String(order.status).toUpperCase() === "PROCESSING") {
+      return {
+        success: false,
+        status: "PROCESSING",
+        message: "Transferência em processamento; verificar TX antes de repetir."
+      };
+    }
+
+    await markFailed(sql, orderId, error?.message);
+    throw error;
+  }
+}
+
+/*
+ * ==========================================================
+ * HANDLER ADMIN — RETIRADAS NORMAIS + BINANCE MANUAL
+ * ==========================================================
+ */
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
+  const admin = session(req);
+
+  if (!admin) {
+    return res.status(401).json({
+      success: false,
+      message: "Sessão administrativa inválida."
+    });
+  }
+
+  if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
       message: "Método não permitido."
     });
   }
 
-  const secret = process.env.ADMIN_SESSION_SECRET;
-  const databaseUrl = getDatabaseUrl();
-
-  if (!secret || !databaseUrl) {
-    return res.status(500).json({
-      success: false,
-      message: "Configuração do servidor incompleta."
-    });
-  }
-
-  const token = getSessionToken(req);
-  const session = verifySession(token, secret);
-
-  if (!session) {
-    return res.status(401).json({
-      success: false,
-      authenticated: false,
-      message: "Sessão inválida ou expirada."
-    });
-  }
-
   try {
+    const { action, purchase_order_id, withdrawal_id } = req.body || {};
+
+    /*
+     * Envio manual de compra PAID para Binance.
+     */
+    if (
+      action === "admin_binance_transfer" &&
+      purchase_order_id
+    ) {
+      const result =
+        await processAdminPurchaseToBinanceInternal(purchase_order_id);
+
+      return res.status(200).json(result);
+    }
+
+    /*
+     * Retirada normal.
+     */
+    if (!withdrawal_id) {
+      return res.status(400).json({
+        success: false,
+        message: "withdrawal_id obrigatório."
+      });
+    }
+
+    const databaseUrl = dbUrl();
+    if (!databaseUrl) throw new Error("Banco de dados não configurado.");
+
     const sql = neon(databaseUrl);
 
-    /*
-     * =====================================================
-     * RETIRADAS NORMAIS
-     * =====================================================
-     */
-    const withdrawals = await sql`
-      SELECT
-        id,
-        withdrawal_id,
-        user_id,
-        amount,
-        asset,
-        network,
-        destination_address,
-        status,
-        tx_hash,
-        created_at,
-        updated_at,
-        order_id,
-        amount_requested,
-        withdrawal_fee,
-        amount_to_send
+    const rows = await sql`
+      SELECT *
       FROM withdrawals
-      ORDER BY created_at DESC
+      WHERE id = ${withdrawal_id}
+      LIMIT 1
     `;
 
-    /*
-     * =====================================================
-     * COMPRAS ADMIN → BINANCE
-     *
-     * Não enviamos o endereço real da Binance
-     * para o frontend.
-     * =====================================================
-     */
-    const binanceOrders = await sql`
-      SELECT
-        id,
-        order_id,
-        name,
-        phone,
-        operation,
-        payment,
-        amount,
-        usdt_amount,
-        rate,
-        status,
-        created_at,
-        updated_at,
-        mpesa_transaction_id,
-        emola_transaction_id,
-        pagar_payment_id,
-        pagar_event_id,
-        blockchain_tx_hash
-      FROM orders
-      WHERE operation = 'BUY_USDT_ADMIN'
-      ORDER BY created_at DESC
+    const withdrawal = rows[0];
+
+    if (!withdrawal) {
+      return res.status(404).json({
+        success: false,
+        message: "Levantamento não encontrado."
+      });
+    }
+
+    if (withdrawal.status !== "AUTHORIZED") {
+      return res.status(400).json({
+        success: false,
+        message: `Estado inválido: ${withdrawal.status}`
+      });
+    }
+
+    await sql`
+      UPDATE withdrawals
+      SET status = 'PROCESSING',
+          updated_at = NOW()
+      WHERE id = ${withdrawal_id}
+        AND status = 'AUTHORIZED'
     `;
 
-    /*
-     * =====================================================
-     * NORMALIZAÇÃO DAS RETIRADAS
-     * =====================================================
-     */
-    const normalRows = withdrawals.map((item) => ({
-      id: item.id,
-      withdrawal_id: item.withdrawal_id,
-      user_id: item.user_id,
-      type: "WITHDRAWAL",
-      source: "USER_WITHDRAWAL",
+    try {
+      const txHash = await sendUSDT(
+        withdrawal.destination_address,
+        withdrawal.amount_to_send || withdrawal.amount
+      );
 
-      amount: item.amount,
-      amount_requested:
-        item.amount_requested ?? item.amount,
-      amount_to_send:
-        item.amount_to_send ?? item.amount,
-      withdrawal_fee:
-        item.withdrawal_fee ?? null,
+      await sql`
+        UPDATE withdrawals
+        SET status = 'COMPLETED',
+            tx_hash = ${txHash},
+            updated_at = NOW()
+        WHERE id = ${withdrawal_id}
+      `;
 
-      asset: item.asset || "USDT",
-      network: item.network || "TRON",
+      return res.status(200).json({
+        success: true,
+        status: "COMPLETED",
+        tx_hash: txHash
+      });
+    } catch (error) {
+      console.error("WITHDRAWAL ERROR:", error);
 
-      destination_address:
-        item.destination_address || null,
-
-      destination_label: null,
-
-      status: normalizeStatus(item.status),
-
-      tx_hash:
-        item.tx_hash || null,
-
-      created_at: item.created_at,
-      updated_at: item.updated_at,
-
-      order_id:
-        item.order_id || null,
-
-      is_binance: false,
-
-      payment: null,
-      payment_amount: null,
-      usdt_amount: null,
-      rate: null,
-
-      name: null,
-      phone: null,
-
-      mpesa_transaction_id: null,
-      emola_transaction_id: null,
-
-      pagar_payment_id: null,
-      pagar_event_id: null
-    }));
-
-    /*
-     * =====================================================
-     * NORMALIZAÇÃO DAS TRANSFERÊNCIAS BINANCE
-     * =====================================================
-     */
-    const binanceRows = binanceOrders.map((order) => ({
-      id: `binance_${order.id}`,
-
-      withdrawal_id: null,
-      user_id: null,
-
-      type: "BINANCE_TRANSFER",
-      source: "ADMIN_PURCHASE",
-
-      amount: order.usdt_amount,
-      amount_requested: order.usdt_amount,
-      amount_to_send: order.usdt_amount,
-      withdrawal_fee: 0,
-
-      asset: "USDT",
-      network: "TRON",
-
-      /*
-       * Nunca enviar o endereço real da Binance
-       * para o navegador.
-       */
-      destination_address: "BINANCE TRC-20",
-      destination_label: "Binance / TRON TRC-20",
-
-      status: normalizeStatus(order.status),
-
-      tx_hash:
-        order.blockchain_tx_hash || null,
-
-      created_at: order.created_at,
-      updated_at: order.updated_at,
-
-      order_id: order.order_id,
-
-      is_binance: true,
-
-      payment: order.payment || null,
-      payment_amount: order.amount || null,
-      usdt_amount: order.usdt_amount || null,
-      rate: order.rate || null,
-
-      name: order.name || null,
-      phone: order.phone || null,
-
-      mpesa_transaction_id:
-        order.mpesa_transaction_id || null,
-
-      emola_transaction_id:
-        order.emola_transaction_id || null,
-
-      pagar_payment_id:
-        order.pagar_payment_id || null,
-
-      pagar_event_id:
-        order.pagar_event_id || null
-    }));
-
-    /*
-     * =====================================================
-     * JUNTAR AS DUAS LISTAS
-     * =====================================================
-     */
-    const allRows = [
-      ...normalRows,
-      ...binanceRows
-    ];
-
-    /*
-     * Mais recentes primeiro.
-     */
-    allRows.sort((a, b) => {
-      const dateA = new Date(a.created_at || 0).getTime();
-      const dateB = new Date(b.created_at || 0).getTime();
-
-      return dateB - dateA;
-    });
-
-    /*
-     * =====================================================
-     * ESTATÍSTICAS
-     * =====================================================
-     */
-    const binanceCompleted =
-      binanceRows.filter(
-        (item) =>
-          item.status === "COMPLETED"
-      ).length;
-
-    const binanceProcessing =
-      binanceRows.filter(
-        (item) =>
-          item.status === "PROCESSING"
-      ).length;
-
-    const binanceFailed =
-      binanceRows.filter(
-        (item) =>
-          item.status === "FAILED"
-      ).length;
-
-    return res.status(200).json({
-      success: true,
-      authenticated: true,
-
-      withdrawals: allRows,
-
-      /*
-       * Mantidos separados para o frontend
-       * poder usar qualquer uma das listas.
-       */
-      normal_withdrawals: normalRows,
-
-      binance_transfers: binanceRows,
-
-      counts: {
-        total: allRows.length,
-        withdrawals: normalRows.length,
-        binance_transfers: binanceRows.length,
-
-        binance_completed:
-          binanceCompleted,
-
-        binance_processing:
-          binanceProcessing,
-
-        binance_failed:
-          binanceFailed
-      }
-    });
+      return res.status(500).json({
+        success: false,
+        status: "PROCESSING",
+        message: "Transferência iniciada ou em verificação. Não repetir automaticamente."
+      });
+    }
   } catch (error) {
-    console.error(
-      "ADMIN WITHDRAWALS ERROR:",
-      error
-    );
+    console.error("ADMIN WITHDRAWAL PROCESS ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Erro ao consultar retiradas.",
-      detail:
-        error?.message ||
-        "Erro desconhecido."
+      message: error?.message || "Erro ao processar transferência."
     });
   }
 }
