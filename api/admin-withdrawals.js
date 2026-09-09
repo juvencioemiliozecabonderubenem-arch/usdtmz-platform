@@ -1426,3 +1426,898 @@ async function convertMZNToUSDT(req, res) {
       after
   });
 }
+async function releaseReservation(req, res) {
+  const b = req.body || {};
+
+  const reference = String(
+    b.reference ??
+    ""
+  ).trim();
+
+  const amount = Number(
+    b.amount_usdt ??
+    b.amount ??
+    0
+  );
+
+  if (!reference) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        "A referência da reserva é obrigatória."
+    });
+  }
+
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        "Valor USDT para liberação inválido."
+    });
+  }
+
+  const result =
+    await sql.transaction(
+      (txn) => [
+        txn`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${reference})
+          )
+        `,
+
+        txn`
+          SELECT
+            COALESCE(SUM(amount), 0) AS reserved
+          FROM transactions
+          WHERE
+            asset = 'USDT'
+            AND type = 'RESERVE_IN'
+            AND status = 'RESERVED'
+            AND reference = ${reference}
+        `,
+
+        txn`
+          SELECT
+            COALESCE(SUM(amount), 0) AS released
+          FROM transactions
+          WHERE
+            asset = 'USDT'
+            AND type = 'RESERVE_OUT'
+            AND status = 'COMPLETED'
+            AND reference = ${reference}
+        `,
+
+        txn`
+          INSERT INTO transactions
+            (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+          SELECT
+            NULL,
+            'RESERVE_OUT',
+            'USDT',
+            ${amount},
+            'COMPLETED',
+            ${reference},
+            NULL,
+            NOW()
+          WHERE
+            ${amount} <= (
+              SELECT
+                COALESCE(SUM(amount), 0)
+              FROM transactions
+              WHERE
+                asset = 'USDT'
+                AND type = 'RESERVE_IN'
+                AND status = 'RESERVED'
+                AND reference = ${reference}
+            )
+            -
+            (
+              SELECT
+                COALESCE(SUM(amount), 0)
+              FROM transactions
+              WHERE
+                asset = 'USDT'
+                AND type = 'RESERVE_OUT'
+                AND status = 'COMPLETED'
+                AND reference = ${reference}
+            )
+          RETURNING
+            id,
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            created_at
+        `
+      ],
+      {
+        isolationMode: "Serializable"
+      }
+    );
+
+  const reserved =
+    num(result?.[1]?.[0]?.reserved);
+
+  const released =
+    num(result?.[2]?.[0]?.released);
+
+  const transaction =
+    result?.[3]?.[0];
+
+  const remaining =
+    Math.max(
+      0,
+      reserved - released
+    );
+
+  if (!transaction) {
+    return json(res, 409, {
+      ok: false,
+
+      error:
+        "A quantidade solicitada excede a reserva disponível.",
+
+      reference,
+
+      reserved,
+
+      already_released:
+        released,
+
+      remaining
+    });
+  }
+
+  return json(res, 200, {
+    ok: true,
+
+    message:
+      "Reserva USDT liberada.",
+
+    transaction,
+
+    remaining:
+      Math.max(
+        0,
+        remaining - amount
+      )
+  });
+}
+
+
+async function getDashboard() {
+  const treasury =
+    await getTreasuryNumbers();
+
+  const address =
+    companyAddress();
+
+  const [
+    pendingOrders,
+    confirmedOrders,
+    binanceTransfers,
+    withdrawals,
+    recentTransactions
+  ] = await Promise.all([
+    sql`
+      SELECT
+        id,
+        order_id,
+        name,
+        phone,
+        operation,
+        payment,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        created_at,
+        updated_at,
+        mpesa_transaction_id,
+        emola_transaction_id,
+        pagar_payment_id,
+        pagar_event_id,
+        blockchain_tx_hash,
+        wallet_address
+      FROM orders
+      WHERE operation = 'BUY_USDT_ADMIN'
+        AND status = 'PENDING'
+      ORDER BY created_at DESC
+      LIMIT 100
+    `,
+
+    sql`
+      SELECT
+        id,
+        order_id,
+        name,
+        phone,
+        operation,
+        payment,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        created_at,
+        updated_at,
+        mpesa_transaction_id,
+        emola_transaction_id,
+        pagar_payment_id,
+        pagar_event_id,
+        blockchain_tx_hash,
+        wallet_address
+      FROM orders
+      WHERE operation = 'BUY_USDT_ADMIN'
+        AND status IN (
+          'PAYMENT_CONFIRMED',
+          'USDT_SENT',
+          'COMPLETED',
+          'FAILED',
+          'CANCELLED'
+        )
+      ORDER BY created_at DESC
+      LIMIT 100
+    `,
+
+    sql`
+      SELECT
+        id,
+        user_id,
+        type,
+        asset,
+        amount,
+        status,
+        reference,
+        blockchain_tx_hash,
+        created_at
+      FROM transactions
+      WHERE
+        asset = 'USDT'
+        AND (
+          type IN (
+            'BINANCE_TRANSFER',
+            'USDT_SENT',
+            'WITHDRAWAL'
+          )
+          OR reference LIKE 'BINANCE:%'
+        )
+      ORDER BY created_at DESC
+      LIMIT 100
+    `,
+
+    sql`
+      SELECT
+        id,
+        user_id,
+        amount,
+        destination_address,
+        network,
+        status,
+        tx_hash,
+        created_at,
+        updated_at
+      FROM withdrawals
+      ORDER BY created_at DESC
+      LIMIT 100
+    `,
+
+    sql`
+      SELECT
+        id,
+        user_id,
+        type,
+        asset,
+        amount,
+        status,
+        reference,
+        blockchain_tx_hash,
+        created_at
+      FROM transactions
+      ORDER BY created_at DESC
+      LIMIT 100
+    `
+  ]);
+
+  const normalWithdrawals =
+    withdrawals.map((w) => ({
+      ...w,
+      amount: num(w.amount)
+    }));
+
+  const reserveUSDT =
+    treasury.reserved;
+
+  const availableUSDT =
+    treasury.available;
+
+  return {
+    treasury: {
+      mzn: treasury.mzn,
+      usdt_real: treasury.usdt,
+      trx_real: treasury.trx,
+
+      reserved_usdt:
+        reserveUSDT,
+
+      available_usdt:
+        availableUSDT,
+
+      wallet_address:
+        address || null,
+
+      usdt_contract:
+        USDT_CONTRACT,
+
+      network:
+        TRON_NETWORK,
+
+      rate:
+        RATE,
+
+      min_mzn:
+        MIN_MZN,
+
+      max_mzn:
+        MAX_MZN
+    },
+
+    liquidity: {
+      status:
+        availableUSDT > 0
+          ? "COM_LIQUIDEZ"
+          : "SEM_LIQUIDEZ",
+
+      real_usdt:
+        treasury.usdt,
+
+      reserved_usdt:
+        reserveUSDT,
+
+      available_usdt:
+        availableUSDT,
+
+      engine_reserved_usdt:
+        treasury.engine_reserved,
+
+      order_reserved_usdt:
+        treasury.order_reserved
+    },
+
+    orders: {
+      pending:
+        pendingOrders,
+
+      confirmed:
+        confirmedOrders
+    },
+
+    binance_transfers:
+      binanceTransfers,
+
+    withdrawals:
+      normalWithdrawals,
+
+    normal_withdrawals:
+      normalWithdrawals,
+
+    recent_transactions:
+      recentTransactions,
+
+    sources:
+      SOURCES,
+
+    system: {
+      reserve_control:
+        true,
+
+      real_usdt_required:
+        true,
+
+      fake_usdt_creation:
+        false,
+
+      blockchain_verification:
+        true,
+
+      solidified_receipt:
+        true,
+
+      duplicate_tx_protection:
+        true,
+
+      atomic_ledger:
+        true,
+
+      admin_only_treasury:
+        true
+    }
+  };
+}
+
+
+function transactionTypeLabel(type) {
+  const labels = {
+    DEPOSIT_MZN:
+      "Depósito MZN",
+
+    DEPOSIT_USDT:
+      "Depósito USDT",
+
+    CONVERSION:
+      "Conversão",
+
+    RESERVE_IN:
+      "Reserva USDT",
+
+    RESERVE_OUT:
+      "Liberação de reserva",
+
+    BINANCE_TRANSFER:
+      "Envio para Binance",
+
+    WITHDRAWAL:
+      "Levantamento",
+
+    USDT_SENT:
+      "USDT enviado"
+  };
+
+  return (
+    labels[type] ||
+    type ||
+    "Operação"
+  );
+}
+
+
+function enrichTransaction(row) {
+  return {
+    ...row,
+
+    amount:
+      num(row.amount),
+
+    type_label:
+      transactionTypeLabel(
+        row.type
+      )
+  };
+}
+
+
+function normalizeDashboard(data) {
+  return {
+    ...data,
+
+    recent_transactions:
+      Array.isArray(
+        data.recent_transactions
+      )
+        ? data.recent_transactions.map(
+            enrichTransaction
+          )
+        : [],
+
+    binance_transfers:
+      Array.isArray(
+        data.binance_transfers
+      )
+        ? data.binance_transfers.map(
+            enrichTransaction
+          )
+        : []
+  };
+}
+
+
+/*
+ * Lista as fontes disponíveis para
+ * abastecimento da tesouraria.
+ *
+ * Elas aparecem no Admin.
+ * A integração externa só deve ser
+ * considerada concluída quando existir
+ * uma confirmação real.
+ */
+async function getLiquiditySources(req, res) {
+  const configured = {
+    MPESA_BUSINESS:
+      Boolean(
+        process.env.MPESA_API_KEY ||
+        process.env.PAGAR_API_KEY
+      ),
+
+    EMOLA_BUSINESS:
+      Boolean(
+        process.env.EMOLA_API_KEY ||
+        process.env.PAGAR_API_KEY
+      ),
+
+    BANK:
+      Boolean(
+        process.env.BANK_API_URL
+      ),
+
+    USDT_TRON:
+      Boolean(
+        process.env.TRON_PRO_API_KEY
+      ),
+
+    EXTERNAL_WALLET:
+      true,
+
+    USDT_PURCHASE:
+      Boolean(
+        process.env.LIQUIDITY_PARTNER_API_URL
+      ),
+
+    LIQUIDITY_PARTNER:
+      Boolean(
+        process.env.LIQUIDITY_PARTNER_API_URL
+      ),
+
+    MANUAL_APPROVED:
+      true
+  };
+
+  return json(res, 200, {
+    ok: true,
+
+    sources:
+      SOURCES.map((name) => ({
+        name,
+
+        configured:
+          Boolean(
+            configured[name]
+          ),
+
+        active:
+          false,
+
+        real_funds_required:
+          true,
+
+        admin_only:
+          true
+      }))
+  });
+}export default async function handler(req, res) {
+  try {
+    if (!verifyAdminSession(req)) {
+      return json(res, 401, {
+        ok: false,
+        authenticated: false,
+        error:
+          "Sessão de administrador inválida ou expirada."
+      });
+    }
+
+    if (req.method === "GET") {
+      const action = String(
+        req.query?.action || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      if (
+        action === "liquidity_sources" ||
+        action === "sources"
+      ) {
+        return getLiquiditySources(
+          req,
+          res
+        );
+      }
+
+      const dashboard =
+        await getDashboard();
+
+      return json(
+        res,
+        200,
+        normalizeDashboard(
+          dashboard
+        )
+      );
+    }
+
+    if (req.method !== "POST") {
+      return json(res, 405, {
+        ok: false,
+        error:
+          "Método não permitido."
+      });
+    }
+
+    const body =
+      req.body || {};
+
+    const action = String(
+      body.action ??
+      body.operation ??
+      body.type ??
+      ""
+    )
+      .trim()
+      .toLowerCase();
+
+    /*
+     * ==================================================
+     * REGISTAR ABASTECIMENTO MZN
+     * ==================================================
+     */
+    if (
+      action === "register_mzn_deposit" ||
+      action === "register_mzn" ||
+      action === "register_mzn_deposit_admin" ||
+      action === "registermZndeposit".toLowerCase()
+    ) {
+      return registerMZNDeposit(
+        req,
+        res
+      );
+    }
+
+    /*
+     * ==================================================
+     * REGISTAR USDT REAL
+     * ==================================================
+     */
+    if (
+      action === "register_usdt_deposit" ||
+      action === "register_usdt" ||
+      action === "registerrealusdtdeposit" ||
+      action === "register_real_usdt_deposit"
+    ) {
+      return registerUSDTDeposit(
+        req,
+        res
+      );
+    }
+
+    /*
+     * ==================================================
+     * CONVERTER MZN → USDT
+     * ==================================================
+     */
+    if (
+      action === "convert_mzn_to_usdt" ||
+      action === "convert" ||
+      action === "conversion"
+    ) {
+      return convertMZNToUSDT(
+        req,
+        res
+      );
+    }
+
+    /*
+     * ==================================================
+     * LIBERAR RESERVA
+     * ==================================================
+     */
+    if (
+      action === "release_reservation" ||
+      action === "release_reserve" ||
+      action === "release_usdt_reservation"
+    ) {
+      return releaseReservation(
+        req,
+        res
+      );
+    }
+
+    /*
+     * ==================================================
+     * CONSULTAR LIQUIDEZ
+     * ==================================================
+     */
+    if (
+      action === "liquidity" ||
+      action === "get_liquidity" ||
+      action === "check_liquidity"
+    ) {
+      const treasury =
+        await getTreasuryNumbers();
+
+      return json(res, 200, {
+        ok: true,
+
+        liquidity: {
+          status:
+            treasury.available > 0
+              ? "COM_LIQUIDEZ"
+              : "SEM_LIQUIDEZ",
+
+          mzn:
+            treasury.mzn,
+
+          real_usdt:
+            treasury.usdt,
+
+          reserved_usdt:
+            treasury.reserved,
+
+          available_usdt:
+            treasury.available,
+
+          engine_reserved_usdt:
+            treasury.engine_reserved,
+
+          order_reserved_usdt:
+            treasury.order_reserved
+        }
+      });
+    }
+
+    /*
+     * ==================================================
+     * ABASTECIMENTO MANUAL DE USDT
+     *
+     * Para USDT real, o Admin deve informar
+     * TX Hash. A blockchain será verificada.
+     * ==================================================
+     */
+    if (
+      action === "register_funding" ||
+      action === "register_abastecimento" ||
+      action === "register_liquidity"
+    ) {
+      const fundingAsset =
+        asset(
+          body.asset ??
+          body.currency ??
+          "USDT"
+        );
+
+      if (fundingAsset === "MZN") {
+        return registerMZNDeposit(
+          req,
+          res
+        );
+      }
+
+      if (fundingAsset === "USDT") {
+        return registerUSDTDeposit(
+          req,
+          res
+        );
+      }
+
+      return json(res, 400, {
+        ok: false,
+        error:
+          "Ativo de abastecimento inválido. Use MZN ou USDT."
+      });
+    }
+
+    /*
+     * ==================================================
+     * ENVIAR PARA BINANCE
+     *
+     * A transferência blockchain é executada
+     * pela API 05.
+     *
+     * Aqui apenas encaminhamos a operação.
+     * ==================================================
+     */
+    if (
+      action === "send_usdt_to_binance" ||
+      action === "admin_binance_transfer"
+    ) {
+      const orderId = String(
+        body.purchase_order_id ??
+        body.order_id ??
+        ""
+      ).trim();
+
+      if (!orderId) {
+        return json(res, 400, {
+          ok: false,
+          error:
+            "purchase_order_id é obrigatório."
+        });
+      }
+
+      return json(res, 200, {
+        ok: true,
+
+        state:
+          "READY_FOR_API_05",
+
+        message:
+          "A operação foi validada no Admin. O envio efetivo para Binance deve ser executado pela API 05.",
+
+        purchase_order_id:
+          orderId,
+
+        binance_address:
+          process.env
+            .BINANCE_USDT_TRON_ADDRESS ||
+          null,
+
+        network:
+          "TRON",
+
+        asset:
+          "USDT",
+
+        api:
+          "admin-withdrawal-process.js"
+      });
+    }
+
+    /*
+     * ==================================================
+     * DASHBOARD MANUAL
+     * ==================================================
+     */
+    if (
+      action === "dashboard" ||
+      action === "get_dashboard" ||
+      action === ""
+    ) {
+      const dashboard =
+        await getDashboard();
+
+      return json(
+        res,
+        200,
+        normalizeDashboard(
+          dashboard
+        )
+      );
+    }
+
+    return json(res, 400, {
+      ok: false,
+
+      error:
+        "Ação Admin desconhecida.",
+
+      received_action:
+        action,
+
+      allowed_actions: [
+        "register_mzn_deposit",
+        "register_usdt_deposit",
+        "convert_mzn_to_usdt",
+        "release_reservation",
+        "liquidity",
+        "register_funding",
+        "send_usdt_to_binance",
+        "dashboard"
+      ]
+    });
+  } catch (error) {
+    console.error(
+      "ADMIN-WITHDRAWALS ERROR:",
+      error
+    );
+
+    return json(res, 500, {
+      ok: false,
+
+      error:
+        error?.message ||
+        "Erro interno da tesouraria.",
+
+      system:
+        "USDTMZ_ADMIN_TREASURY"
+    });
+  }
+    }
