@@ -620,3 +620,809 @@ async function getTreasuryNumbers() {
       orderReserved
   };
 }
+/*
+ * Registra MZN somente depois de uma confirmação administrativa.
+ * As fontes de MZN são controladas exclusivamente pelo Admin.
+ *
+ * IMPORTANTE:
+ * M-Pesa, e-Mola e banco fornecem MZN.
+ * Eles não criam USDT.
+ */
+async function registerMZNDeposit(req, res) {
+  const b = req.body || {};
+
+  const amount = Number(
+    b.amount_mzn ??
+    b.amount ??
+    0
+  );
+
+  const rawSource = String(
+    b.source ??
+    b.method ??
+    ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const SOURCE_ALIASES = {
+    "M-PESA BUSINESS": "MPESA_BUSINESS",
+    "M-PESA": "MPESA_BUSINESS",
+    "MPESA": "MPESA_BUSINESS",
+
+    "E-MOLA BUSINESS": "EMOLA_BUSINESS",
+    "E-MOLA": "EMOLA_BUSINESS",
+    "EMOLA": "EMOLA_BUSINESS",
+
+    "TRANSFERÊNCIA BANCÁRIA": "BANK",
+    "TRANSFERENCIA BANCARIA": "BANK",
+    "DEPÓSITO BANCÁRIO": "BANK",
+    "DEPOSITO BANCARIO": "BANK",
+
+    "USDT — TRON / TRC-20": "USDT_TRON",
+    "USDT - TRON / TRC-20": "USDT_TRON",
+
+    "USDT — CARTEIRA EXTERNA": "EXTERNAL_WALLET",
+    "USDT - CARTEIRA EXTERNA": "EXTERNAL_WALLET",
+
+    "COMPRA DE USDT": "USDT_PURCHASE",
+    "PARCEIRO DE LIQUIDEZ": "LIQUIDITY_PARTNER",
+    "ENTRADA MANUAL APROVADA": "MANUAL_APPROVED"
+  };
+
+  const source =
+    SOURCE_ALIASES[rawSource] ||
+    rawSource;
+
+  const reference = String(
+    b.reference ??
+    b.transaction_reference ??
+    ""
+  ).trim();
+
+  if (
+    !Number.isInteger(amount) ||
+    amount <= 0
+  ) {
+    return json(res, 400, {
+      ok: false,
+      error: "Valor MZN inválido."
+    });
+  }
+
+  if (!SOURCES.includes(source)) {
+    return json(res, 400, {
+      ok: false,
+      error: "Fonte de abastecimento inválida.",
+      allowed_sources: SOURCES
+    });
+  }
+
+  if (!reference) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        "Referência do abastecimento é obrigatória."
+    });
+  }
+
+  const duplicate = await sql`
+    SELECT id
+    FROM transactions
+    WHERE reference = ${reference}
+    LIMIT 1
+  `;
+
+  if (duplicate.length) {
+    return json(res, 409, {
+      ok: false,
+      error:
+        "Esta referência já foi registrada."
+    });
+  }
+
+  const result =
+    await sql.transaction(
+      (txn) => [
+        txn`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${reference})
+          )
+        `,
+
+        txn`
+          UPDATE wallets
+          SET
+            balance = balance + ${amount},
+            status = 'ACTIVE',
+            updated_at = NOW()
+          WHERE
+            asset IN (
+              'MZN',
+              'MZN_BALANCE',
+              'MZN_RESERVE'
+            )
+            AND (
+              network IS NULL
+              OR UPPER(network) IN (
+                'FIAT',
+                'MZN',
+                'MOZAMBIQUE'
+              )
+            )
+            AND (
+              status IS NULL
+              OR UPPER(status) IN (
+                'ACTIVE',
+                'AVAILABLE'
+              )
+            )
+          RETURNING
+            id,
+            asset,
+            balance,
+            status
+        `,
+
+        txn`
+          INSERT INTO transactions
+            (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+          SELECT
+            NULL,
+            'DEPOSIT_MZN',
+            'MZN',
+            ${amount},
+            'COMPLETED',
+            ${reference},
+            NULL,
+            NOW()
+          WHERE EXISTS (
+            SELECT 1
+            FROM wallets
+            WHERE
+              asset IN (
+                'MZN',
+                'MZN_BALANCE',
+                'MZN_RESERVE'
+              )
+              AND (
+                network IS NULL
+                OR UPPER(network) IN (
+                  'FIAT',
+                  'MZN',
+                  'MOZAMBIQUE'
+                )
+              )
+              AND (
+                status IS NULL
+                OR UPPER(status) IN (
+                  'ACTIVE',
+                  'AVAILABLE'
+                )
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM transactions
+            WHERE reference = ${reference}
+          )
+          RETURNING
+            id,
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            created_at
+        `
+      ],
+      {
+        isolationMode: "Serializable"
+      }
+    );
+
+  const wallet =
+    result?.[1]?.[0];
+
+  const transaction =
+    result?.[2]?.[0];
+
+  if (!wallet || !transaction) {
+    return json(res, 500, {
+      ok: false,
+      error:
+        "A carteira MZN da tesouraria não existe ou o abastecimento já foi processado. Nenhum saldo foi criado."
+    });
+  }
+
+  return json(res, 200, {
+    ok: true,
+
+    message:
+      "Abastecimento MZN confirmado e registado.",
+
+    source,
+
+    deposit: {
+      amount_mzn: amount,
+      reference,
+      status: "COMPLETED"
+    },
+
+    wallet,
+
+    transaction,
+
+    liquidity_engine:
+      "MZN_AVAILABLE"
+  });
+}
+
+
+/*
+ * Registra USDT somente depois de prova real on-chain.
+ *
+ * A blockchain é a fonte de verdade.
+ * Nenhum USDT é criado pelo sistema.
+ */
+async function registerUSDTDeposit(req, res) {
+  const b = req.body || {};
+
+  const txHash = String(
+    b.tx_hash ??
+    b.txHash ??
+    ""
+  ).trim();
+
+  const requested = Number(
+    b.amount_usdt ??
+    b.amount ??
+    0
+  );
+
+  const source = String(
+    b.source ??
+    "USDT_TRON"
+  )
+    .trim()
+    .toUpperCase();
+
+  const reference = String(
+    b.reference ??
+    `USDT-TRON-${txHash}`
+  ).trim();
+
+  if (!validTx(txHash)) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        "TX Hash TRON inválido."
+    });
+  }
+
+  if (
+    !Number.isFinite(requested) ||
+    requested <= 0
+  ) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        "Valor USDT inválido."
+    });
+  }
+
+  const treasury =
+    companyAddress();
+
+  if (!validTron(treasury)) {
+    return json(res, 500, {
+      ok: false,
+      error:
+        "USDTMZ_TRON_WALLET_ADDRESS não configurado ou inválido."
+    });
+  }
+
+  const duplicate = await sql`
+    SELECT id
+    FROM transactions
+    WHERE blockchain_tx_hash = ${txHash}
+    LIMIT 1
+  `;
+
+  if (duplicate.length) {
+    return json(res, 409, {
+      ok: false,
+      error:
+        "Esta TX Hash já está registrada na tesouraria."
+    });
+  }
+
+  const verified =
+    await verifyUSDTDeposit(
+      txHash,
+      treasury,
+      requested
+    );
+
+  const result =
+    await sql.transaction(
+      (txn) => [
+        txn`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${txHash})
+          )
+        `,
+
+        txn`
+          UPDATE wallets
+          SET
+            balance =
+              balance + ${verified.amount_usdt},
+            status = 'ACTIVE',
+            updated_at = NOW()
+          WHERE
+            wallet_address = ${treasury}
+            AND network = 'TRON'
+            AND asset = 'USDT'
+            AND (
+              status IS NULL
+              OR UPPER(status) IN (
+                'ACTIVE',
+                'AVAILABLE'
+              )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM transactions
+              WHERE blockchain_tx_hash = ${txHash}
+            )
+          RETURNING
+            id,
+            wallet_address,
+            network,
+            asset,
+            balance,
+            status
+        `,
+
+        txn`
+          INSERT INTO transactions
+            (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+          SELECT
+            NULL,
+            'DEPOSIT_USDT',
+            'USDT',
+            ${verified.amount_usdt},
+            'COMPLETED',
+            ${reference},
+            ${txHash},
+            NOW()
+          WHERE EXISTS (
+            SELECT 1
+            FROM wallets
+            WHERE
+              wallet_address = ${treasury}
+              AND network = 'TRON'
+              AND asset = 'USDT'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM transactions
+            WHERE blockchain_tx_hash = ${txHash}
+          )
+          RETURNING
+            id,
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            blockchain_tx_hash,
+            created_at
+        `
+      ],
+      {
+        isolationMode: "Serializable"
+      }
+    );
+
+  const wallet =
+    result?.[1]?.[0];
+
+  const transaction =
+    result?.[2]?.[0];
+
+  if (!wallet || !transaction) {
+    return json(res, 409, {
+      ok: false,
+      error:
+        "A TX já foi processada ou a carteira USDT/TRON da tesouraria não existe."
+    });
+  }
+
+  return json(res, 200, {
+    ok: true,
+
+    message:
+      "USDT real confirmado na TRON e creditado na tesouraria.",
+
+    source,
+
+    deposit: verified,
+
+    wallet,
+
+    transaction,
+
+    liquidity_engine:
+      "USDT_REAL_AVAILABLE"
+  });
+}
+
+
+/*
+ * CONVERSÃO MZN → USDT
+ *
+ * Exemplo:
+ *
+ * 1000 MZN / 64 = 15.625 USDT
+ *
+ * O sistema:
+ *
+ * 1. verifica MZN real;
+ * 2. verifica USDT real disponível;
+ * 3. reserva USDT real;
+ * 4. NÃO cria USDT;
+ * 5. prepara a operação para o envio posterior.
+ *
+ * Se não houver USDT real suficiente,
+ * nenhuma conversão é feita.
+ */
+async function convertMZNToUSDT(req, res) {
+  const b = req.body || {};
+
+  const amountMZN = Number(
+    b.amount_mzn ??
+    b.amount ??
+    0
+  );
+
+  const orderId = String(
+    b.order_id ??
+    b.purchase_order_id ??
+    ""
+  ).trim();
+
+  const reference = String(
+    b.reference ??
+    (
+      orderId
+        ? `LIQUIDITY:${orderId}`
+        : `LIQUIDITY:${Date.now()}`
+    )
+  ).trim();
+
+  if (
+    !Number.isInteger(amountMZN) ||
+    amountMZN < MIN_MZN ||
+    amountMZN > MAX_MZN
+  ) {
+    return json(res, 400, {
+      ok: false,
+      error:
+        `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN e ser inteiro.`
+    });
+  }
+
+  const usdtAmount =
+    amountMZN / RATE;
+
+  const before =
+    await getTreasuryNumbers();
+
+  if (before.mzn < amountMZN) {
+    return json(res, 400, {
+      ok: false,
+
+      state:
+        "INSUFFICIENT_MZN",
+
+      error:
+        "Saldo MZN insuficiente.",
+
+      required_mzn:
+        amountMZN,
+
+      available_mzn:
+        before.mzn
+    });
+  }
+
+  if (
+    before.available <
+    usdtAmount
+  ) {
+    return json(res, 409, {
+      ok: false,
+
+      state:
+        "LIQUIDITY_REQUIRED",
+
+      message:
+        "Liquidez USDT real insuficiente. Nenhuma conversão foi concluída.",
+
+      required_usdt:
+        usdtAmount,
+
+      real_usdt:
+        before.usdt,
+
+      reserved_usdt:
+        before.reserved,
+
+      available_usdt:
+        before.available,
+
+      next_step:
+        "Receber ou adquirir USDT real e confirmar a entrada na TRON."
+    });
+  }
+
+  const result =
+    await sql.transaction(
+      (txn) => [
+        txn`
+          SELECT pg_advisory_xact_lock(
+            hashtext(${reference})
+          )
+        `,
+
+        txn`
+          SELECT
+            id,
+            balance
+          FROM wallets
+          WHERE
+            asset IN (
+              'MZN',
+              'MZN_BALANCE',
+              'MZN_RESERVE'
+            )
+            AND (
+              network IS NULL
+              OR UPPER(network) IN (
+                'FIAT',
+                'MZN',
+                'MOZAMBIQUE'
+              )
+            )
+            AND (
+              status IS NULL
+              OR UPPER(status) IN (
+                'ACTIVE',
+                'AVAILABLE'
+              )
+            )
+          LIMIT 1
+          FOR UPDATE
+        `,
+
+        txn`
+          SELECT
+            id,
+            wallet_address,
+            balance
+          FROM wallets
+          WHERE
+            wallet_address = ${companyAddress()}
+            AND network = 'TRON'
+            AND asset = 'USDT'
+          LIMIT 1
+          FOR UPDATE
+        `,
+
+        txn`
+          UPDATE wallets
+          SET
+            balance =
+              balance - ${amountMZN},
+            updated_at = NOW()
+          WHERE
+            asset IN (
+              'MZN',
+              'MZN_BALANCE',
+              'MZN_RESERVE'
+            )
+            AND (
+              network IS NULL
+              OR UPPER(network) IN (
+                'FIAT',
+                'MZN',
+                'MOZAMBIQUE'
+              )
+            )
+            AND (
+              status IS NULL
+              OR UPPER(status) IN (
+                'ACTIVE',
+                'AVAILABLE'
+              )
+            )
+            AND balance >= ${amountMZN}
+          RETURNING
+            id,
+            balance
+        `,
+
+        txn`
+          INSERT INTO transactions
+            (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+          SELECT
+            NULL,
+            'CONVERSION',
+            'MZN',
+            ${amountMZN},
+            'COMPLETED',
+            ${reference},
+            NULL,
+            NOW()
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM transactions
+            WHERE reference = ${reference}
+              AND type = 'CONVERSION'
+              AND asset = 'MZN'
+          )
+          RETURNING
+            id,
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            created_at
+        `,
+
+        txn`
+          INSERT INTO transactions
+            (
+              user_id,
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              blockchain_tx_hash,
+              created_at
+            )
+          SELECT
+            NULL,
+            'RESERVE_IN',
+            'USDT',
+            ${usdtAmount},
+            'RESERVED',
+            ${reference},
+            NULL,
+            NOW()
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM transactions
+            WHERE reference = ${reference}
+              AND type = 'RESERVE_IN'
+              AND asset = 'USDT'
+          )
+          RETURNING
+            id,
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            created_at
+        `
+      ],
+      {
+        isolationMode: "Serializable"
+      }
+    );
+
+  const mznWallet =
+    result?.[1]?.[0];
+
+  const usdtWallet =
+    result?.[2]?.[0];
+
+  const mznUpdate =
+    result?.[3]?.[0];
+
+  const conversion =
+    result?.[4]?.[0];
+
+  const reservation =
+    result?.[5]?.[0];
+
+  if (
+    !mznWallet ||
+    !usdtWallet ||
+    !mznUpdate ||
+    !conversion ||
+    !reservation
+  ) {
+    throw new Error(
+      "A conversão não pôde ser concluída. A transação foi revertida."
+    );
+  }
+
+  const after =
+    await getTreasuryNumbers();
+
+  return json(res, 200, {
+    ok: true,
+
+    state:
+      "READY_FOR_BINANCE",
+
+    message:
+      "Conversão concluída com USDT real disponível na tesouraria. O USDT foi reservado; o envio blockchain continua na API 05.",
+
+    conversion: {
+      reference,
+
+      order_id:
+        orderId || null,
+
+      amount_mzn:
+        amountMZN,
+
+      rate:
+        RATE,
+
+      amount_usdt:
+        usdtAmount,
+
+      source:
+        "TREASURY_REAL_USDT",
+
+      real_usdt_required:
+        true,
+
+      blockchain_created:
+        false,
+
+      ready_for_binance:
+        true
+    },
+
+    reservation,
+
+    treasury:
+      after
+  });
+}
