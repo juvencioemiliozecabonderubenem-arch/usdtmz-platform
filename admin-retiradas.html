@@ -1,1410 +1,258 @@
-<!DOCTYPE html>
-<html lang="pt">
+<!DOCTYPE html><html lang="pt">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>USDTMZ — Central Admin</title>
-
-<style>
+<title>USDTMZ — Central Admin</title><style>
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,sans-serif;background:#f4f6f8;color:#17202a}
-header{background:#111827;color:#fff;padding:18px;position:sticky;top:0;z-index:10}
+header{background:#111827;color:white;padding:18px;position:sticky;top:0;z-index:10}
 header h1{margin:0;font-size:22px}
 header p{margin:6px 0 0;color:#cbd5e1;font-size:13px}
-main{max-width:1400px;margin:auto;padding:18px}
-h2.section{font-size:20px;margin:25px 0 12px}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}
-.card,.stat{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 3px 12px #0000000d}
-.card h2,.card h3{margin-top:0}
-.label{font-size:13px;color:#64748b;margin-bottom:7px}
-.value{font-size:24px;font-weight:bold}
-.sub,.small{font-size:12px;color:#64748b}
-.wallet{word-break:break-all;background:#f3f4f6;padding:10px;border-radius:8px;margin:10px 0}
-.balances{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.balance{background:#f8fafc;padding:13px;border-radius:9px}
-.balance strong{font-size:19px}
+main{max-width:1200px;margin:auto;padding:15px}
+h2{margin:24px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card,.stat{background:white;border:1px solid #e5e7eb;border-radius:14px;padding:17px;box-shadow:0 3px 12px #0000000d}
+.stat .label,.small{font-size:12px;color:#64748b}
+.value{font-size:23px;font-weight:bold;margin-top:5px}
 label{display:block;font-size:13px;font-weight:bold;margin:12px 0 5px}
-input,select,textarea{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
-textarea{min-height:75px}
+input,select{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px}
 button{width:100%;border:0;border-radius:8px;padding:12px;margin-top:10px;font-weight:bold;cursor:pointer}
-button:disabled{opacity:.55}
-.primary{background:#2563eb;color:#fff}
-.dark{background:#111827;color:#fff}
-.success{background:#15803d;color:#fff}
-.warning{background:#d97706;color:#fff}
+.primary{background:#2563eb;color:white}
+.success{background:#15803d;color:white}
+.dark{background:#111827;color:white}
 .refresh{background:#e5e7eb;color:#111827}
-.message{display:none;margin-top:10px;padding:10px;border-radius:8px;white-space:pre-wrap;font-size:13px}
-.message.success{display:block;background:#dcfce7;color:#166534}
-.message.error{display:block;background:#fee2e2;color:#991b1b}
-.message.info{display:block;background:#dbeafe;color:#1e40af}
-.message.warning{display:block;background:#fef3c7;color:#92400e}
-.box{margin-top:12px;padding:13px;border-radius:9px;background:#f8fafc;border:1px solid #e2e8f0}
-.result{font-size:24px;font-weight:bold;margin-top:4px}
-.binance{display:none;margin-top:15px;border:2px solid #111827;padding:15px;border-radius:10px}
-.binance.show{display:block}
-.notice{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:8px;font-size:13px}
-.table{overflow-x:auto}
-table{width:100%;border-collapse:collapse;min-width:850px}
-th,td{padding:9px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:12px}
-th{background:#f8fafc;color:#64748b}
-.tx{max-width:180px;word-break:break-all}
-.status{display:inline-block;padding:4px 7px;border-radius:20px;background:#e5e7eb;font-size:11px;font-weight:bold}
-.status.PAID,.status.COMPLETED,.status.CONFIRMED{background:#dcfce7;color:#166534}
-.status.PROCESSING,.status.PENDING,.status.AUTHORIZED{background:#fef3c7;color:#92400e}
-.status.FAILED,.status.REJECTED,.status.CANCELLED{background:#fee2e2;color:#991b1b}
-@media(max-width:950px){.grid3{grid-template-columns:1fr 1fr}}
-@media(max-width:700px){.grid,.grid3{grid-template-columns:1fr}main{padding:10px}}
-</style>
-</head>
-
-<body>
-
-<header>
+.box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:13px;margin-top:12px}
+.notice{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:9px;font-size:13px}
+.wallet{word-break:break-all;background:#f3f4f6;padding:10px;border-radius:8px;margin-top:10px}
+.result{font-size:24px;font-weight:bold}
+.method-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.method{border:1px solid #cbd5e1;background:#f8fafc;padding:14px;border-radius:10px;cursor:pointer;text-align:center;font-weight:bold}
+.method.active{border:2px solid #2563eb;background:#eff6ff}
+.status{display:inline-block;padding:5px 8px;border-radius:20px;background:#e5e7eb;font-size:11px;font-weight:bold}
+@media(max-width:800px){.grid,.grid3{grid-template-columns:1fr}.method-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.method-grid{grid-template-columns:1fr}}
+</style></head><body><header>
 <h1>USDTMZ — Central Admin</h1>
-<p>Gestão de tesouraria, MZN, USDT, pagamentos, liquidez e TRON</p>
-</header>
-
-<main>
-
-<!-- DASHBOARD -->
-<h2 class="section">📊 Dashboard</h2>
-
-<div class="grid3">
+<p>Depósitos, conversão, tesouraria e levantamentos</p>
+</header><main><!-- TESOURARIA --><h2>📊 Tesouraria</h2><div class="grid3">
 <div class="stat">
-<div class="label">🇲🇿 Saldo MZN</div>
-<div class="value" id="dashboardMzn">0 MZN</div>
-<div class="sub">Carteira interna da empresa</div>
-</div>
-
-<div class="stat">
-<div class="label">💵 USDT real na TRON</div>
-<div class="value" id="dashboardUsdt">0 USDT</div>
-<div class="sub">Consultado diretamente na blockchain</div>
-</div>
-
-<div class="stat">
+<div class="label">🇲🇿 Fundo MZN</div>
+<div class="value" id="mznBalance">0 MZN</div>
+</div><div class="stat">
+<div class="label">💵 USDT real</div>
+<div class="value" id="usdtBalance">0 USDT</div>
+</div><div class="stat">
 <div class="label">⛓️ TRX</div>
-<div class="value" id="dashboardTrx">0 TRX</div>
-<div class="sub">Taxas da rede TRON</div>
-</div>
-
-<div class="stat">
+<div class="value" id="trxBalance">0 TRX</div>
+</div><div class="stat">
 <div class="label">🔒 USDT reservado</div>
-<div class="value" id="dashboardReserved">0 USDT</div>
-<div class="sub">Reservado para operações</div>
+<div class="value" id="reservedUsdt">0 USDT</div>
+</div><div class="stat">
+<div class="label">✅ USDT disponível</div>
+<div class="value" id="availableUsdt">0 USDT</div>
+</div><div class="stat">
+<div class="label">🟢 Estado</div>
+<div class="value" id="liquidityStatus">SEM LIQUIDEZ</div>
 </div>
-
-<div class="stat">
-<div class="label">💵 USDT disponível</div>
-<div class="value" id="dashboardAvailable">0 USDT</div>
-<div class="sub">Saldo real menos reservas</div>
-</div>
-
-<div class="stat">
-<div class="label">🟢 Liquidez</div>
-<div class="value" id="dashboardLiquidity">VERIFICANDO</div>
-<div class="sub">Baseado no saldo real</div>
-</div>
-</div>
-
-<!-- CARTEIRAS -->
-<h2 class="section">💰 Carteiras e Reservas</h2>
-
-<div class="grid">
-
-<section class="card">
-<h2>🇲🇿 Carteira MZN</h2>
-
-<div class="box">
-<div class="small">Saldo interno</div>
-<div class="result" id="mznBalance">0 MZN</div>
-</div>
-
-<p class="small">
-O saldo MZN representa entradas confirmadas da empresa.
-</p>
-
-<button class="refresh" id="refreshMznButton">🔄 Atualizar saldo MZN</button>
-<div id="mznMessage" class="message"></div>
-</section>
-
-<section class="card">
-<h2>💵 Carteira USDT / TRON</h2>
-
-<div class="wallet" id="walletAddress">Carregando...</div>
-
-<div class="balances">
-<div class="balance">
-<span class="label">USDT real</span>
-<strong id="usdtBalance">—</strong>
-</div>
-
-<div class="balance">
-<span class="label">TRX</span>
-<strong id="trxBalance">—</strong>
-</div>
-</div>
-
-<p class="small">Rede: TRON / TRC-20</p>
-
-<button class="refresh" id="refreshWalletButton">
-🔄 Atualizar blockchain
-</button>
-
-<div id="walletMessage" class="message"></div>
-</section>
-
-</div>
-
-<!-- COMPRAR -->
-<h2 class="section">🛒 Comprar USDT</h2>
-
-<div class="grid">
-
-<section class="card">
-<h2>📱 Nova compra</h2>
-
-<form id="purchaseForm">
-
-<label>Nome</label>
-<input id="customerName" required placeholder="Nome do cliente">
-
-<label>Telefone</label>
-<input id="customerPhone" required placeholder="Número M-Pesa/e-Mola">
-
-<label>Valor em MZN</label>
-<input id="amountMzn" type="number" min="64" max="40000" step="1" required>
-
-<label>Método de pagamento</label>
-<select id="paymentMethod">
-<option value="MPESA">M-Pesa</option>
-<option value="EMOLA">e-Mola</option>
-</select>
-
-<div class="box">
-<div class="small">Taxa</div>
-<strong>1 USDT = 64 MZN</strong>
-<div class="small">Mínimo: 64 MZN · Máximo: 40.000 MZN</div>
-</div>
-
-<button class="primary" id="createPurchaseButton" type="submit">
-💳 CRIAR PAGAMENTO
-</button>
-
-</form>
-
-<div id="purchaseMessage" class="message"></div>
-</section>
-
-<section class="card">
-<h2>📋 Compra atual</h2>
-
-<div id="purchaseDetails" class="notice">
-Nenhuma compra selecionada.
-</div>
-
-<div id="binanceBox" class="binance">
-
-<div><strong>🚀 Envio para Binance</strong></div>
-
-<p class="small">
-Depois da compra estar confirmada como PAID, o USDT real será enviado
-pela carteira TRON da empresa para o endereço Binance configurado no servidor.
-</p>
-
-<div id="binanceInfo" class="wallet">—</div>
-
-<button class="dark" id="sendBinanceButton">
-🚀 ENVIAR USDT PARA BINANCE
-</button>
-
-<div id="binanceMessage" class="message"></div>
-</div>
-
-</section>
-
-</div>
-
-<!-- CONVERSÃO -->
-<h2 class="section">🔄 Conversão interna</h2>
-
-<section class="card">
-
-<div class="notice">
-A conversão só pode utilizar USDT real disponível.
-Este botão não cria USDT e não altera a blockchain.
-</div>
-
-<label>MZN</label>
-<input id="convertMzn" type="number" min="64" step="1" placeholder="Ex.: 640">
-
-<div class="box">
-<div class="small">USDT correspondente</div>
-<div class="result" id="convertUsdtPreview">0 USDT</div>
-<div class="small">Taxa fixa: 64 MZN / USDT</div>
-</div>
-
-<button class="primary" id="convertButton">
-🔄 VERIFICAR LIQUIDEZ
-</button>
-
-<div id="convertMessage" class="message"></div>
-</section>
-
-<!-- ABASTECIMENTO -->
-<h2 class="section">➕ Abastecimento real</h2>
-
-<section class="card">
-
-<div class="notice">
-O abastecimento USDT só será contabilizado depois da blockchain TRON
-confirmar uma transferência real para a carteira da USDTMZ.
-</div>
-
-<label>Método</label>
-<select id="reserveMethod">
-<option value="USDT_TRON">USDT — TRON / TRC-20</option>
-<option value="USDT_EXTERNAL_WALLET">USDT — Carteira externa</option>
-<option value="BANK_TRANSFER">Transferência bancária</option>
-<option value="BANK_DEPOSIT">Depósito bancário</option>
-<option value="MPESA_BUSINESS">M-Pesa Business</option>
-<option value="EMOLA_BUSINESS">e-Mola Business</option>
-<option value="USDT_PURCHASE">Compra de USDT</option>
-<option value="LIQUIDITY_PARTNER">Parceiro de liquidez</option>
-<option value="MANUAL_APPROVED">Entrada manual aprovada</option>
-</select>
+</div><!-- DEPOSITAR --><h2>➕ Depositar</h2><section class="card"><div class="notice">
+Escolha como o fundo da USDTMZ será abastecido.
+A ligação real dos métodos será feita na próxima etapa.
+</div><div class="method-grid">
+<div class="method" data-method="MPESA">📱<br>M-Pesa</div>
+<div class="method" data-method="EMOLA">📱<br>e-Mola</div>
+<div class="method" data-method="BANK">🏦<br>Banco</div>
+<div class="method" data-method="USDT_TRON">💵<br>USDT TRC20</div>
+<div class="method" data-method="EXTERNAL">👛<br>Carteira externa</div>
+<div class="method" data-method="MANUAL">📝<br>Manual aprovado</div>
+</div><div id="depositForm" class="box" style="display:none"><strong id="selectedDeposit">Método selecionado</strong>
 
 <label>Valor</label>
-<input id="reserveAmount" type="number" min="0" step="0.000001">
+<input id="depositAmount" type="number" min="1" step="0.000001" placeholder="Valor">
 
 <label>Moeda</label>
-<select id="reserveCurrency">
-<option value="USDT">USDT</option>
+<select id="depositCurrency">
+
 <option value="MZN">MZN</option>
-</select>
+<option value="USDT">USDT</option>
+</select><label>Referência / TX Hash</label>
+<input id="depositReference" placeholder="Referência da operação">
 
-<label>TX Hash / Referência</label>
-<input id="reserveReference" placeholder="TX Hash TRON">
+<button class="primary" id="depositButton">
+➕ CONTINUAR DEPÓSITO
+</button></div></section><!-- CONVERTER --><h2>🔄 Converter MZN → USDT</h2><section class="card"><div class="notice">
+Taxa interna definida: <strong>1 USDT = 64 MZN</strong>.
+A conversão real será ligada depois à tesouraria.
+</div><label>Valor MZN</label>
+<input id="convertMzn" type="number" min="64" max="40000" step="1" placeholder="Ex.: 640">
 
-<button class="success" id="reserveSubmitButton">
-➕ REGISTRAR ABASTECIMENTO
-</button>
+<div class="box">
+<div class="small">Você recebe</div>
+<div class="result" id="convertUsdt">0 USDT</div>
+<div class="small">64 MZN por 1 USDT</div>
+</div><button class="primary" id="convertButton">
+🔄 CONVERTER
+</button></section><!-- RETIRAR --><h2>➖ Retirar</h2><section class="card"><div class="notice">
+Escolha para onde o saldo será retirado.
+O processamento real será ligado posteriormente.
+</div><div class="method-grid">
+<div class="method" data-withdraw="BINANCE">🚀<br>Binance</div>
+<div class="method" data-withdraw="TRON">💵<br>USDT TRC20</div>
+<div class="method" data-withdraw="MPESA">📱<br>M-Pesa</div>
+<div class="method" data-withdraw="EMOLA">📱<br>e-Mola</div>
+<div class="method" data-withdraw="BANK">🏦<br>Banco</div>
+</div><div id="withdrawForm" class="box" style="display:none"><strong id="selectedWithdraw">Método selecionado</strong>
 
-<div id="reserveMessage" class="message"></div>
+<label>Valor</label>
+<input id="withdrawAmount" type="number" min="0.000001" step="0.000001" placeholder="Valor">
 
-</section>
+<label>Endereço / Número / Conta</label>
+<input id="withdrawDestination" placeholder="Destino">
 
-<!-- LIQUIDEZ -->
-<h2 class="section">💧 Liquidez</h2>
-
-<div class="grid3">
-
-<div class="stat">
-<div class="label">USDT real</div>
-<div class="value" id="liquidityReal">0</div>
+<button class="dark" id="withdrawButton">
+➖ SOLICITAR RETIRADA
+</button></div></section><!-- CARTEIRA TRON --><h2>⛓️ Carteira USDT / TRON</h2><section class="card"><div class="wallet">
+Endereço da tesouraria:
+<br><br>
+<span id="walletAddress">Carregando...</span>
+</div><div class="grid">
+<div class="box">
+<div class="small">USDT real</div>
+<strong id="tronUsdt">0 USDT</strong>
+</div><div class="box">
+<div class="small">TRX</div>
+<strong id="tronTrx">0 TRX</strong>
 </div>
-
-<div class="stat">
-<div class="label">USDT reservado</div>
-<div class="value" id="liquidityReserved">0</div>
-</div>
-
-<div class="stat">
-<div class="label">USDT disponível</div>
-<div class="value" id="liquidityAvailable">0</div>
-</div>
-
-</div>
-
-<!-- LEVANTAMENTOS -->
-<h2 class="section">📤 Levantamentos</h2>
-
-<section class="card">
-
-<div class="table">
-<table>
-<thead>
-<tr>
-<th>ID</th>
-<th>Utilizador</th>
-<th>USDT</th>
-<th>Destino</th>
-<th>Status</th>
-<th>TX</th>
-<th>Ação</th>
-</tr>
-</thead>
-
-<tbody id="withdrawalsBody">
-<tr>
-<td colspan="7">Carregando...</td>
-</tr>
-</tbody>
-</table>
-</div>
-
-<div id="withdrawalsMessage" class="message"></div>
-
-</section>
-
-<!-- MÉTODOS -->
-<h2 class="section">💳 Métodos de pagamento</h2>
-
-<div class="grid3">
-
-<div class="card">
-<h3>📱 M-Pesa</h3>
-<div class="small">Pagamento em MZN.</div>
-</div>
-
-<div class="card">
-<h3>📱 e-Mola</h3>
-<div class="small">Pagamento em MZN.</div>
-</div>
-
-<div class="card">
-<h3>💵 USDT TRC-20</h3>
-<div class="small">Abastecimento real da tesouraria.</div>
-</div>
-
-</div>
-
-<!-- BLOCKCHAIN -->
-<h2 class="section">⛓️ Blockchain / TRON</h2>
-
-<section class="card">
-
-<div class="wallet" id="blockchainAddress">—</div>
-
-<div class="balances">
-
-<div class="balance">
-<span class="label">USDT</span>
-<strong id="blockchainUsdt">—</strong>
-</div>
-
-<div class="balance">
-<span class="label">TRX</span>
-<strong id="blockchainTrx">—</strong>
-</div>
-
-</div>
-
-<p class="small">
-Contrato USDT TRC-20:
-<br>
+</div><p class="small">
+Rede: TRON / TRC-20<br>
+Contrato USDT:
 TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
-</p>
-
-<button class="refresh" id="refreshBlockchainButton">
-🔄 Atualizar informações
-</button>
-
-<div id="blockchainMessage" class="message"></div>
-
-</section>
-
-<!-- CONFIG -->
-<h2 class="section">⚙️ Configurações</h2>
-
-<section class="card">
-
-<div class="notice">
-As chaves privadas, API keys, sessão administrativa e endereço
-Binance permanecem exclusivamente no servidor/Vercel.
-</div>
-
-<p><strong>Taxa:</strong> 1 USDT = 64 MZN</p>
+</p><button class="refresh" id="refreshButton">
+🔄 ATUALIZAR TESOURARIA
+</button></section><!-- OPERAÇÕES --><h2>📋 Operações recentes</h2><section class="card"><div class="small">
+As operações reais aparecerão aqui quando as APIs forem ligadas.
+</div><div class="box">
+<strong>Estado atual</strong><br><br>
+<span class="status">AGUARDANDO CONFIGURAÇÃO</span>
+</div></section><!-- CONFIGURAÇÃO --><h2>⚙️ Configuração</h2><section class="card"><p><strong>Taxa:</strong> 1 USDT = 64 MZN</p>
 <p><strong>Mínimo:</strong> 64 MZN</p>
 <p><strong>Máximo:</strong> 40.000 MZN</p>
-<p><strong>Rede:</strong> TRON / TRC-20</p>
-
-</section>
-
-</main>
-
-<script>
+<p><strong>Rede:</strong> TRON / TRC-20</p><div class="notice">
+Chaves privadas, credenciais M-Pesa/e-Mola, sessões e endereço Binance
+continuam exclusivamente no servidor.
+</div></section></main><script>
 "use strict";
 
-/* =========================
-   CONFIGURAÇÃO
-========================= */
 const RATE = 64;
-const MIN_MZN = 64;
-const MAX_MZN = 40000;
 
-let currentPurchase = null;
-let realUsdtBalance = 0;
-let realTrxBalance = 0;
-let reservedUsdt = 0;
-let internalMznBalance = 0;
-
-/* =========================
-   HELPERS
-========================= */
 const $ = id => document.getElementById(id);
 
-function formatNumber(n){
-  return Number(n || 0).toLocaleString("pt-PT",{
-    minimumFractionDigits:0,
-    maximumFractionDigits:6
+/* =========================
+   DEPÓSITOS
+========================= */
+
+document.querySelectorAll("[data-method]").forEach(button => {
+
+  button.addEventListener("click", () => {
+
+    document.querySelectorAll("[data-method]")
+      .forEach(x => x.classList.remove("active"));
+
+    button.classList.add("active");
+
+    $("depositForm").style.display = "block";
+
+    $("selectedDeposit").textContent =
+      "Depósito por " + button.innerText.replace(/\n/g," ");
+
+    $("depositCurrency").value =
+      button.dataset.method === "USDT_TRON" ||
+      button.dataset.method === "EXTERNAL"
+      ? "USDT"
+      : "MZN";
   });
-}
 
-function formatMzn(n){
-  return formatNumber(n) + " MZN";
-}
-
-function setMessage(el,text,type){
-  el.textContent = text || "";
-  el.className = "message " + (type || "");
-}
-
-async function readJson(response){
-  const text = await response.text();
-
-  try{
-    return text ? JSON.parse(text) : {};
-  }catch{
-    throw new Error(
-      "Resposta inválida do servidor (" + response.status + ")."
-    );
-  }
-}
-
-function escapeHtml(value){
-  return String(value ?? "")
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
-}
-
-/* =========================
-   DASHBOARD
-========================= */
-function updateDashboard(){
-
-  const available =
-    Math.max(0,realUsdtBalance - reservedUsdt);
-
-  $("dashboardMzn").textContent =
-    formatMzn(internalMznBalance);
-
-  $("dashboardUsdt").textContent =
-    formatNumber(realUsdtBalance) + " USDT";
-
-  $("dashboardTrx").textContent =
-    formatNumber(realTrxBalance) + " TRX";
-
-  $("dashboardReserved").textContent =
-    formatNumber(reservedUsdt) + " USDT";
-
-  $("dashboardAvailable").textContent =
-    formatNumber(available) + " USDT";
-
-  $("liquidityReal").textContent =
-    formatNumber(realUsdtBalance);
-
-  $("liquidityReserved").textContent =
-    formatNumber(reservedUsdt);
-
-  $("liquidityAvailable").textContent =
-    formatNumber(available);
-
-  $("dashboardLiquidity").textContent =
-    available > 0 ? "DISPONÍVEL" : "SEM LIQUIDEZ";
-}
-
-/* =========================
-   API 09
-   SALDO TRON
-========================= */
-async function loadWallet(){
-
-  const message = $("walletMessage");
-
-  try{
-
-    setMessage(message,"Consultando blockchain TRON...","info");
-
-    const response =
-      await fetch("/api/tron-wallet-balance",{
-        method:"GET",
-        credentials:"include"
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.success === false){
-      throw new Error(
-        data.message || data.error || "Não foi possível consultar a carteira."
-      );
-    }
-
-    const usdt =
-      Number(
-        data.usdt?.balance ??
-        data.balances?.USDT ??
-        0
-      );
-
-    const trx =
-      Number(
-        data.trx?.balance ??
-        data.balances?.TRX ??
-        0
-      );
-
-    realUsdtBalance = Number.isFinite(usdt) ? usdt : 0;
-    realTrxBalance = Number.isFinite(trx) ? trx : 0;
-
-    const address =
-      data.address ||
-      data.wallet_address ||
-      data.usdtmZ_tron_wallet_address ||
-      "";
-
-    $("walletAddress").textContent =
-      address || "Endereço não informado";
-
-    $("usdtBalance").textContent =
-      formatNumber(realUsdtBalance);
-
-    $("trxBalance").textContent =
-      formatNumber(realTrxBalance);
-
-    $("blockchainAddress").textContent =
-      address || "Endereço não informado";
-
-    $("blockchainUsdt").textContent =
-      formatNumber(realUsdtBalance);
-
-    $("blockchainTrx").textContent =
-      formatNumber(realTrxBalance);
-
-    setMessage(message,"Blockchain atualizada.","success");
-
-    updateDashboard();
-
-  }catch(error){
-
-    console.error(error);
-
-    setMessage(
-      message,
-      error.message || "Erro ao consultar TRON.",
-      "error"
-    );
-
-  }
-}
-
-/* =========================
-   API 10
-   INFORMAÇÕES TRON
-========================= */
-async function loadBlockchainInfo(){
-
-  const message = $("blockchainMessage");
-
-  try{
-
-    const response =
-      await fetch("/api/tron-wallet-info",{
-        credentials:"include"
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.success === false){
-      throw new Error(
-        data.message || data.error || "Erro nas informações TRON."
-      );
-    }
-
-    const address =
-      data.wallet_address ||
-      data.address ||
-      data.wallet?.address ||
-      "";
-
-    if(address){
-      $("blockchainAddress").textContent = address;
-      $("walletAddress").textContent = address;
-    }
-
-    setMessage(
-      message,
-      "Informações TRON atualizadas.",
-      "success"
-    );
-
-  }catch(error){
-
-    setMessage(
-      message,
-      error.message || "Erro ao carregar informações TRON.",
-      "error"
-    );
-  }
-}
-
-/* =========================
-   RESERVA / HISTÓRICO
-   API 06
-========================= */
-async function loadWithdrawals(){
-
-  const body = $("withdrawalsBody");
-  const message = $("withdrawalsMessage");
-
-  try{
-
-    const response =
-      await fetch("/api/admin-withdrawals",{
-        method:"GET",
-        credentials:"include"
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.ok === false){
-      throw new Error(
-        data.error ||
-        data.message ||
-        "Erro ao carregar tesouraria."
-      );
-    }
-
-    /* Atualizar reserva real devolvida pelo servidor */
-    if(data.reserve){
-
-      internalMznBalance =
-        Number(data.reserve.mzn?.balance ?? 0) || 0;
-
-      reservedUsdt =
-        Number(data.reserve.usdt?.reserved ?? 0) || 0;
-
-      $("mznBalance").textContent =
-        formatMzn(internalMznBalance);
-
-      updateDashboard();
-    }
-
-    const rows =
-      Array.isArray(data.withdrawals)
-        ? data.withdrawals
-        : [];
-
-    if(!rows.length){
-
-      body.innerHTML =
-        `<tr><td colspan="7">Nenhum levantamento encontrado.</td></tr>`;
-
-    }else{
-
-      body.innerHTML = rows.map(w => {
-
-        const id = w.id ?? "—";
-        const user = w.user_id ?? w.phone ?? "—";
-        const amount = w.amount ?? w.amount_usdt ?? 0;
-        const destination =
-          w.destination ||
-          w.wallet_address ||
-          w.address ||
-          "—";
-
-        const status =
-          String(w.status || "—").toUpperCase();
-
-        const tx =
-          w.blockchain_tx_hash ||
-          w.tx_hash ||
-          "—";
-
-        const action =
-          ["AUTHORIZED","PENDING","PENDING_CONFIRMATION"]
-            .includes(status)
-          ? `<button class="warning"
-                onclick="processWithdrawal('${escapeHtml(id)}')">
-                🚀 PROCESSAR
-             </button>`
-          : "—";
-
-        return `
-        <tr>
-          <td>${escapeHtml(id)}</td>
-          <td>${escapeHtml(user)}</td>
-          <td>${formatNumber(amount)} USDT</td>
-          <td class="tx">${escapeHtml(destination)}</td>
-          <td><span class="status ${escapeHtml(status)}">${escapeHtml(status)}</span></td>
-          <td class="tx">${escapeHtml(tx)}</td>
-          <td>${action}</td>
-        </tr>`;
-
-      }).join("");
-    }
-
-    setMessage(
-      message,
-      "Tesouraria atualizada.",
-      "success"
-    );
-
-  }catch(error){
-
-    console.error(error);
-
-    body.innerHTML =
-      `<tr><td colspan="7">Erro ao carregar dados.</td></tr>`;
-
-    setMessage(
-      message,
-      error.message || "Erro ao carregar levantamentos.",
-      "error"
-    );
-  }
-}
-
-/* =========================
-   PROCESSAR LEVANTAMENTO
-   API 05
-========================= */
-window.processWithdrawal = async function(id){
-
-  if(!confirm(
-    "Confirmar processamento deste levantamento?\n\n" +
-    "O envio poderá gerar uma transação real na blockchain."
-  )){
-    return;
-  }
-
-  try{
-
-    const response =
-      await fetch("/api/admin-withdrawal-process",{
-        method:"POST",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          withdrawal_id:id
-        })
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.success === false){
-      throw new Error(
-        data.message ||
-        data.error ||
-        "Falha no processamento."
-      );
-    }
-
-    alert(
-      data.message ||
-      "Processamento iniciado."
-    );
-
-    await loadWallet();
-    await loadWithdrawals();
-
-  }catch(error){
-
-    alert(error.message || "Erro no processamento.");
-  }
-};
-
-/* =========================
-   COMPRA
-   API 07
-========================= */
-$("purchaseForm").addEventListener(
-"submit",
-async function(event){
-
-  event.preventDefault();
-
-  const button = $("createPurchaseButton");
-  const message = $("purchaseMessage");
-
-  const name =
-    $("customerName").value.trim();
-
-  const phone =
-    $("customerPhone").value.trim();
-
-  const amount =
-    Number($("amountMzn").value);
-
-  const payment =
-    $("paymentMethod").value;
-
-  if(!name){
-    setMessage(message,"Informe o nome.","error");
-    return;
-  }
-
-  if(!phone){
-    setMessage(message,"Informe o telefone.","error");
-    return;
-  }
-
-  if(
-    !Number.isFinite(amount) ||
-    amount < MIN_MZN ||
-    amount > MAX_MZN
-  ){
-
-    setMessage(
-      message,
-      `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`,
-      "error"
-    );
-
-    return;
-  }
-
-  const usdt =
-    amount / RATE;
-
-  button.disabled = true;
-  button.textContent = "⏳ CRIANDO...";
-
-  setMessage(
-    message,
-    `Valor: ${formatMzn(amount)}\n` +
-    `USDT: ${formatNumber(usdt)}\n` +
-    `Taxa: 1 USDT = ${RATE} MZN\n\n` +
-    `Criando pagamento...`,
-    "info"
-  );
-
-  try{
-
-    const response =
-      await fetch("/api/criar-compra",{
-        method:"POST",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          name,
-          phone,
-          amount,
-          payment
-        })
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.success === false){
-      throw new Error(
-        data.message ||
-        data.error ||
-        "Não foi possível criar a compra."
-      );
-    }
-
-    currentPurchase =
-      data.order ||
-      data.purchase ||
-      data;
-
-    const orderId =
-      currentPurchase.order_id ||
-      currentPurchase.orderId ||
-      data.order_id ||
-      data.orderId;
-
-    const status =
-      String(
-        currentPurchase.status ||
-        data.status ||
-        "PENDING"
-      ).toUpperCase();
-
-    $("purchaseDetails").innerHTML = `
-      <strong>Pedido:</strong> ${escapeHtml(orderId || "—")}<br>
-      <strong>Valor:</strong> ${formatMzn(amount)}<br>
-      <strong>USDT:</strong> ${formatNumber(usdt)}<br>
-      <strong>Método:</strong> ${escapeHtml(payment)}<br>
-      <strong>Status:</strong> ${escapeHtml(status)}
-    `;
-
-    if(orderId){
-
-      $("binanceBox").classList.add("show");
-
-      $("binanceInfo").textContent =
-        `Pedido: ${orderId}\n` +
-        `USDT: ${formatNumber(usdt)}\n` +
-        `Status: ${status}`;
-
-    }
-
-    setMessage(
-      message,
-      data.message ||
-      "Compra criada.",
-      "success"
-    );
-
-  }catch(error){
-
-    console.error(error);
-
-    setMessage(
-      message,
-      error.message ||
-      "Erro ao criar pagamento.",
-      "error"
-    );
-
-  }finally{
-
-    button.disabled = false;
-    button.textContent = "💳 CRIAR PAGAMENTO";
-  }
-});
-
-/* =========================
-   BINANCE
-   API 05
-========================= */
-$("sendBinanceButton").addEventListener(
-"click",
-async function(){
-
-  const message = $("binanceMessage");
-
-  if(!currentPurchase){
-
-    setMessage(
-      message,
-      "Nenhuma compra selecionada.",
-      "error"
-    );
-
-    return;
-  }
-
-  const orderId =
-    currentPurchase.order_id ||
-    currentPurchase.orderId;
-
-  if(!orderId){
-
-    setMessage(
-      message,
-      "Pedido inválido.",
-      "error"
-    );
-
-    return;
-  }
-
-  if(!confirm(
-    "CONFIRMAR ENVIO REAL PARA BINANCE?\n\n" +
-    "O sistema poderá enviar USDT pela blockchain TRON."
-  )){
-    return;
-  }
-
-  const button = $("sendBinanceButton");
-
-  button.disabled = true;
-  button.textContent = "⏳ PROCESSANDO...";
-
-  setMessage(
-    message,
-    "Processando transferência real...",
-    "info"
-  );
-
-  try{
-
-    const response =
-      await fetch("/api/admin-withdrawal-process",{
-        method:"POST",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          purchase_order_id:orderId,
-          admin_binance_transfer:true
-        })
-      });
-
-    const data = await readJson(response);
-
-    if(!response.ok || data.success === false){
-      throw new Error(
-        data.message ||
-        data.error ||
-        "Falha no envio para Binance."
-      );
-    }
-
-    setMessage(
-      message,
-      data.message ||
-      "Transferência processada.",
-      "success"
-    );
-
-    await loadWallet();
-    await loadWithdrawals();
-
-  }catch(error){
-
-    console.error(error);
-
-    setMessage(
-      message,
-      error.message || "Erro no envio.",
-      "error"
-    );
-
-  }finally{
-
-    button.disabled = false;
-    button.textContent =
-      "🚀 ENVIAR USDT PARA BINANCE";
-  }
 });
 
 /* =========================
    CONVERSÃO
 ========================= */
-$("convertMzn").addEventListener(
-"input",
-function(){
 
-  const mzn =
-    Number(this.value);
+$("convertMzn").addEventListener("input", () => {
 
-  if(!Number.isFinite(mzn) || mzn <= 0){
+  const mzn = Number($("convertMzn").value);
 
-    $("convertUsdtPreview").textContent =
-      "0 USDT";
-
-    return;
-  }
-
-  $("convertUsdtPreview").textContent =
-    formatNumber(mzn / RATE) + " USDT";
+  $("convertUsdt").textContent =
+    Number.isFinite(mzn) && mzn > 0
+    ? (mzn / RATE).toLocaleString("pt-PT",{
+        maximumFractionDigits:6
+      }) + " USDT"
+    : "0 USDT";
 });
 
-$("convertButton").addEventListener(
-"click",
-function(){
+$("convertButton").addEventListener("click", () => {
 
-  const mzn =
-    Number($("convertMzn").value);
+  const mzn = Number($("convertMzn").value);
 
-  const message =
-    $("convertMessage");
+  if(!Number.isFinite(mzn) || mzn < 64){
 
-  if(!Number.isFinite(mzn) || mzn < MIN_MZN){
-
-    setMessage(
-      message,
-      `O mínimo é ${MIN_MZN} MZN.`,
-      "error"
-    );
+    alert("O mínimo é 64 MZN.");
 
     return;
   }
 
-  const usdt =
-    mzn / RATE;
+  if(mzn > 40000){
 
-  if(usdt > Math.max(0,realUsdtBalance-reservedUsdt)){
-
-    setMessage(
-      message,
-      `Liquidez insuficiente.\n\n` +
-      `Necessário: ${formatNumber(usdt)} USDT\n` +
-      `Disponível: ${formatNumber(
-        Math.max(0,realUsdtBalance-reservedUsdt)
-      )} USDT`,
-      "error"
-    );
+    alert("O máximo é 40.000 MZN.");
 
     return;
   }
 
-  setMessage(
-    message,
-    `Liquidez disponível.\n\n` +
-    `${formatMzn(mzn)} = ${formatNumber(usdt)} USDT\n\n` +
-    `Nenhum saldo foi alterado.`,
-    "success"
+  alert(
+    "Conversão preparada:\n\n" +
+    mzn + " MZN = " +
+    (mzn / RATE).toFixed(6) +
+    " USDT\n\n" +
+    "A ligação à tesouraria será feita na próxima etapa."
   );
 });
 
 /* =========================
-   ABASTECIMENTO REAL
-   API 06
+   RETIRADAS
 ========================= */
-$("reserveSubmitButton").addEventListener(
-"click",
-async function(){
 
-  const button =
-    $("reserveSubmitButton");
+document.querySelectorAll("[data-withdraw]").forEach(button => {
 
-  const method =
-    $("reserveMethod").value;
+  button.addEventListener("click", () => {
 
-  const amount =
-    Number($("reserveAmount").value);
+    document.querySelectorAll("[data-withdraw]")
+      .forEach(x => x.classList.remove("active"));
 
-  const currency =
-    $("reserveCurrency").value;
+    button.classList.add("active");
 
-  const reference =
-    $("reserveReference").value.trim();
+    $("withdrawForm").style.display = "block";
 
-  const message =
-    $("reserveMessage");
+    $("selectedWithdraw").textContent =
+      "Retirada: " + button.innerText.replace(/\n/g," ");
+  });
 
-  /* Somente USDT real TRON neste fluxo */
-  if(
-    method !== "USDT_TRON" &&
-    method !== "USDT_EXTERNAL_WALLET"
-  ){
-
-    setMessage(
-      message,
-      "Este método ainda não está ligado ao processamento automático. " +
-      "Para depósito real selecione USDT — TRON / TRC-20.",
-      "warning"
-    );
-
-    return;
-  }
-
-  if(currency !== "USDT"){
-
-    setMessage(
-      message,
-      "Para este fluxo a moeda deve ser USDT.",
-      "error"
-    );
-
-    return;
-  }
-
-  if(!Number.isFinite(amount) || amount <= 0){
-
-    setMessage(
-      message,
-      "Informe um valor USDT válido.",
-      "error"
-    );
-
-    return;
-  }
-
-  if(!/^[a-fA-F0-9]{64}$/.test(reference)){
-
-    setMessage(
-      message,
-      "TX Hash TRON inválido. Deve conter 64 caracteres hexadecimais.",
-      "error"
-    );
-
-    return;
-  }
-
-  if(!confirm(
-    `CONFIRMAR ABASTECIMENTO REAL?\n\n` +
-    `Valor: ${formatNumber(amount)} USDT\n` +
-    `Rede: TRON / TRC-20\n` +
-    `TX Hash: ${reference}\n\n` +
-    `O saldo só será aumentado se a blockchain confirmar a transferência.`
-  )){
-    return;
-  }
-
-  button.disabled = true;
-  button.textContent = "⏳ VERIFICANDO TRON...";
-
-  setMessage(
-    message,
-    "🔎 Verificando a TX Hash na blockchain TRON...\n\n" +
-    "Nenhum USDT será criado pelo sistema.",
-    "info"
-  );
-
-  try{
-
-    const response =
-      await fetch("/api/admin-withdrawals",{
-        method:"POST",
-        credentials:"include",
-        headers:{
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          method,
-          currency:"USDT",
-          amount_usdt:amount,
-          tx_hash:reference
-        })
-      });
-
-    const data =
-      await readJson(response);
-
-    if(!response.ok || data.ok !== true){
-
-      throw new Error(
-        data.error ||
-        data.message ||
-        "A blockchain não confirmou o depósito."
-      );
-    }
-
-    const deposit =
-      data.deposit || {};
-
-    const reserve =
-      data.reserve || {};
-
-    /* Atualizar reserva devolvida pelo servidor */
-    if(reserve.usdt){
-
-      reservedUsdt =
-        Number(
-          reserve.usdt.reserved ?? 0
-        ) || 0;
-    }
-
-    if(reserve.mzn){
-
-      internalMznBalance =
-        Number(
-          reserve.mzn.balance ?? 0
-        ) || 0;
-    }
-
-    updateDashboard();
-
-    setMessage(
-      message,
-      `✅ DEPÓSITO CONFIRMADO\n\n` +
-      `Valor confirmado: ${formatNumber(
-        deposit.amount_usdt
-      )} USDT\n` +
-      `Rede: ${deposit.network || "TRON"}\n` +
-      `Contrato: ${
-        deposit.contract ||
-        "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
-      }\n` +
-      `Bloco: ${deposit.block_number || "—"}\n\n` +
-      `TX Hash:\n${
-        deposit.tx_hash || reference
-      }\n\n` +
-      `Saldo anterior: ${
-        reserve.previous_balance !== undefined
-        ? formatNumber(reserve.previous_balance)
-        : "—"
-      } USDT\n` +
-      `Entrada: +${
-        reserve.added !== undefined
-        ? formatNumber(reserve.added)
-        : formatNumber(deposit.amount_usdt)
-      } USDT\n` +
-      `Novo saldo: ${
-        reserve.new_balance !== undefined
-        ? formatNumber(reserve.new_balance)
-        : "—"
-      } USDT`,
-      "success"
-    );
-
-    $("reserveAmount").value = "";
-    $("reserveReference").value = "";
-
-    await loadWallet();
-    await loadWithdrawals();
-
-  }catch(error){
-
-    console.error(
-      "ERRO NO ABASTECIMENTO USDT:",
-      error
-    );
-
-    setMessage(
-      message,
-      `❌ DEPÓSITO NÃO CONFIRMADO\n\n${
-        error.message ||
-        "Erro ao verificar o depósito."
-      }`,
-      "error"
-    );
-
-  }finally{
-
-    button.disabled = false;
-    button.textContent =
-      "➕ REGISTRAR ABASTECIMENTO";
-  }
 });
 
 /* =========================
-   BOTÕES DE ATUALIZAÇÃO
+   BOTÕES PREPARADOS
 ========================= */
-$("refreshWalletButton").addEventListener(
-"click",
-loadWallet
-);
 
-$("refreshBlockchainButton").addEventListener(
-"click",
-async function(){
-
-  await loadBlockchainInfo();
-  await loadWallet();
+$("depositButton").addEventListener("click", () => {
+  alert("Depósito preparado. As APIs serão ligadas depois.");
 });
 
-$("refreshMznButton").addEventListener(
-"click",
-loadWithdrawals
-);
+$("withdrawButton").addEventListener("click", () => {
+  alert("Retirada preparada. As APIs serão ligadas depois.");
+});
 
-/* =========================
-   INICIALIZAÇÃO
-========================= */
-(async function init(){
+$("refreshButton").addEventListener("click", () => {
+  alert("Atualização da tesouraria será ligada às APIs na próxima etapa.");
+});
 
-  try{
-
-    await loadWallet();
-    await loadBlockchainInfo();
-    await loadWithdrawals();
-
-  }catch(error){
-
-    console.error(
-      "Erro na inicialização:",
-      error
-    );
-  }
-
-})();
-</script>
-
-</body>
+</script></body>
 </html>
