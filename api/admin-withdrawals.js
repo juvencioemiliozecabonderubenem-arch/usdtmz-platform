@@ -1,927 +1,1548 @@
 import { neon } from "@neondatabase/serverless";
-import { createHmac, createHash, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { TronWeb } from "tronweb";
 
 const sql = neon(process.env.DATABASE_URL);
 
-const COOKIE = "usdtmz_admin_session";
-const USDT_CONTRACT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
-const TRANSFER_TOPIC =
-  "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const COOKIE_NAME = "usdtmz_admin_session";
 
 const RATE = 64;
 const MIN_MZN = 64;
 const MAX_MZN = 40000;
 
-function out(res, status, data) {
-  return res.status(status).json(data);
-}
+const USDT_CONTRACT =
+  process.env.USDT_TRON_CONTRACT ||
+  "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 
-function safe(a, b) {
+const USDT_DECIMALS = 6;
+
+const SOURCES = [
+  "MPESA_BUSINESS",
+  "EMOLA_BUSINESS",
+  "BANK",
+  "USDT_TRON",
+  "EXTERNAL_WALLET",
+  "USDT_PURCHASE",
+  "LIQUIDITY_PARTNER",
+  "MANUAL_APPROVED"
+];
+
+function safeCompare(a, b) {
   const A = Buffer.from(String(a));
   const B = Buffer.from(String(b));
-  return A.length === B.length && timingSafeEqual(A, B);
+
+  if (A.length !== B.length) return false;
+
+  return timingSafeEqual(A, B);
 }
 
-function cookie(req) {
-  const s = String(req.headers.cookie || "");
-  const x = s.split(";").map(v => v.trim())
-    .find(v => v.startsWith(COOKIE + "="));
-  return x ? x.slice(COOKIE.length + 1) : null;
+function parseCookies(req) {
+  const header = req.headers?.cookie || "";
+  const cookies = {};
+
+  for (const part of header.split(";")) {
+    const index = part.indexOf("=");
+
+    if (index === -1) continue;
+
+    const key = part.slice(0, index).trim();
+    const value = part.slice(index + 1).trim();
+
+    cookies[key] = decodeURIComponent(value);
+  }
+
+  return cookies;
 }
 
-function admin(req) {
-  const token = cookie(req);
+function verifyAdminSession(req) {
   const secret = process.env.ADMIN_SESSION_SECRET;
-  if (!token || !secret) return false;
 
-  const p = token.split(".");
-  if (p.length !== 2) return false;
+  if (!secret) return null;
 
-  const expected = createHmac("sha256", secret)
-    .update(p[0])
-    .digest("base64url");
+  const cookies = parseCookies(req);
+  const token = cookies[COOKIE_NAME];
 
-  if (!safe(p[1], expected)) return false;
+  if (!token) return null;
+
+  const parts = token.split(".");
+
+  if (parts.length !== 2) return null;
+
+  const [data, signature] = parts;
 
   try {
-    const x = JSON.parse(
-      Buffer.from(p[0], "base64url").toString()
+    const expected = createHmac("sha256", secret)
+      .update(data)
+      .digest("base64url");
+
+    if (!safeCompare(signature, expected)) return null;
+
+    const payload = JSON.parse(
+      Buffer.from(data, "base64url").toString("utf8")
     );
-    return x.id === "admin" && Number(x.exp) > Date.now();
+
+    if (payload.id !== "admin") return null;
+
+    if (!payload.email) return null;
+
+    if (!payload.exp || Date.now() >= Number(payload.exp)) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function requireAdmin(req, res) {
+  const session = verifyAdminSession(req);
+
+  if (!session) {
+    res.status(401).json({
+      success: false,
+      message: "Sessão administrativa inválida ou expirada."
+    });
+
+    return null;
+  }
+
+  return session;
+}
+
+function makeReference(prefix = "TREASURY") {
+  return `${prefix}-${Date.now()}-${randomBytes(5).toString("hex")}`;
+}
+
+function normalizeSource(source) {
+  return String(source || "")
+    .trim()
+    .toUpperCase();
+}
+
+function isValidSource(source) {
+  return SOURCES.includes(source);
+}
+
+function validTronAddress(address) {
+  try {
+    return TronWeb.isAddress(String(address || "").trim());
   } catch {
     return false;
   }
 }
 
-function n(v) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
-}
-
-function tx(v) {
-  return /^[a-fA-F0-9]{64}$/.test(String(v || "").trim());
-}
-
-function tron(v) {
-  return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(String(v || "").trim());
-}
-
-function treasury() {
+function getTreasuryAddress() {
   return String(
     process.env.USDTMZ_TRON_WALLET_ADDRESS || ""
   ).trim();
 }
 
-function tronBase() {
-  return (
-    process.env.TRON_API_BASE_URL ||
-    "https://api.trongrid.io"
-  ).replace(/\/+$/, "");
+function getTronWeb() {
+  const apiKey = process.env.TRON_PRO_API_KEY;
+
+  const headers = apiKey
+    ? { "TRON-PRO-API-KEY": apiKey }
+    : {};
+
+  return new TronWeb({
+    fullHost: "https://api.trongrid.io",
+    headers
+  });
 }
 
-async function tronPost(path, body) {
-  const key = process.env.TRON_PRO_API_KEY;
-  if (!key) throw new Error("TRON_PRO_API_KEY não configurado.");
+function topicToAddress(topic) {
+  const clean = String(topic || "").replace(/^0x/, "");
 
-  const r = await fetch(`${tronBase()}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      "TRON-PRO-API-KEY": key
-    },
-    body: JSON.stringify(body)
-  });
-
-  const text = await r.text();
-  let data;
+  if (clean.length !== 64) return null;
 
   try {
-    data = JSON.parse(text);
+    return TronWeb.address.fromHex("41" + clean.slice(-40));
   } catch {
-    throw new Error("Resposta inválida da TRON.");
+    return null;
+  }
+}
+
+function topicToAmount(data) {
+  const clean = String(data || "").replace(/^0x/, "");
+
+  if (!clean) return 0;
+
+  try {
+    return Number(BigInt("0x" + clean)) / 10 ** USDT_DECIMALS;
+  } catch {
+    return 0;
+  }
+}
+
+async function getTransactionInfo(txHash) {
+  const apiKey = process.env.TRON_PRO_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("TRON_PRO_API_KEY não configurada.");
   }
 
-  if (!r.ok) {
-    throw new Error(
-      data?.Error || data?.message || `TRON HTTP ${r.status}`
-    );
-  }
-
-  return data;
-}
-
-/* =====================================================
-   TRON
-===================================================== */
-
-function sha256(b) {
-  return createHash("sha256").update(b).digest();
-}
-
-function doubleSha(b) {
-  return sha256(sha256(b));
-}
-
-function base58Decode(value) {
-  const alphabet =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-  let x = 0n;
-
-  for (const c of String(value)) {
-    const i = alphabet.indexOf(c);
-    if (i < 0) throw new Error("Endereço TRON inválido.");
-    x = x * 58n + BigInt(i);
-  }
-
-  let h = x.toString(16);
-  if (h.length % 2) h = "0" + h;
-
-  let b = Buffer.from(h, "hex");
-
-  let zeros = 0;
-  for (const c of String(value)) {
-    if (c === "1") zeros++;
-    else break;
-  }
-
-  if (zeros) b = Buffer.concat([Buffer.alloc(zeros), b]);
-  return b;
-}
-
-function tronHex(address) {
-  if (!tron(address)) throw new Error("Endereço TRON inválido.");
-
-  const d = base58Decode(address);
-
-  if (d.length !== 25)
-    throw new Error("Endereço TRON inválido.");
-
-  const payload = d.subarray(0, 21);
-  const checksum = d.subarray(21);
-
-  if (!timingSafeEqual(checksum, doubleSha(payload).subarray(0, 4)))
-    throw new Error("Checksum TRON inválido.");
-
-  return payload.toString("hex").toLowerCase();
-}
-
-function topicAddress(topic) {
-  const v = String(topic || "")
-    .replace(/^0x/i, "")
-    .toLowerCase();
-
-  if (!/^[0-9a-f]{64}$/.test(v)) return null;
-
-  const payload = Buffer.from("41" + v.slice(-40), "hex");
-  const full = Buffer.concat([
-    payload,
-    doubleSha(payload).subarray(0, 4)
-  ]);
-
-  const alphabet =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-  let x = 0n;
-
-  for (const b of full)
-    x = x * 256n + BigInt(b);
-
-  let result = "";
-
-  while (x > 0n) {
-    result =
-      alphabet[Number(x % 58n)] + result;
-    x /= 58n;
-  }
-
-  for (const b of full) {
-    if (b === 0) result = "1" + result;
-    else break;
-  }
-
-  return result;
-}
-
-function uint256(v) {
-  const x = String(v || "")
-    .replace(/^0x/i, "");
-
-  if (!/^[0-9a-fA-F]+$/.test(x))
-    throw new Error("Valor USDT inválido.");
-
-  return BigInt("0x" + x);
-}
-
-function usdtNumber(raw) {
-  const base = 1000000n;
-  return Number(raw / base) +
-    Number(raw % base) / 1000000;
-}
-
-/* =====================================================
-   VERIFICAÇÃO REAL USDT
-===================================================== */
-
-async function verifyUSDT(txHash) {
-  const wallet = treasury();
-
-  if (!tron(wallet))
-    throw new Error("Carteira TRON da tesouraria inválida.");
-
-  if (!tx(txHash))
-    throw new Error("TX Hash TRON inválido.");
-
-  const receipt = await tronPost(
-    "/walletsolidity/gettransactioninfobyid",
-    { value: txHash }
+  const response = await fetch(
+    `https://api.trongrid.io/wallet/gettransactioninfobyid?value=${encodeURIComponent(
+      txHash
+    )}`,
+    {
+      headers: {
+        "TRON-PRO-API-KEY": apiKey
+      }
+    }
   );
 
-  if (
-    String(receipt?.id || "").toLowerCase() !==
-    txHash.toLowerCase()
-  ) {
-    throw new Error(
-      "A transação ainda não possui receipt solidificado."
-    );
+  if (!response.ok) {
+    throw new Error("Falha ao consultar a blockchain TRON.");
   }
 
-  if (
-    String(receipt?.receipt?.result || "")
-      .toUpperCase() !== "SUCCESS"
-  ) {
-    throw new Error(
-      "A transação TRON não foi concluída com sucesso."
-    );
+  return await response.json();
+}
+
+async function verifyUsdtTransfer(txHash, requestedAmount) {
+  const treasuryAddress = getTreasuryAddress();
+
+  if (!treasuryAddress) {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: "Carteira Treasury não configurada."
+    };
   }
 
-  const contract =
-    tronHex(USDT_CONTRACT).replace(/^41/, "");
+  if (!validTronAddress(treasuryAddress)) {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: "Endereço Treasury TRON inválido."
+    };
+  }
 
-  const destination =
-    tronHex(wallet).replace(/^41/, "");
+  const cleanHash = String(txHash || "").trim();
 
-  let amount = 0;
-  let from = null;
+  if (!/^[a-fA-F0-9]{64}$/.test(cleanHash)) {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: "TX hash TRON inválido."
+    };
+  }
 
-  for (const log of Array.isArray(receipt.log)
-    ? receipt.log
-    : []) {
+  let info;
 
-    const address =
-      String(log.address || "")
-        .replace(/^41/i, "")
-        .toLowerCase();
+  try {
+    info = await getTransactionInfo(cleanHash);
+  } catch (error) {
+    return {
+      confirmed: false,
+      pending: true,
+      reason: error.message
+    };
+  }
 
-    if (address !== contract) continue;
+  if (!info || !info.id) {
+    return {
+      confirmed: false,
+      pending: true,
+      reason: "Transação ainda não encontrada na TRON."
+    };
+  }
 
-    const topics = Array.isArray(log.topics)
-      ? log.topics
-      : [];
+  const receipt = info.receipt || {};
 
-    if (topics.length < 3) continue;
+  const result = String(receipt.result || "").toUpperCase();
 
-    const topic0 =
-      String(topics[0] || "")
-        .replace(/^0x/i, "")
-        .toLowerCase();
+  if (result && result !== "SUCCESS") {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: "Transação TRON falhou."
+    };
+  }
 
-    if (topic0 !== TRANSFER_TOPIC) continue;
+  const contractResult =
+    info.contractResult?.[0] ||
+    info.contractResult ||
+    null;
 
-    const to =
-      String(topics[2] || "")
-        .replace(/^0x/i, "")
-        .toLowerCase()
-        .slice(-40);
+  if (contractResult) {
+    const decoded = String(contractResult).toLowerCase();
 
-    if (to !== destination) continue;
-
-    const value = usdtNumber(uint256(log.data));
-
-    if (value > 0) {
-      amount += value;
-      from = topicAddress(topics[1]);
+    if (decoded !== "0000000000000000000000000000000000000000000000000000000000000001") {
+      // Mantemos a verificação abaixo pelos eventos.
     }
   }
 
-  if (amount <= 0)
-    throw new Error(
-      "Nenhuma transferência USDT para a tesouraria foi encontrada."
+  let events = [];
+
+  try {
+    const apiKey = process.env.TRON_PRO_API_KEY;
+
+    const response = await fetch(
+      `https://api.trongrid.io/v1/transactions/${encodeURIComponent(
+        cleanHash
+      )}/events?only_confirmed=true&limit=200`,
+      {
+        headers: {
+          "TRON-PRO-API-KEY": apiKey
+        }
+      }
     );
 
+    if (response.ok) {
+      const json = await response.json();
+      events = Array.isArray(json?.data) ? json.data : [];
+    }
+  } catch {
+    events = [];
+  }
+
+  const target = treasuryAddress;
+
+  let received = 0;
+
+  for (const event of events) {
+    if (
+      String(event?.event_name || "").toLowerCase() !== "transfer"
+    ) {
+      continue;
+    }
+
+    const contract = String(
+      event?.contract_address ||
+      event?.address ||
+      ""
+    );
+
+    if (
+      contract &&
+      contract !== USDT_CONTRACT &&
+      !contract.endsWith(USDT_CONTRACT.slice(-40))
+    ) {
+      continue;
+    }
+
+    let to = event?.result?.to || event?.result?.["0"] || null;
+    let value = event?.result?.value || event?.result?.["2"] || null;
+
+    if (!to && event?.topics?.length >= 3) {
+      to = topicToAddress(event.topics[2]);
+    }
+
+    if (value == null && event?.data) {
+      value = topicToAmount(event.data);
+    }
+
+    if (!to) continue;
+
+    let normalizedTo = to;
+
+    try {
+      if (String(to).startsWith("41")) {
+        normalizedTo = TronWeb.address.fromHex(String(to));
+      }
+    } catch {
+      continue;
+    }
+
+    if (normalizedTo !== target) continue;
+
+    let amount = Number(value || 0);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      amount = topicToAmount(event.data);
+    }
+
+    received += amount;
+  }
+
+  if (received <= 0) {
+    return {
+      confirmed: false,
+      pending: true,
+      reason:
+        "Transfer USDT para a carteira Treasury ainda não foi confirmado.",
+      received: 0
+    };
+  }
+
+  const expected = Number(requestedAmount);
+
+  if (!Number.isFinite(expected) || expected <= 0) {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: "Quantidade USDT inválida."
+    };
+  }
+
+  if (received + 0.000001 < expected) {
+    return {
+      confirmed: false,
+      pending: false,
+      reason: `Valor recebido insuficiente. Recebido: ${received} USDT.`,
+      received
+    };
+  }
+
   return {
-    tx_hash: txHash,
-    amount_usdt: amount,
-    from,
-    to: wallet,
-    network: "TRON",
-    contract: USDT_CONTRACT,
-    block_number: receipt.blockNumber || null
+    confirmed: true,
+    pending: false,
+    received,
+    tx_hash: cleanHash
   };
 }
 
-/* =====================================================
-   SALDOS
-===================================================== */
+async function getOrCreateWallet(asset) {
+  const normalizedAsset = String(asset).toUpperCase();
 
-async function balances() {
-  const address = treasury();
-
-  const rows = await sql`
-    SELECT asset, network, wallet_address, balance
+  const existing = await sql`
+    SELECT
+      id,
+      wallet_address,
+      network,
+      asset,
+      balance,
+      status,
+      user_id
     FROM wallets
-  `;
-
-  const mzn = rows
-    .filter(x =>
-      ["MZN","MZN_BALANCE","MZN_RESERVE"]
-        .includes(String(x.asset).toUpperCase())
-    )
-    .reduce((a,x) => a+n(x.balance),0);
-
-  const usdt = rows
-    .filter(x =>
-      String(x.asset).toUpperCase() === "USDT" &&
-      String(x.network).toUpperCase() === "TRON" &&
-      String(x.wallet_address) === address
-    )
-    .reduce((a,x) => a+n(x.balance),0);
-
-  const trx = rows
-    .filter(x =>
-      String(x.asset).toUpperCase() === "TRX" &&
-      String(x.network).toUpperCase() === "TRON" &&
-      String(x.wallet_address) === address
-    )
-    .reduce((a,x) => a+n(x.balance),0);
-
-  const r = await sql`
-    SELECT COALESCE(SUM(amount),0) total
-    FROM transactions
-    WHERE asset='USDT'
-      AND type='RESERVE_IN'
-      AND status='RESERVED'
-  `;
-
-  const o = await sql`
-    SELECT COALESCE(SUM(usdt_amount),0) total
-    FROM orders
-    WHERE operation='BUY_USDT_ADMIN'
-      AND status IN ('PAYMENT_CONFIRMED','USDT_SENT')
-  `;
-
-  const reserved =
-    n(r[0]?.total) + n(o[0]?.total);
-
-  return {
-    mzn,
-    usdt,
-    trx,
-    reserved,
-    available: Math.max(0, usdt - reserved)
-  };
-}
-
-/* =====================================================
-   DEPÓSITO MZN — FICA PENDENTE
-===================================================== */
-
-async function depositMZN(req,res) {
-  const b = req.body || {};
-
-  const amount = Number(
-    b.amount_mzn ?? b.amount ?? 0
-  );
-
-  const reference = String(
-    b.reference ?? ""
-  ).trim();
-
-  const source = String(
-    b.source ?? b.method ?? "MANUAL_APPROVED"
-  ).trim().toUpperCase();
-
-  if (!Number.isInteger(amount) || amount <= 0)
-    return out(res,400,{ok:false,error:"Valor MZN inválido."});
-
-  if (!reference)
-    return out(res,400,{
-      ok:false,
-      error:"Referência obrigatória."
-    });
-
-  const exists = await sql`
-    SELECT id,status
-    FROM transactions
-    WHERE reference=${reference}
+    WHERE asset = ${normalizedAsset}
+    ORDER BY id ASC
     LIMIT 1
   `;
 
-  if (exists.length)
-    return out(res,409,{
-      ok:false,
-      error:"Esta referência já existe.",
-      status:exists[0].status
-    });
+  if (existing.length) {
+    return existing[0];
+  }
 
-  const rows = await sql`
-    INSERT INTO transactions
-      (user_id,type,asset,amount,status,reference,created_at)
-    VALUES
-      (NULL,'DEPOSIT_MZN','MZN',${amount},
-       'PENDING',${reference},NOW())
-    RETURNING id,type,asset,amount,status,reference,created_at
-  `;
+  const address =
+    normalizedAsset === "USDT"
+      ? getTreasuryAddress()
+      : null;
 
-  return out(res,200,{
-    ok:true,
-    message:"Depósito MZN criado e colocado como PENDENTE.",
-    source,
-    deposit:rows[0]
-  });
-}
-
-/* =====================================================
-   CONFIRMAR DEPÓSITO MZN
-===================================================== */
-
-async function confirmMZN(req,res) {
-  const reference = String(
-    req.body?.reference || ""
-  ).trim();
-
-  if (!reference)
-    return out(res,400,{
-      ok:false,
-      error:"Referência obrigatória."
-    });
-
-  const result = await sql.transaction(txn => [
-    txn`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${reference})
-      )
-    `,
-
-    txn`
-      SELECT *
-      FROM transactions
-      WHERE reference=${reference}
-        AND type='DEPOSIT_MZN'
-        AND asset='MZN'
-        AND status='PENDING'
-      LIMIT 1
-      FOR UPDATE
-    `,
-
-    txn`
-      UPDATE wallets
-      SET balance=balance+(
-        SELECT amount
-        FROM transactions
-        WHERE reference=${reference}
-          AND type='DEPOSIT_MZN'
-          AND status='PENDING'
-        LIMIT 1
-      ),
-      status='ACTIVE',
-      updated_at=NOW()
-      WHERE asset IN ('MZN','MZN_BALANCE','MZN_RESERVE')
-      RETURNING id,asset,balance
-    `,
-
-    txn`
-      UPDATE transactions
-      SET status='COMPLETED'
-      WHERE reference=${reference}
-        AND type='DEPOSIT_MZN'
-        AND status='PENDING'
-      RETURNING *
-    `
-  ],{isolationMode:"Serializable"});
-
-  const deposit=result?.[1]?.[0];
-  const wallet=result?.[2]?.[0];
-  const transaction=result?.[3]?.[0];
-
-  if(!deposit || !wallet || !transaction)
-    return out(res,409,{
-      ok:false,
-      error:"Depósito não encontrado ou já confirmado."
-    });
-
-  return out(res,200,{
-    ok:true,
-    message:"Depósito MZN confirmado.",
-    wallet,
-    transaction
-  });
-}
-
-/* =====================================================
-   DEPÓSITO USDT — PENDENTE
-===================================================== */
-
-async function depositUSDT(req,res) {
-  const b=req.body||{};
-  const hash=String(
-    b.tx_hash ?? b.txHash ?? ""
-  ).trim();
-
-  const reference=String(
-    b.reference || `USDT-${hash}`
-  ).trim();
-
-  if(!tx(hash))
-    return out(res,400,{
-      ok:false,
-      error:"TX Hash inválido."
-    });
-
-  const exists=await sql`
-    SELECT id,status
-    FROM transactions
-    WHERE blockchain_tx_hash=${hash}
-       OR reference=${reference}
-    LIMIT 1
-  `;
-
-  if(exists.length)
-    return out(res,409,{
-      ok:false,
-      error:"Esta transação já está registrada.",
-      status:exists[0].status
-    });
-
-  const row=await sql`
-    INSERT INTO transactions
-      (user_id,type,asset,amount,status,reference,
-       blockchain_tx_hash,created_at)
-    VALUES
-      (NULL,'DEPOSIT_USDT','USDT',0,'PENDING',
-       ${reference},${hash},NOW())
+  const inserted = await sql`
+    INSERT INTO wallets (
+      wallet_address,
+      network,
+      asset,
+      balance,
+      status,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      ${address},
+      ${normalizedAsset === "USDT" ? "TRON" : "MZN"},
+      ${normalizedAsset},
+      0,
+      'ACTIVE',
+      NOW(),
+      NOW()
+    )
     RETURNING *
   `;
 
-  return out(res,200,{
-    ok:true,
-    message:"Depósito USDT criado como PENDENTE.",
-    deposit:row[0],
-    wallet_address:treasury(),
-    network:"TRON",
-    asset:"USDT"
-  });
+  return inserted[0];
 }
 
-/* =====================================================
-   CONFIRMAR USDT — BLOCKCHAIN
-===================================================== */
+async function registerMZNDeposit(body) {
+  const amount = Number(body.amount);
+  const source = normalizeSource(body.source);
+  const description = String(body.description || "").trim();
 
-async function confirmUSDT(req,res) {
-  const hash=String(
-    req.body?.tx_hash ??
-    req.body?.txHash ??
-    ""
-  ).trim();
+  if (!Number.isFinite(amount) || amount < MIN_MZN) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: `Valor mínimo: ${MIN_MZN} MZN.`
+      }
+    };
+  }
 
-  if(!tx(hash))
-    return out(res,400,{
-      ok:false,
-      error:"TX Hash inválido."
-    });
+  if (amount > MAX_MZN) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: `Valor máximo: ${MAX_MZN} MZN.`
+      }
+    };
+  }
 
-  const verified=await verifyUSDT(hash);
+  if (!isValidSource(source)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "Fonte de depósito inválida."
+      }
+    };
+  }
 
-  const result=await sql.transaction(txn=>[
-    txn`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${hash})
-      )
-    `,
+  const reference =
+    String(body.reference || "").trim() ||
+    makeReference("MZN");
 
-    txn`
-      SELECT *
-      FROM transactions
-      WHERE blockchain_tx_hash=${hash}
-        AND type='DEPOSIT_USDT'
-        AND status='PENDING'
-      LIMIT 1
-      FOR UPDATE
-    `,
+  const existing = await sql`
+    SELECT id, reference, status, amount
+    FROM transactions
+    WHERE reference = ${reference}
+    LIMIT 1
+  `;
 
-    txn`
-      UPDATE wallets
-      SET balance=balance+${verified.amount_usdt},
-          status='ACTIVE',
-          updated_at=NOW()
-      WHERE wallet_address=${treasury()}
-        AND network='TRON'
-        AND asset='USDT'
-      RETURNING id,wallet_address,network,asset,balance
-    `,
+  if (existing.length) {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        status: existing[0].status,
+        reference: existing[0].reference,
+        amount: existing[0].amount,
+        message:
+          existing[0].status === "COMPLETED"
+            ? "Depósito já confirmado."
+            : "Depósito continua pendente."
+      }
+    };
+  }
 
-    txn`
-      UPDATE transactions
-      SET amount=${verified.amount_usdt},
-          status='COMPLETED'
-      WHERE blockchain_tx_hash=${hash}
-        AND type='DEPOSIT_USDT'
-        AND status='PENDING'
-      RETURNING *
-    `
-  ],{isolationMode:"Serializable"});
-
-  const deposit=result?.[1]?.[0];
-  const wallet=result?.[2]?.[0];
-  const transaction=result?.[3]?.[0];
-
-  if(!deposit || !wallet || !transaction)
-    return out(res,409,{
-      ok:false,
-      error:
-        "Depósito não encontrado, já confirmado ou carteira USDT inexistente."
-    });
-
-  return out(res,200,{
-    ok:true,
-    message:"USDT confirmado na blockchain e creditado.",
-    deposit:verified,
-    wallet,
-    transaction
-  });
-}
-
-/* =====================================================
-   CONVERSÃO
-===================================================== */
-
-async function convert(req,res) {
-  const amount=Number(
-    req.body?.amount_mzn ??
-    req.body?.amount ??
-    0
-  );
-
-  const reference=String(
-    req.body?.reference ||
-    `LIQUIDITY:${Date.now()}`
-  ).trim();
-
-  if(
-    !Number.isInteger(amount) ||
-    amount<MIN_MZN ||
-    amount>MAX_MZN
-  )
-    return out(res,400,{
-      ok:false,
-      error:`Valor entre ${MIN_MZN} e ${MAX_MZN} MZN.`
-    });
-
-  const usdtAmount=amount/RATE;
-  const before=await balances();
-
-  if(before.mzn<amount)
-    return out(res,400,{
-      ok:false,
-      error:"Saldo MZN insuficiente."
-    });
-
-  if(before.available<usdtAmount)
-    return out(res,409,{
-      ok:false,
-      error:"USDT real disponível insuficiente.",
-      required_usdt:usdtAmount,
-      available_usdt:before.available
-    });
-
-  const result=await sql.transaction(txn=>[
-    txn`
-      SELECT pg_advisory_xact_lock(
-        hashtext(${reference})
-      )
-    `,
-
-    txn`
-      UPDATE wallets
-      SET balance=balance-${amount},
-          updated_at=NOW()
-      WHERE asset IN ('MZN','MZN_BALANCE','MZN_RESERVE')
-        AND balance>=${amount}
-      RETURNING id,balance
-    `,
-
-    txn`
-      INSERT INTO transactions
-        (user_id,type,asset,amount,status,reference,created_at)
-      VALUES
-        (NULL,'CONVERSION','MZN',${amount},
-         'COMPLETED',${reference},NOW())
-      RETURNING *
-    `,
-
-    txn`
-      INSERT INTO transactions
-        (user_id,type,asset,amount,status,reference,created_at)
-      VALUES
-        (NULL,'RESERVE_IN','USDT',${usdtAmount},
-         'RESERVED',${reference},NOW())
-      RETURNING *
-    `
-  ],{isolationMode:"Serializable"});
-
-  if(!result?.[1]?.[0])
-    return out(res,409,{
-      ok:false,
-      error:"Saldo MZN insuficiente."
-    });
-
-  return out(res,200,{
-    ok:true,
-    message:"MZN convertido e USDT real reservado.",
-    conversion:{
+  await sql`
+    INSERT INTO transactions (
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
       reference,
-      amount_mzn:amount,
-      rate:RATE,
-      amount_usdt:usdtAmount
-    }
-  });
-}
-
-/* =====================================================
-   DASHBOARD
-===================================================== */
-
-async function dashboard() {
-  const t=await balances();
-
-  const [
-    pending,
-    orders,
-    transactions
-  ]=await Promise.all([
-
-    sql`
-      SELECT *
-      FROM transactions
-      WHERE status='PENDING'
-      ORDER BY created_at DESC
-      LIMIT 100
-    `,
-
-    sql`
-      SELECT *
-      FROM orders
-      WHERE operation='BUY_USDT_ADMIN'
-      ORDER BY created_at DESC
-      LIMIT 100
-    `,
-
-    sql`
-      SELECT *
-      FROM transactions
-      ORDER BY created_at DESC
-      LIMIT 100
-    `
-  ]);
+      created_at
+    )
+    VALUES (
+      'ADMIN',
+      'DEPOSIT_MZN',
+      'MZN',
+      ${amount},
+      'PENDING',
+      ${reference},
+      NOW()
+    )
+  `;
 
   return {
-    treasury:{
-      mzn:t.mzn,
-      usdt_real:t.usdt,
-      trx_real:t.trx,
-      reserved_usdt:t.reserved,
-      available_usdt:t.available,
-      wallet_address:treasury(),
-      usdt_contract:USDT_CONTRACT,
-      network:"TRON",
-      rate:RATE,
-      min_mzn:MIN_MZN,
-      max_mzn:MAX_MZN
-    },
-
-    liquidity:{
-      status:t.available>0
-        ? "COM_LIQUIDEZ"
-        : "SEM_LIQUIDEZ",
-      real_usdt:t.usdt,
-      reserved_usdt:t.reserved,
-      available_usdt:t.available
-    },
-
-    deposits:{
-      pending
-    },
-
-    orders,
-    recent_transactions:transactions,
-
-    system:{
-      admin_only_treasury:true,
-      real_usdt_required:true,
-      blockchain_verification:true,
-      pending_deposits:true,
-      duplicate_protection:true
+    status: 200,
+    body: {
+      success: true,
+      status: "PENDING",
+      reference,
+      amount,
+      source,
+      description,
+      message:
+        "Depósito registado como PENDING. O saldo só será atualizado após confirmação real."
     }
   };
 }
 
-/* =====================================================
-   HANDLER
-===================================================== */
+async function confirmMZNDeposit(body) {
+  const reference = String(body.reference || "").trim();
 
-export default async function handler(req,res){
+  if (!reference) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "reference é obrigatório."
+      }
+    };
+  }
 
-  try{
-
-    if(!admin(req))
-      return out(res,401,{
-        ok:false,
-        error:"Sessão Admin inválida ou expirada."
-      });
-
-    if(req.method==="GET")
-      return out(res,200,await dashboard());
-
-    if(req.method!=="POST")
-      return out(res,405,{
-        ok:false,
-        error:"Método não permitido."
-      });
-
-    const action=String(
-      req.body?.action ||
-      req.body?.operation ||
-      ""
-    ).trim().toLowerCase();
-
-    if([
-      "register_mzn_deposit",
-      "register_mzn",
-      "register_mzn_deposit_admin"
-    ].includes(action))
-      return depositMZN(req,res);
-
-    if([
-      "confirm_mzn_deposit",
-      "confirm_mzn"
-    ].includes(action))
-      return confirmMZN(req,res);
-
-    if([
-      "register_usdt_deposit",
-      "register_usdt",
-      "register_real_usdt_deposit"
-    ].includes(action))
-      return depositUSDT(req,res);
-
-    if([
-      "confirm_usdt_deposit",
-      "confirm_usdt"
-    ].includes(action))
-      return confirmUSDT(req,res);
-
-    if([
-      "convert_mzn_to_usdt",
-      "convert",
-      "conversion"
-    ].includes(action))
-      return convert(req,res);
-
-    if([
-      "liquidity",
-      "get_liquidity",
-      "check_liquidity"
-    ].includes(action))
-      return out(res,200,{
-        ok:true,
-        liquidity:await balances()
-      });
-
-    if(
-      action==="dashboard" ||
-      action==="get_dashboard" ||
-      action===""
+  const result = await sql`
+    WITH pending AS (
+      SELECT
+        id,
+        amount
+      FROM transactions
+      WHERE reference = ${reference}
+        AND type = 'DEPOSIT_MZN'
+        AND asset = 'MZN'
+        AND status = 'PENDING'
+      FOR UPDATE
+    ),
+    wallet_update AS (
+      UPDATE wallets
+      SET
+        balance = balance + pending.amount,
+        updated_at = NOW()
+      FROM pending
+      WHERE wallets.asset = 'MZN'
+      RETURNING pending.id, pending.amount
     )
-      return out(res,200,await dashboard());
+    UPDATE transactions
+    SET
+      status = 'COMPLETED'
+    WHERE id IN (
+      SELECT id FROM wallet_update
+    )
+    RETURNING
+      id,
+      amount,
+      reference,
+      status
+  `;
 
-    return out(res,400,{
-      ok:false,
-      error:"Ação Admin desconhecida.",
-      received_action:action
-    });
+  if (!result.length) {
+    const existing = await sql`
+      SELECT
+        id,
+        amount,
+        reference,
+        status
+      FROM transactions
+      WHERE reference = ${reference}
+        AND type = 'DEPOSIT_MZN'
+      LIMIT 1
+    `;
 
-  }catch(error){
+    if (
+      existing.length &&
+      existing[0].status === "COMPLETED"
+    ) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          status: "COMPLETED",
+          already_confirmed: true,
+          transaction: existing[0]
+        }
+      };
+    }
 
-    console.error(
-      "ADMIN-WITHDRAWALS ERROR:",
-      error
-    );
+    return {
+      status: 404,
+      body: {
+        success: false,
+        message: "Depósito pendente não encontrado."
+      }
+    };
+  }
 
-    return out(res,500,{
-      ok:false,
-      error:error?.message ||
-        "Erro interno da tesouraria."
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "COMPLETED",
+      transaction: result[0],
+      message: "Depósito MZN confirmado e saldo atualizado."
+    }
+  };
+}
+
+async function registerUSDTDeposit(body) {
+  const amount = Number(body.amount);
+  const txHash = String(
+    body.tx_hash ||
+    body.blockchain_tx_hash ||
+    ""
+  ).trim();
+
+  const source = normalizeSource(
+    body.source || "USDT_TRON"
+  );
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "Valor USDT inválido."
+      }
+    };
+  }
+
+  if (!/^[a-fA-F0-9]{64}$/.test(txHash)) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "TX hash TRON inválido."
+      }
+    };
+  }
+
+  if (source !== "USDT_TRON") {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "Depósito USDT deve usar USDT_TRON."
+      }
+    };
+  }
+
+  const existing = await sql`
+    SELECT
+      id,
+      reference,
+      amount,
+      status,
+      blockchain_tx_hash
+    FROM transactions
+    WHERE blockchain_tx_hash = ${txHash}
+    LIMIT 1
+  `;
+
+  if (existing.length) {
+    if (existing[0].status === "COMPLETED") {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          status: "COMPLETED",
+          already_confirmed: true,
+          transaction: existing[0]
+        }
+      };
+    }
+
+    if (existing[0].status === "PENDING") {
+      const verification = await verifyUsdtTransfer(
+        txHash,
+        existing[0].amount
+      );
+
+      if (verification.confirmed) {
+        return await confirmUSDTDeposit({
+          reference: existing[0].reference,
+          tx_hash: txHash
+        });
+      }
+
+      return {
+        status: 200,
+        body: {
+          success: true,
+          status: "PENDING",
+          reference: existing[0].reference,
+          message: verification.reason
+        }
+      };
+    }
+
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message: "TX hash já existe no histórico."
+      }
+    };
+  }
+
+  const reference =
+    String(body.reference || "").trim() ||
+    makeReference("USDT");
+
+  await sql`
+    INSERT INTO transactions (
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
+      reference,
+      blockchain_tx_hash,
+      created_at
+    )
+    VALUES (
+      'ADMIN',
+      'DEPOSIT_USDT',
+      'USDT',
+      ${amount},
+      'PENDING',
+      ${reference},
+      ${txHash},
+      NOW()
+    )
+  `;
+
+  const verification = await verifyUsdtTransfer(
+    txHash,
+    amount
+  );
+
+  if (!verification.confirmed) {
+    if (!verification.pending) {
+      await sql`
+        UPDATE transactions
+        SET status = 'FAILED'
+        WHERE reference = ${reference}
+          AND status = 'PENDING'
+      `;
+    }
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        status: verification.pending
+          ? "PENDING"
+          : "FAILED",
+        reference,
+        tx_hash: txHash,
+        message: verification.reason
+      }
+    };
+  }
+
+  return await confirmUSDTDeposit({
+    reference,
+    tx_hash: txHash
+  });
+}
+
+async function confirmUSDTDeposit(body) {
+  const reference = String(body.reference || "").trim();
+  const txHash = String(body.tx_hash || "").trim();
+
+  if (!reference) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "reference é obrigatório."
+      }
+    };
+  }
+
+  const pending = await sql`
+    SELECT
+      id,
+      amount,
+      reference,
+      status,
+      blockchain_tx_hash
+    FROM transactions
+    WHERE reference = ${reference}
+      AND type = 'DEPOSIT_USDT'
+      AND asset = 'USDT'
+    LIMIT 1
+  `;
+
+  if (!pending.length) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        message: "Depósito USDT não encontrado."
+      }
+    };
+  }
+
+  const transaction = pending[0];
+
+  if (transaction.status === "COMPLETED") {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        status: "COMPLETED",
+        already_confirmed: true,
+        transaction
+      }
+    };
+  }
+
+  const hash =
+    txHash ||
+    String(transaction.blockchain_tx_hash || "").trim();
+
+  if (!hash) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "TX hash não encontrado."
+      }
+    };
+  }
+
+  const verification = await verifyUsdtTransfer(
+    hash,
+    transaction.amount
+  );
+
+  if (!verification.confirmed) {
+    return {
+      status: 200,
+      body: {
+        success: true,
+        status: verification.pending
+          ? "PENDING"
+          : "FAILED",
+        reference,
+        tx_hash: hash,
+        message: verification.reason
+      }
+    };
+  }
+
+  const result = await sql`
+    WITH pending AS (
+      SELECT
+        id,
+        amount
+      FROM transactions
+      WHERE reference = ${reference}
+        AND type = 'DEPOSIT_USDT'
+        AND asset = 'USDT'
+        AND status = 'PENDING'
+      FOR UPDATE
+    ),
+    wallet_update AS (
+      UPDATE wallets
+      SET
+        balance = balance + pending.amount,
+        updated_at = NOW()
+      FROM pending
+      WHERE wallets.asset = 'USDT'
+      RETURNING pending.id, pending.amount
+    )
+    UPDATE transactions
+    SET
+      status = 'COMPLETED',
+      blockchain_tx_hash = ${hash}
+    WHERE id IN (
+      SELECT id FROM wallet_update
+    )
+    RETURNING
+      id,
+      amount,
+      reference,
+      status,
+      blockchain_tx_hash
+  `;
+
+  if (!result.length) {
+    const existing = await sql`
+      SELECT
+        id,
+        amount,
+        reference,
+        status,
+        blockchain_tx_hash
+      FROM transactions
+      WHERE reference = ${reference}
+      LIMIT 1
+    `;
+
+    if (
+      existing.length &&
+      existing[0].status === "COMPLETED"
+    ) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          status: "COMPLETED",
+          already_confirmed: true,
+          transaction: existing[0]
+        }
+      };
+    }
+
+    return {
+      status: 409,
+      body: {
+        success: false,
+        message:
+          "Não foi possível confirmar o depósito de forma segura."
+      }
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "COMPLETED",
+      transaction: result[0],
+      message:
+        "Depósito USDT confirmado na TRON e saldo atualizado."
+    }
+  };
+}
+
+async function convertMZNToUSDT(body) {
+  const amountMZN = Number(body.amount_mzn);
+
+  if (
+    !Number.isFinite(amountMZN) ||
+    amountMZN < MIN_MZN ||
+    amountMZN > MAX_MZN
+  ) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          `Valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`
+      }
+    };
+  }
+
+  const usdtAmount = amountMZN / RATE;
+
+  const reference =
+    String(body.reference || "").trim() ||
+    makeReference("LIQUIDITY");
+
+  const result = await sql`
+    WITH mzn_wallet AS (
+      SELECT id, balance
+      FROM wallets
+      WHERE asset = 'MZN'
+      FOR UPDATE
+    ),
+    usdt_wallet AS (
+      SELECT id, balance
+      FROM wallets
+      WHERE asset = 'USDT'
+      FOR UPDATE
+    ),
+    debit AS (
+      UPDATE wallets
+      SET
+        balance = balance - ${amountMZN},
+        updated_at = NOW()
+      FROM mzn_wallet
+      WHERE wallets.id = mzn_wallet.id
+        AND mzn_wallet.balance >= ${amountMZN}
+      RETURNING wallets.id
+    ),
+    reserve AS (
+      UPDATE wallets
+      SET
+        balance = balance - ${usdtAmount},
+        updated_at = NOW()
+      FROM usdt_wallet
+      WHERE wallets.id = usdt_wallet.id
+        AND EXISTS (
+          SELECT 1 FROM debit
+        )
+        AND usdt_wallet.balance >= ${usdtAmount}
+      RETURNING wallets.id
+    )
+    SELECT *
+    FROM reserve
+  `;
+
+  if (!result.length) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message:
+          "Saldo MZN ou reserva real de USDT insuficiente."
+      }
+    };
+  }
+
+  await sql`
+    INSERT INTO transactions (
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
+      reference,
+      created_at
+    )
+    VALUES (
+      'ADMIN',
+      'CONVERSION',
+      'MZN',
+      ${amountMZN},
+      'COMPLETED',
+      ${reference},
+      NOW()
+    )
+  `;
+
+  await sql`
+    INSERT INTO transactions (
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
+      reference,
+      created_at
+    )
+    VALUES (
+      'ADMIN',
+      'RESERVE_IN',
+      'USDT',
+      ${usdtAmount},
+      'RESERVED',
+      ${reference},
+      NOW()
+    )
+  `;
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "COMPLETED",
+      reference,
+      rate: RATE,
+      mzn: amountMZN,
+      usdt: usdtAmount,
+      message:
+        "Conversão concluída usando reserva real de USDT."
+    }
+  };
+}
+
+async function releaseReservation(body) {
+  const reference = String(body.reference || "").trim();
+
+  if (!reference) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "reference é obrigatório."
+      }
+    };
+  }
+
+  const rows = await sql`
+    SELECT
+      id,
+      amount,
+      status
+    FROM transactions
+    WHERE reference = ${reference}
+      AND type = 'RESERVE_IN'
+      AND asset = 'USDT'
+      AND status = 'RESERVED'
+    LIMIT 1
+  `;
+
+  if (!rows.length) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        message: "Reserva USDT não encontrada."
+      }
+    };
+  }
+
+  const amount = Number(rows[0].amount);
+
+  await sql`
+    UPDATE wallets
+    SET
+      balance = balance + ${amount},
+      updated_at = NOW()
+    WHERE asset = 'USDT'
+  `;
+
+  await sql`
+    UPDATE transactions
+    SET status = 'COMPLETED'
+    WHERE id = ${rows[0].id}
+      AND status = 'RESERVED'
+  `;
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "COMPLETED",
+      reference,
+      released_usdt: amount
+    }
+  };
+}
+
+async function getPendingDeposits() {
+  const rows = await sql`
+    SELECT
+      id,
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
+      reference,
+      blockchain_tx_hash,
+      created_at
+    FROM transactions
+    WHERE status = 'PENDING'
+      AND type IN (
+        'DEPOSIT_MZN',
+        'DEPOSIT_USDT'
+      )
+    ORDER BY created_at DESC
+  `;
+
+  return rows;
+}
+
+async function getLiquiditySources() {
+  const pagarConfigured = Boolean(
+    process.env.PAGAR_API_KEY &&
+    process.env.PAGAR_WEBHOOK_SECRET
+  );
+
+  return [
+    {
+      code: "MPESA_BUSINESS",
+      name: "M-Pesa",
+      asset: "MZN",
+      provider: "Pagar",
+      configured: pagarConfigured,
+      active: false
+    },
+    {
+      code: "EMOLA_BUSINESS",
+      name: "e-Mola",
+      asset: "MZN",
+      provider: "Pagar",
+      configured: pagarConfigured,
+      active: false
+    },
+    {
+      code: "BANK",
+      name: "Banco",
+      asset: "MZN",
+      configured: true,
+      active: false
+    },
+    {
+      code: "USDT_TRON",
+      name: "USDT TRC20",
+      asset: "USDT",
+      network: "TRON",
+      configured: Boolean(getTreasuryAddress()),
+      active: true
+    },
+    {
+      code: "EXTERNAL_WALLET",
+      name: "Carteira externa",
+      asset: "USDT",
+      network: "TRON",
+      configured: true,
+      active: false
+    },
+    {
+      code: "USDT_PURCHASE",
+      name: "Compra de USDT",
+      asset: "USDT",
+      network: "TRON",
+      configured: true,
+      active: true
+    },
+    {
+      code: "LIQUIDITY_PARTNER",
+      name: "Parceiro de liquidez",
+      asset: "USDT",
+      configured: false,
+      active: false
+    },
+    {
+      code: "MANUAL_APPROVED",
+      name: "Manual aprovado",
+      asset: "MZN/USDT",
+      configured: true,
+      active: false
+    }
+  ];
+}
+
+async function getDashboard() {
+  const mznWallet = await getOrCreateWallet("MZN");
+  const usdtWallet = await getOrCreateWallet("USDT");
+
+  const pendingDeposits = await getPendingDeposits();
+
+  const orders = await sql`
+    SELECT
+      id,
+      order_id,
+      name,
+      phone,
+      operation,
+      payment,
+      amount,
+      usdt_amount,
+      rate,
+      status,
+      created_at,
+      updated_at,
+      pagar_payment_id,
+      blockchain_tx_hash
+    FROM orders
+    ORDER BY created_at DESC
+    LIMIT 50
+  `;
+
+  const withdrawals = await sql`
+    SELECT
+      id,
+      withdrawal_id,
+      user_id,
+      amount,
+      asset,
+      network,
+      destination_address,
+      status,
+      tx_hash,
+      created_at,
+      updated_at,
+      order_id
+    FROM withdrawals
+    ORDER BY created_at DESC
+    LIMIT 50
+  `;
+
+  const transactions = await sql`
+    SELECT
+      id,
+      user_id,
+      type,
+      asset,
+      amount,
+      status,
+      reference,
+      blockchain_tx_hash,
+      created_at
+    FROM transactions
+    ORDER BY created_at DESC
+    LIMIT 100
+  `;
+
+  const binanceTransfers = await sql`
+    SELECT
+      order_id,
+      amount,
+      usdt_amount,
+      status,
+      blockchain_tx_hash,
+      created_at,
+      updated_at
+    FROM orders
+    WHERE operation = 'BUY_USDT_ADMIN'
+    ORDER BY created_at DESC
+    LIMIT 50
+  `;
+
+  return {
+    treasury: {
+      mzn: Number(mznWallet?.balance || 0),
+      usdt: Number(usdtWallet?.balance || 0),
+      rate: RATE,
+      min_mzn: MIN_MZN,
+      max_mzn: MAX_MZN,
+      wallet_address: getTreasuryAddress(),
+      network: "TRON",
+      asset: "USDT",
+      contract: USDT_CONTRACT,
+      decimals: USDT_DECIMALS
+    },
+
+    liquidity: {
+      real_usdt_available: Number(usdtWallet?.balance || 0),
+      mzn_available: Number(mznWallet?.balance || 0)
+    },
+
+    pending_deposits: pendingDeposits,
+
+    orders,
+
+    binance_transfers: binanceTransfers,
+
+    withdrawals,
+
+    transactions,
+
+    sources: await getLiquiditySources(),
+
+    system: {
+      rate: RATE,
+      min_mzn: MIN_MZN,
+      max_mzn: MAX_MZN,
+      network: "TRON",
+      usdt_contract: USDT_CONTRACT,
+      pagar_configured: Boolean(
+        process.env.PAGAR_API_KEY &&
+        process.env.PAGAR_WEBHOOK_SECRET
+      ),
+      tron_configured: Boolean(
+        process.env.TRON_PRO_API_KEY &&
+        getTreasuryAddress()
+      )
+    }
+  };
+}
+
+async function registerFunding(body) {
+  const type = String(body.type || "")
+    .trim()
+    .toUpperCase();
+
+  if (type === "MZN") {
+    return await registerMZNDeposit({
+      ...body,
+      source: normalizeSource(
+        body.source || "MANUAL_APPROVED"
+      )
     });
   }
+
+  if (type === "USDT") {
+    return await registerUSDTDeposit({
+      ...body,
+      source: "USDT_TRON"
+    });
+  }
+
+  return {
+    status: 400,
+    body: {
+      success: false,
+      message: "type deve ser MZN ou USDT."
+    }
+  };
 }
+
+async function handleAction(req, res, action) {
+  switch (action) {
+    case "sources":
+    case "liquidity_sources":
+      return res.status(200).json({
+        success: true,
+        sources: await getLiquiditySources()
+      });
+
+    case "dashboard":
+      return res.status(200).json({
+        success: true,
+        data: await getDashboard()
+      });
+
+    case "register_mzn_deposit":
+      return sendResult(
+        res,
+        await registerMZNDeposit(req.body || {})
+      );
+
+    case "confirm_mzn_deposit":
+      return sendResult(
+        res,
+        await confirmMZNDeposit(req.body || {})
+      );
+
+    case "register_usdt_deposit":
+      return sendResult(
+        res,
+        await registerUSDTDeposit(req.body || {})
+      );
+
+    case "confirm_usdt_deposit":
+      return sendResult(
+        res,
+        await confirmUSDTDeposit(req.body || {})
+      );
+
+    case "convert_mzn_to_usdt":
+      return sendResult(
+        res,
+        await convertMZNToUSDT(req.body || {})
+      );
+
+    case "release_reservation":
+      return sendResult(
+        res,
+        await releaseReservation(req.body || {})
+      );
+
+    case "register_funding":
+      return sendResult(
+        res,
+        await registerFunding(req.body || {})
+      );
+
+    case "pending_deposits":
+      return res.status(200).json({
+        success: true,
+        pending_deposits: await getPendingDeposits()
+      });
+
+    default:
+      return res.status(400).json({
+        success: false,
+        message: "Ação inválida."
+      });
+  }
+}
+
+function sendResult(res, result) {
+  return res.status(result.status).json(result.body);
+}
+
+export default async function handler(req, res) {
+  try {
+    const session = requireAdmin(req, res);
+
+    if (!session) return;
+
+    const url = new URL(
+      req.url,
+      `https://${req.headers.host || "localhost"}`
+    );
+
+    const action =
+      String(
+        url.searchParams.get("action") || "dashboard"
+      )
+        .trim()
+        .toLowerCase();
+
+    if (req.method === "GET") {
+      if (
+        action === "sources" ||
+        action === "liquidity_sources" ||
+        action === "dashboard" ||
+        action === "pending_deposits"
+      ) {
+        return await handleAction(req, res, action);
+      }
+
+      return res.status(405).json({
+        success: false,
+        message: "Método não permitido."
+      });
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({
+        success: false,
+        message: "Método não permitido."
+      });
+    }
+
+    return await handleAction(req, res, action);
+  } catch (error) {
+    console.error("admin-withdrawals error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno do servidor."
+    });
+  }
+    }
