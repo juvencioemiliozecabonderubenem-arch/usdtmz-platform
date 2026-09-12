@@ -29,36 +29,41 @@
  *   - Não faz retry automático depois de uma execução
  *     potencialmente executada.
  *   - Não considera API key configurada como liquidez disponível.
+ *
+ * Binance:
+ *   - liquidity/binance.js é carregado como adapter.
+ *   - Cotação pode ser consultada mesmo sem execução habilitada.
+ *   - Execução permanece bloqueada até a rota oficial
+ *     de financiamento/execução estar realmente disponível.
  */
 
 const crypto = require("crypto");
 
-/*
- * O cálculo da taxa de mercado já existe no projeto.
- *
- * ATENÇÃO:
- * Se este arquivo for importado por admin-withdrawals.js,
- * NÃO importe admin-withdrawals.js de volta para cá,
- * pois isso pode criar dependência circular.
- *
- * Para evitar isso, o router tenta carregar a função
- * apenas quando necessário.
- */
+/* =========================================================
+ * RATE PROVIDER
+ * =======================================================*/
+
 let getRealUsdtMznRate = null;
 
 function loadRateProvider() {
-  if (getRealUsdtMznRate) return getRealUsdtMznRate;
+  if (getRealUsdtMznRate) {
+    return getRealUsdtMznRate;
+  }
 
   try {
-    const mod = require("./admin-withdrawals.js");
+    const mod = require("../api/admin-withdrawals.js");
 
-    if (typeof mod.getRealUsdtMznRate !== "function") {
+    if (
+      typeof mod.getRealUsdtMznRate !==
+      "function"
+    ) {
       throw new Error(
         "getRealUsdtMznRate não está exportada por admin-withdrawals.js"
       );
     }
 
-    getRealUsdtMznRate = mod.getRealUsdtMznRate;
+    getRealUsdtMznRate =
+      mod.getRealUsdtMznRate;
 
     return getRealUsdtMznRate;
   } catch (err) {
@@ -68,21 +73,28 @@ function loadRateProvider() {
   }
 }
 
-/*
- * Processador que envia o USDT REAL da tesouraria para Binance.
- */
-let processAdminPurchaseToBinanceInternal = null;
+/* =========================================================
+ * BINANCE TRANSFER PROCESSOR
+ * =======================================================*/
+
+let processAdminPurchaseToBinanceInternal =
+  null;
 
 function loadBinanceTransferProcessor() {
-  if (processAdminPurchaseToBinanceInternal) {
+  if (
+    processAdminPurchaseToBinanceInternal
+  ) {
     return processAdminPurchaseToBinanceInternal;
   }
 
   try {
-    const mod = require("./admin-withdrawal-process.js");
+    const mod = require(
+      "../api/admin-withdrawal-process.js"
+    );
 
     if (
-      typeof mod.processAdminPurchaseToBinanceInternal !== "function"
+      typeof mod.processAdminPurchaseToBinanceInternal !==
+      "function"
     ) {
       throw new Error(
         "processAdminPurchaseToBinanceInternal não está exportada por admin-withdrawal-process.js"
@@ -101,38 +113,182 @@ function loadBinanceTransferProcessor() {
 }
 
 /* =========================================================
+ * BINANCE LIQUIDITY ADAPTER
+ *
+ * Estrutura esperada:
+ *
+ * liquidity/binance.js
+ *
+ * Pode exportar:
+ *
+ *   module.exports = adapter
+ *
+ * ou:
+ *
+ *   module.exports = {
+ *     adapter
+ *   }
+ *
+ * ou:
+ *
+ *   module.exports = {
+ *     createBinanceAdapter
+ *   }
+ *
+ * ou:
+ *
+ *   module.exports = function () {
+ *     return adapter;
+ *   }
+ *
+ * O router aceita essas formas para evitar acoplamento
+ * desnecessário ao formato interno do arquivo Binance.
+ * =======================================================*/
+
+let binanceAdapterCache = null;
+
+function loadBinanceLiquidityAdapter() {
+  if (binanceAdapterCache) {
+    return binanceAdapterCache;
+  }
+
+  try {
+    const mod =
+      require("./binance.js");
+
+    let adapter = null;
+
+    /*
+     * Forma 1:
+     *
+     * module.exports = adapter
+     */
+    if (
+      mod &&
+      typeof mod === "object" &&
+      typeof mod.getQuote ===
+        "function"
+    ) {
+      adapter = mod;
+    }
+
+    /*
+     * Forma 2:
+     *
+     * module.exports = {
+     *   adapter
+     * }
+     */
+    if (
+      !adapter &&
+      mod &&
+      mod.adapter &&
+      typeof mod.adapter.getQuote ===
+        "function"
+    ) {
+      adapter = mod.adapter;
+    }
+
+    /*
+     * Forma 3:
+     *
+     * module.exports = {
+     *   createBinanceAdapter
+     * }
+     */
+    if (
+      !adapter &&
+      mod &&
+      typeof mod.createBinanceAdapter ===
+        "function"
+    ) {
+      adapter =
+        mod.createBinanceAdapter();
+    }
+
+    /*
+     * Forma 4:
+     *
+     * module.exports = function () {
+     *   return adapter;
+     * }
+     */
+    if (
+      !adapter &&
+      typeof mod === "function"
+    ) {
+      adapter = mod();
+    }
+
+    if (
+      !adapter ||
+      typeof adapter !== "object"
+    ) {
+      throw new Error(
+        "liquidity/binance.js não exporta um adapter Binance válido."
+      );
+    }
+
+    /*
+     * O nome fica padronizado no router.
+     */
+    if (!adapter.name) {
+      adapter.name =
+        "BINANCE_CONNECT";
+    }
+
+    binanceAdapterCache =
+      adapter;
+
+    return adapter;
+  } catch (err) {
+    console.error(
+      "[USDTMZ][BINANCE_ADAPTER_LOAD]",
+      err
+    );
+
+    return null;
+  }
+}
+
+/* =========================================================
  * CONFIGURAÇÃO
  * =======================================================*/
 
 const DEFAULT_MAX_MZN = 40000;
 const DEFAULT_MIN_MZN = 64;
 
-const DEFAULT_MAX_QUOTE_AGE_MS = 15000;
-const DEFAULT_HTTP_TIMEOUT_MS = 15000;
+const DEFAULT_MAX_QUOTE_AGE_MS =
+  15000;
 
-const DEFAULT_MAX_SLIPPAGE_PERCENT = 1.5;
+const DEFAULT_HTTP_TIMEOUT_MS =
+  15000;
 
-/*
- * Por segurança, o router NÃO permite automaticamente
- * uma taxa pior que esta em relação à taxa de mercado.
- *
- * Exemplo:
- *
- * marketRate = 63
- * maxSlippage = 1.5%
- *
- * máximo aceitável ≈ 63.945 MZN/USDT
- */
-function envNumber(name, fallback) {
-  const raw = process.env[name];
+const DEFAULT_MAX_SLIPPAGE_PERCENT =
+  1.5;
 
-  if (raw === undefined || raw === null || raw === "") {
+function envNumber(
+  name,
+  fallback
+) {
+  const raw =
+    process.env[name];
+
+  if (
+    raw === undefined ||
+    raw === null ||
+    raw === ""
+  ) {
     return fallback;
   }
 
-  const value = Number(raw);
+  const value =
+    Number(raw);
 
-  if (!Number.isFinite(value) || value <= 0) {
+  if (
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
     return fallback;
   }
 
@@ -140,55 +296,54 @@ function envNumber(name, fallback) {
 }
 
 const CONFIG = Object.freeze({
-  minMzn: envNumber("USDTMZ_MIN_ADMIN_BUY_MZN", DEFAULT_MIN_MZN),
+  minMzn: envNumber(
+    "USDTMZ_MIN_ADMIN_BUY_MZN",
+    DEFAULT_MIN_MZN
+  ),
 
   maxMzn: envNumber(
     "USDTMZ_MAX_ADMIN_BUY_MZN",
     DEFAULT_MAX_MZN
   ),
 
-  maxQuoteAgeMs: envNumber(
-    "USDTMZ_LIQUIDITY_QUOTE_MAX_AGE_MS",
-    DEFAULT_MAX_QUOTE_AGE_MS
-  ),
+  maxQuoteAgeMs:
+    envNumber(
+      "USDTMZ_LIQUIDITY_QUOTE_MAX_AGE_MS",
+      DEFAULT_MAX_QUOTE_AGE_MS
+    ),
 
-  httpTimeoutMs: envNumber(
-    "USDTMZ_LIQUIDITY_HTTP_TIMEOUT_MS",
-    DEFAULT_HTTP_TIMEOUT_MS
-  ),
+  httpTimeoutMs:
+    envNumber(
+      "USDTMZ_LIQUIDITY_HTTP_TIMEOUT_MS",
+      DEFAULT_HTTP_TIMEOUT_MS
+    ),
 
-  maxSlippagePercent: envNumber(
-    "USDTMZ_MAX_LIQUIDITY_SLIPPAGE_PERCENT",
-    DEFAULT_MAX_SLIPPAGE_PERCENT
-  ),
+  maxSlippagePercent:
+    envNumber(
+      "USDTMZ_MAX_LIQUIDITY_SLIPPAGE_PERCENT",
+      DEFAULT_MAX_SLIPPAGE_PERCENT
+    ),
 
   treasuryAddress:
-    process.env.USDTMZ_TRON_WALLET_ADDRESS || "",
+    process.env.USDTMZ_TRON_WALLET_ADDRESS ||
+    "",
 
   binanceDestination:
-    process.env.BINANCE_USDT_TRON_ADDRESS || "",
+    process.env.BINANCE_USDT_TRON_ADDRESS ||
+    "",
 
-  /*
-   * Para impedir que alguém use o router como uma API
-   * pública, o handler exige a sessão administrativa.
-   */
   adminCookieName:
     process.env.USDTMZ_ADMIN_COOKIE_NAME ||
     "usdtmz_admin_session",
 
   adminSessionSecret:
-    process.env.ADMIN_SESSION_SECRET || "",
+    process.env.ADMIN_SESSION_SECRET ||
+    "",
 
-  /*
-   * Se TRUE, o router pode chamar automaticamente
-   * o processador que envia USDT para Binance.
-   *
-   * Recomendação inicial:
-   * false até a liquidez real estar validada em produção.
-   */
   autoSendToBinance:
     String(
-      process.env.USDTMZ_AUTO_SEND_TO_BINANCE || "false"
+      process.env.USDTMZ_AUTO_SEND_TO_BINANCE ||
+        "false"
     ).toLowerCase() === "true",
 });
 
@@ -196,64 +351,101 @@ const CONFIG = Object.freeze({
  * ESTADOS
  * =======================================================*/
 
-const ROUTER_STATUS = Object.freeze({
-  CREATED: "CREATED",
+const ROUTER_STATUS =
+  Object.freeze({
+    CREATED:
+      "CREATED",
 
-  QUOTE_REQUESTED: "QUOTE_REQUESTED",
-  QUOTED: "QUOTED",
+    QUOTE_REQUESTED:
+      "QUOTE_REQUESTED",
 
-  EXECUTING: "EXECUTING",
+    QUOTED:
+      "QUOTED",
 
-  ACQUIRED: "ACQUIRED",
+    EXECUTING:
+      "EXECUTING",
 
-  SETTLEMENT_PENDING: "SETTLEMENT_PENDING",
-  READY_TO_SEND: "READY_TO_SEND",
+    ACQUIRED:
+      "ACQUIRED",
 
-  SENT_TO_BINANCE: "SENT_TO_BINANCE",
-  COMPLETED: "COMPLETED",
+    SETTLEMENT_PENDING:
+      "SETTLEMENT_PENDING",
 
-  LIQUIDITY_REQUIRED: "LIQUIDITY_REQUIRED",
+    READY_TO_SEND:
+      "READY_TO_SEND",
 
-  RECONCILIATION_REQUIRED: "RECONCILIATION_REQUIRED",
+    SENT_TO_BINANCE:
+      "SENT_TO_BINANCE",
 
-  FAILED: "FAILED",
-});
+    COMPLETED:
+      "COMPLETED",
+
+    LIQUIDITY_REQUIRED:
+      "LIQUIDITY_REQUIRED",
+
+    RECONCILIATION_REQUIRED:
+      "RECONCILIATION_REQUIRED",
+
+    FAILED:
+      "FAILED",
+  });
 
 /* =========================================================
  * ERROS
  * =======================================================*/
 
 class LiquidityRouterError extends Error {
-  constructor(message, code, details = {}) {
+  constructor(
+    message,
+    code,
+    details = {}
+  ) {
     super(message);
 
-    this.name = "LiquidityRouterError";
-    this.code = code;
-    this.details = details;
+    this.name =
+      "LiquidityRouterError";
+
+    this.code =
+      code;
+
+    this.details =
+      details;
   }
 }
 
 class DefinitiveLiquidityError extends LiquidityRouterError {
-  constructor(message, details = {}) {
+  constructor(
+    message,
+    details = {}
+  ) {
     super(
       message,
       "DEFINITIVE_LIQUIDITY_FAILURE",
       details
     );
 
-    this.name = "DefinitiveLiquidityError";
+    this.name =
+      "DefinitiveLiquidityError";
+
+    this.definitive = true;
   }
 }
 
 class UncertainExecutionError extends LiquidityRouterError {
-  constructor(message, details = {}) {
+  constructor(
+    message,
+    details = {}
+  ) {
     super(
       message,
       "UNCERTAIN_EXECUTION",
       details
     );
 
-    this.name = "UncertainExecutionError";
+    this.name =
+      "UncertainExecutionError";
+
+    this.definitive = false;
   }
 }
 
@@ -269,46 +461,68 @@ function isoNow() {
   return new Date().toISOString();
 }
 
-function makeId(prefix = "liq") {
+function makeId(
+  prefix = "liq"
+) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
-function makeIdempotencyKey(orderId) {
-  return `usdtmz-liquidity-${String(orderId)}`;
+function makeIdempotencyKey(
+  orderId
+) {
+  return `usdtmz-liquidity-${String(
+    orderId
+  )}`;
 }
 
-function isPositiveNumber(value) {
+function round(
+  value,
+  decimals = 8
+) {
+  const factor =
+    10 ** decimals;
+
   return (
-    typeof value === "number" &&
-    Number.isFinite(value) &&
-    value > 0
+    Math.round(
+      value * factor
+    ) / factor
   );
 }
 
-function round(value, decimals = 8) {
-  const factor = 10 ** decimals;
-
-  return Math.round(value * factor) / factor;
-}
-
 function safeNumber(value) {
-  const n = Number(value);
+  const n =
+    Number(value);
 
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n)
+    ? n
+    : null;
 }
 
-function normalizeAmount(value, decimals = 8) {
-  const n = Number(value);
+function normalizeAmount(
+  value,
+  decimals = 8
+) {
+  const n =
+    Number(value);
 
-  if (!Number.isFinite(n) || n <= 0) {
+  if (
+    !Number.isFinite(n) ||
+    n <= 0
+  ) {
     return null;
   }
 
-  return round(n, decimals);
+  return round(
+    n,
+    decimals
+  );
 }
 
-function assertMznAmount(amountMzn) {
-  const amount = Number(amountMzn);
+function assertMznAmount(
+  amountMzn
+) {
+  const amount =
+    Number(amountMzn);
 
   if (!Number.isFinite(amount)) {
     throw new LiquidityRouterError(
@@ -317,32 +531,45 @@ function assertMznAmount(amountMzn) {
     );
   }
 
-  if (amount < CONFIG.minMzn) {
+  if (
+    amount < CONFIG.minMzn
+  ) {
     throw new LiquidityRouterError(
       `Valor mínimo: ${CONFIG.minMzn} MZN.`,
       "MZN_BELOW_MINIMUM"
     );
   }
 
-  if (amount > CONFIG.maxMzn) {
+  if (
+    amount > CONFIG.maxMzn
+  ) {
     throw new LiquidityRouterError(
       `Valor máximo: ${CONFIG.maxMzn} MZN.`,
       "MZN_ABOVE_MAXIMUM"
     );
   }
 
-  return round(amount, 2);
+  return round(
+    amount,
+    2
+  );
 }
 
 function assertTreasuryConfigured() {
-  if (!CONFIG.treasuryAddress) {
+  if (
+    !CONFIG.treasuryAddress
+  ) {
     throw new LiquidityRouterError(
       "USDTMZ_TRON_WALLET_ADDRESS não está configurado.",
       "TREASURY_ADDRESS_NOT_CONFIGURED"
     );
   }
 
-  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(CONFIG.treasuryAddress)) {
+  if (
+    !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(
+      CONFIG.treasuryAddress
+    )
+  ) {
     throw new LiquidityRouterError(
       "USDTMZ_TRON_WALLET_ADDRESS inválido.",
       "INVALID_TREASURY_ADDRESS"
@@ -353,7 +580,9 @@ function assertTreasuryConfigured() {
 }
 
 function assertBinanceDestinationConfigured() {
-  if (!CONFIG.binanceDestination) {
+  if (
+    !CONFIG.binanceDestination
+  ) {
     throw new LiquidityRouterError(
       "BINANCE_USDT_TRON_ADDRESS não está configurado.",
       "BINANCE_DESTINATION_NOT_CONFIGURED"
@@ -375,28 +604,44 @@ function assertBinanceDestinationConfigured() {
 }
 
 /* =========================================================
- * HTTP
+ * HTTP HELPER
  * =======================================================*/
 
-async function fetchJson(url, options = {}) {
-  const controller = new AbortController();
+async function fetchJson(
+  url,
+  options = {}
+) {
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, CONFIG.httpTimeoutMs);
+  const timeout =
+    setTimeout(
+      () => {
+        controller.abort();
+      },
+      CONFIG.httpTimeoutMs
+    );
 
   try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
+    const response =
+      await fetch(
+        url,
+        {
+          ...options,
+          signal:
+            controller.signal,
+        }
+      );
 
-    const text = await response.text();
+    const text =
+      await response.text();
 
     let body = null;
 
     try {
-      body = text ? JSON.parse(text) : null;
+      body = text
+        ? JSON.parse(text)
+        : null;
     } catch {
       body = text;
     }
@@ -406,7 +651,9 @@ async function fetchJson(url, options = {}) {
         `HTTP ${response.status} ao consultar provider.`,
         "PROVIDER_HTTP_ERROR",
         {
-          status: response.status,
+          status:
+            response.status,
+
           body,
         }
       );
@@ -414,7 +661,10 @@ async function fetchJson(url, options = {}) {
 
     return body;
   } catch (err) {
-    if (err.name === "AbortError") {
+    if (
+      err.name ===
+      "AbortError"
+    ) {
       throw new LiquidityRouterError(
         "Timeout ao consultar provider.",
         "PROVIDER_TIMEOUT"
@@ -423,30 +673,24 @@ async function fetchJson(url, options = {}) {
 
     throw err;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(
+      timeout
+    );
   }
 }
 
 /* =========================================================
  * ADAPTER CONTRACT
- *
- * Cada provider real deverá implementar:
- *
- *   name
- *   executionAvailable
- *   isConfigured()
- *   getQuote(input)
- *   checkLiquidity(input, quote)
- *   execute(input, quote, idempotencyKey)
- *   getExecutionStatus(executionId)
- *   getAcquiredUSDT(input, execution)
- *   getSettlement(input, execution)
- *
- * O router nunca presume que um provider é executável.
  * =======================================================*/
 
-function validateAdapter(adapter) {
-  if (!adapter || typeof adapter !== "object") {
+function validateAdapter(
+  adapter
+) {
+  if (
+    !adapter ||
+    typeof adapter !==
+      "object"
+  ) {
     return false;
   }
 
@@ -454,31 +698,52 @@ function validateAdapter(adapter) {
     return false;
   }
 
-  if (typeof adapter.isConfigured !== "function") {
+  if (
+    typeof adapter.isConfigured !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.getQuote !== "function") {
+  if (
+    typeof adapter.getQuote !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.checkLiquidity !== "function") {
+  if (
+    typeof adapter.checkLiquidity !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.execute !== "function") {
+  if (
+    typeof adapter.execute !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.getExecutionStatus !== "function") {
+  if (
+    typeof adapter.getExecutionStatus !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.getAcquiredUSDT !== "function") {
+  if (
+    typeof adapter.getAcquiredUSDT !==
+    "function"
+  ) {
     return false;
   }
 
-  if (typeof adapter.getSettlement !== "function") {
+  if (
+    typeof adapter.getSettlement !==
+    "function"
+  ) {
     return false;
   }
 
@@ -489,11 +754,18 @@ function validateAdapter(adapter) {
  * ADAPTER BASE
  * =======================================================*/
 
-function unavailableAdapter(name, reason) {
+function unavailableAdapter(
+  name,
+  reason
+) {
   return {
     name,
 
-    executionAvailable: false,
+    executionAvailable:
+      false,
+
+    quoteAvailable:
+      false,
 
     isConfigured() {
       return false;
@@ -503,7 +775,9 @@ function unavailableAdapter(name, reason) {
       throw new DefinitiveLiquidityError(
         `${name}: execução não disponível.`,
         {
-          provider: name,
+          provider:
+            name,
+
           reason,
         }
       );
@@ -511,8 +785,12 @@ function unavailableAdapter(name, reason) {
 
     async checkLiquidity() {
       return {
-        available: false,
-        definitive: true,
+        available:
+          false,
+
+        definitive:
+          true,
+
         reason,
       };
     },
@@ -521,7 +799,9 @@ function unavailableAdapter(name, reason) {
       throw new DefinitiveLiquidityError(
         `${name}: adapter de execução ainda não está implementado.`,
         {
-          provider: name,
+          provider:
+            name,
+
           reason,
         }
       );
@@ -529,195 +809,122 @@ function unavailableAdapter(name, reason) {
 
     async getExecutionStatus() {
       return {
-        status: "UNAVAILABLE",
-        definitive: true,
+        status:
+          "UNAVAILABLE",
+
+        definitive:
+          true,
       };
     },
 
     async getAcquiredUSDT() {
       return {
-        confirmed: false,
-        amountUSDT: 0,
+        confirmed:
+          false,
+
+        amountUSDT:
+          0,
       };
     },
 
     async getSettlement() {
       return {
-        settled: false,
-        confirmed: false,
+        settled:
+          false,
+
+        confirmed:
+          false,
       };
     },
   };
+}
+
+/* =========================================================
+ * ADAPTER BINANCE CONNECT
+ * =======================================================*/
+
+function createBinanceConnectAdapter() {
+  const adapter =
+    loadBinanceLiquidityAdapter();
+
+  if (!adapter) {
+    return unavailableAdapter(
+      "BINANCE_CONNECT",
+      "liquidity/binance.js não pôde ser carregado."
+    );
+  }
+
+  /*
+   * Não alteramos o adapter original.
+   *
+   * Apenas normalizamos a identificação.
+   */
+  if (!adapter.name) {
+    adapter.name =
+      "BINANCE_CONNECT";
+  }
+
+  /*
+   * Se o arquivo Binance não declarar quoteAvailable,
+   * usamos getQuote como indicação de capacidade
+   * de cotação.
+   */
+  if (
+    typeof adapter.quoteAvailable !==
+    "boolean"
+  ) {
+    adapter.quoteAvailable =
+      typeof adapter.getQuote ===
+      "function";
+  }
+
+  return adapter;
 }
 
 /* =========================================================
  * BINANCE SPOT
  *
- * NÃO habilitado para MZN automaticamente.
- *
- * Binance Spot exige um par/quote asset real.
- * Não vamos assumir MZNUSDT.
- *
- * Para ativar futuramente, será necessário:
- *
- *   - definir par real;
- *   - definir asset de financiamento;
- *   - verificar saldo;
- *   - executar ordem;
- *   - verificar fills;
- *   - retirar USDT para a carteira USDTMZ;
- *
- * A API oficial suporta criação de ordens e
- * quoteOrderQty em MARKET orders. Porém isso não
- * transforma MZN em quote asset automaticamente.
+ * Continua bloqueada.
  * =======================================================*/
 
 function createBinanceSpotAdapter() {
-  const apiKey = process.env.BINANCE_API_KEY || "";
-  const apiSecret = process.env.BINANCE_API_SECRET || "";
+  const apiKey =
+    process.env.BINANCE_API_KEY ||
+    "";
 
-  const symbol = process.env.BINANCE_LIQUIDITY_SYMBOL || "";
-
-  const explicitlyEnabled =
-    String(
-      process.env.USDTMZ_ENABLE_BINANCE_SPOT_LIQUIDITY ||
-        "false"
-    ).toLowerCase() === "true";
-
-  /*
-   * Mesmo com API key, continua desativado se não houver
-   * um símbolo de financiamento explicitamente configurado.
-   *
-   * Exemplo futuro:
-   * BTCUSDT
-   * USDCUSDT
-   *
-   * Mas isso ainda exigirá que o router saiba de onde vem
-   * o ativo de financiamento.
-   */
-  const configured =
-    Boolean(apiKey && apiSecret && symbol);
-
-  return {
-    name: "BINANCE_SPOT",
-
-    executionAvailable:
-      explicitlyEnabled && configured,
-
-    isConfigured() {
-      return configured;
-    },
-
-    async getQuote(input) {
-      if (!explicitlyEnabled) {
-        throw new DefinitiveLiquidityError(
-          "Binance Spot está desativada para o Liquidity Router.",
-          {
-            provider: "BINANCE_SPOT",
-            reason:
-              "MZN não é assumido como quote asset. Configure uma rota real de financiamento."
-          }
-        );
-      }
-
-      if (!configured) {
-        throw new DefinitiveLiquidityError(
-          "Binance Spot não está configurada.",
-          {
-            provider: "BINANCE_SPOT"
-          }
-        );
-      }
-
-      /*
-       * Não inventar uma cotação MZN→USDT.
-       *
-       * A implementação real deverá primeiro definir
-       * como o MZN é convertido no ativo aceito pelo par.
-       */
-      throw new DefinitiveLiquidityError(
-        "Binance Spot configurada, mas a rota MZN→ativo de financiamento→USDT ainda não foi implementada.",
-        {
-          provider: "BINANCE_SPOT",
-          symbol
-        }
-      );
-    },
-
-    async checkLiquidity() {
-      return {
-        available: false,
-        definitive: true,
-        reason:
-          "Rota real de financiamento MZN→Binance ainda não configurada."
-      };
-    },
-
-    async execute() {
-      throw new DefinitiveLiquidityError(
-        "Execução Binance bloqueada até existir uma rota real de financiamento.",
-        {
-          provider: "BINANCE_SPOT"
-        }
-      );
-    },
-
-    async getExecutionStatus() {
-      return {
-        status: "BLOCKED",
-        definitive: true
-      };
-    },
-
-    async getAcquiredUSDT() {
-      return {
-        confirmed: false,
-        amountUSDT: 0
-      };
-    },
-
-    async getSettlement() {
-      return {
-        settled: false,
-        confirmed: false
-      };
-    }
-  };
-}
-
-/* =========================================================
- * COINBASE
- *
- * Também permanece bloqueada até existir rota real
- * de financiamento em MZN.
- *
- * Coinbase Advanced Trade suporta criação de ordens,
- * consulta de ordens e fills, mas isso não significa
- * que uma conta possa comprar USDT diretamente com MZN.
- * =======================================================*/
-
-function createCoinbaseAdapter() {
-  const apiKey = process.env.COINBASE_API_KEY || "";
   const apiSecret =
-    process.env.COINBASE_API_SECRET || "";
+    process.env.BINANCE_API_SECRET ||
+    "";
 
-  const product =
-    process.env.COINBASE_LIQUIDITY_PRODUCT || "";
+  const symbol =
+    process.env.BINANCE_LIQUIDITY_SYMBOL ||
+    "";
 
   const explicitlyEnabled =
     String(
-      process.env.USDTMZ_ENABLE_COINBASE_LIQUIDITY ||
+      process.env
+        .USDTMZ_ENABLE_BINANCE_SPOT_LIQUIDITY ||
         "false"
-    ).toLowerCase() === "true";
+    ).toLowerCase() ===
+    "true";
 
   const configured =
-    Boolean(apiKey && apiSecret && product);
+    Boolean(
+      apiKey &&
+        apiSecret &&
+        symbol
+    );
 
   return {
-    name: "COINBASE_ADVANCED_TRADE",
+    name:
+      "BINANCE_SPOT",
 
     executionAvailable:
-      explicitlyEnabled && configured,
+      explicitlyEnabled &&
+      configured,
+
+    quoteAvailable:
+      false,
 
     isConfigured() {
       return configured;
@@ -725,18 +932,138 @@ function createCoinbaseAdapter() {
 
     async getQuote() {
       throw new DefinitiveLiquidityError(
-        "Coinbase não está habilitada para MZN→USDT até existir uma rota real de financiamento.",
+        "Binance Spot não está habilitada para a rota MZN→USDT.",
         {
-          provider: "COINBASE_ADVANCED_TRADE",
-          product
+          provider:
+            "BINANCE_SPOT",
+
+          symbol,
         }
       );
     },
 
     async checkLiquidity() {
       return {
-        available: false,
-        definitive: true,
+        available:
+          false,
+
+        definitive:
+          true,
+
+        reason:
+          "Rota real MZN→ativo de financiamento→USDT não configurada."
+      };
+    },
+
+    async execute() {
+      throw new DefinitiveLiquidityError(
+        "Execução Binance Spot bloqueada.",
+        {
+          provider:
+            "BINANCE_SPOT",
+        }
+      );
+    },
+
+    async getExecutionStatus() {
+      return {
+        status:
+          "BLOCKED",
+
+        definitive:
+          true,
+      };
+    },
+
+    async getAcquiredUSDT() {
+      return {
+        confirmed:
+          false,
+
+        amountUSDT:
+          0,
+      };
+    },
+
+    async getSettlement() {
+      return {
+        settled:
+          false,
+
+        confirmed:
+          false,
+      };
+    },
+  };
+}
+
+/* =========================================================
+ * COINBASE
+ * =======================================================*/
+
+function createCoinbaseAdapter() {
+  const apiKey =
+    process.env.COINBASE_API_KEY ||
+    "";
+
+  const apiSecret =
+    process.env.COINBASE_API_SECRET ||
+    "";
+
+  const product =
+    process.env.COINBASE_LIQUIDITY_PRODUCT ||
+    "";
+
+  const explicitlyEnabled =
+    String(
+      process.env
+        .USDTMZ_ENABLE_COINBASE_LIQUIDITY ||
+        "false"
+    ).toLowerCase() ===
+    "true";
+
+  const configured =
+    Boolean(
+      apiKey &&
+        apiSecret &&
+        product
+    );
+
+  return {
+    name:
+      "COINBASE_ADVANCED_TRADE",
+
+    executionAvailable:
+      explicitlyEnabled &&
+      configured,
+
+    quoteAvailable:
+      false,
+
+    isConfigured() {
+      return configured;
+    },
+
+    async getQuote() {
+      throw new DefinitiveLiquidityError(
+        "Coinbase não está habilitada para MZN→USDT.",
+        {
+          provider:
+            "COINBASE_ADVANCED_TRADE",
+
+          product,
+        }
+      );
+    },
+
+    async checkLiquidity() {
+      return {
+        available:
+          false,
+
+        definitive:
+          true,
+
         reason:
           "Rota MZN→Coinbase→USDT ainda não configurada."
       };
@@ -744,33 +1071,43 @@ function createCoinbaseAdapter() {
 
     async execute() {
       throw new DefinitiveLiquidityError(
-        "Execução Coinbase bloqueada até existir rota real de financiamento.",
+        "Execução Coinbase bloqueada.",
         {
-          provider: "COINBASE_ADVANCED_TRADE"
+          provider:
+            "COINBASE_ADVANCED_TRADE",
         }
       );
     },
 
     async getExecutionStatus() {
       return {
-        status: "BLOCKED",
-        definitive: true
+        status:
+          "BLOCKED",
+
+        definitive:
+          true,
       };
     },
 
     async getAcquiredUSDT() {
       return {
-        confirmed: false,
-        amountUSDT: 0
+        confirmed:
+          false,
+
+        amountUSDT:
+          0,
       };
     },
 
     async getSettlement() {
       return {
-        settled: false,
-        confirmed: false
+        settled:
+          false,
+
+        confirmed:
+          false,
       };
-    }
+    },
   };
 }
 
@@ -780,17 +1117,21 @@ function createCoinbaseAdapter() {
 
 function createKotaniAdapter() {
   const apiKey =
-    process.env.KOTANI_API_KEY || "";
+    process.env.KOTANI_API_KEY ||
+    "";
 
   const explicitlyEnabled =
     String(
-      process.env.USDTMZ_ENABLE_KOTANI_LIQUIDITY ||
+      process.env
+        .USDTMZ_ENABLE_KOTANI_LIQUIDITY ||
         "false"
-    ).toLowerCase() === "true";
+    ).toLowerCase() ===
+    "true";
 
   return unavailableAdapter(
     "KOTANI",
-    apiKey && explicitlyEnabled
+    apiKey &&
+      explicitlyEnabled
       ? "Credencial encontrada, mas o contrato MZN→USDT executável ainda precisa ser ligado ao adapter."
       : "Adapter de execução Kotani ainda não configurado."
   );
@@ -802,17 +1143,21 @@ function createKotaniAdapter() {
 
 function createRedPayAdapter() {
   const apiKey =
-    process.env.REDPAY_API_KEY || "";
+    process.env.REDPAY_API_KEY ||
+    "";
 
   const explicitlyEnabled =
     String(
-      process.env.USDTMZ_ENABLE_REDPAY_LIQUIDITY ||
+      process.env
+        .USDTMZ_ENABLE_REDPAY_LIQUIDITY ||
         "false"
-    ).toLowerCase() === "true";
+    ).toLowerCase() ===
+    "true";
 
   return unavailableAdapter(
     "REDPAY",
-    apiKey && explicitlyEnabled
+    apiKey &&
+      explicitlyEnabled
       ? "Credencial encontrada, mas o contrato real de execução ainda não está ligado ao adapter."
       : "Adapter de execução RedPay ainda não configurado."
   );
@@ -823,24 +1168,102 @@ function createRedPayAdapter() {
  * =======================================================*/
 
 function getDefaultAdapters() {
-  return [
-    createBinanceSpotAdapter(),
-    createCoinbaseAdapter(),
-    createKotaniAdapter(),
-    createRedPayAdapter(),
-  ].filter(validateAdapter);
+  const adapters = [];
+
+  /*
+   * PRIMEIRO:
+   * Binance Connect.
+   *
+   * É a fonte que estamos atualmente
+   * integrando para testar MZN→USDT.
+   */
+  const binance =
+    createBinanceConnectAdapter();
+
+  if (
+    validateAdapter(binance)
+  ) {
+    adapters.push(
+      binance
+    );
+  }
+
+  /*
+   * Binance Spot continua separado.
+   */
+  const binanceSpot =
+    createBinanceSpotAdapter();
+
+  if (
+    validateAdapter(
+      binanceSpot
+    )
+  ) {
+    adapters.push(
+      binanceSpot
+    );
+  }
+
+  const coinbase =
+    createCoinbaseAdapter();
+
+  if (
+    validateAdapter(
+      coinbase
+    )
+  ) {
+    adapters.push(
+      coinbase
+    );
+  }
+
+  const kotani =
+    createKotaniAdapter();
+
+  if (
+    validateAdapter(
+      kotani
+    )
+  ) {
+    adapters.push(
+      kotani
+    );
+  }
+
+  const redpay =
+    createRedPayAdapter();
+
+  if (
+    validateAdapter(
+      redpay
+    )
+  ) {
+    adapters.push(
+      redpay
+    );
+  }
+
+  return adapters;
 }
 
 /* =========================================================
  * NORMALIZAÇÃO DE QUOTE
  * =======================================================*/
 
-function normalizeQuote(provider, input, rawQuote) {
-  if (!rawQuote || typeof rawQuote !== "object") {
+function normalizeQuote(
+  provider,
+  input,
+  rawQuote
+) {
+  if (
+    !rawQuote ||
+    typeof rawQuote !==
+      "object"
+  ) {
     throw new DefinitiveLiquidityError(
       `${provider}: provider não retornou uma cotação válida.`,
       {
-        provider
+        provider,
       }
     );
   }
@@ -867,7 +1290,7 @@ function normalizeQuote(provider, input, rawQuote) {
       `${provider}: quantidade USDT inválida na cotação.`,
       {
         provider,
-        rawQuote
+        rawQuote,
       }
     );
   }
@@ -880,35 +1303,48 @@ function normalizeQuote(provider, input, rawQuote) {
       `${provider}: taxa efetiva inválida na cotação.`,
       {
         provider,
-        rawQuote
+        rawQuote,
       }
     );
   }
 
   const createdAt =
     rawQuote.createdAt
-      ? new Date(rawQuote.createdAt).getTime()
+      ? new Date(
+          rawQuote.createdAt
+        ).getTime()
       : now();
 
   const expiresAt =
     rawQuote.expiresAt
-      ? new Date(rawQuote.expiresAt).getTime()
-      : createdAt + CONFIG.maxQuoteAgeMs;
+      ? new Date(
+          rawQuote.expiresAt
+        ).getTime()
+      : createdAt +
+        CONFIG.maxQuoteAgeMs;
 
-  if (!Number.isFinite(createdAt)) {
+  if (
+    !Number.isFinite(
+      createdAt
+    )
+  ) {
     throw new DefinitiveLiquidityError(
       `${provider}: createdAt inválido.`,
       {
-        provider
+        provider,
       }
     );
   }
 
-  if (!Number.isFinite(expiresAt)) {
+  if (
+    !Number.isFinite(
+      expiresAt
+    )
+  ) {
     throw new DefinitiveLiquidityError(
       `${provider}: expiresAt inválido.`,
       {
-        provider
+        provider,
       }
     );
   }
@@ -921,22 +1357,28 @@ function normalizeQuote(provider, input, rawQuote) {
       rawQuote.id ||
       makeId("quote"),
 
-    amountMZN: input.amountMZN,
+    amountMZN:
+      input.amountMZN,
 
-    estimatedUSDT: round(
-      estimatedUsdt,
-      8
-    ),
+    estimatedUSDT:
+      round(
+        estimatedUsdt,
+        8
+      ),
 
-    effectiveRate: round(
-      effectiveRate,
-      8
-    ),
+    effectiveRate:
+      round(
+        effectiveRate,
+        8
+      ),
 
-    feesMZN: round(
-      safeNumber(rawQuote.feesMZN) || 0,
-      8
-    ),
+    feesMZN:
+      round(
+        safeNumber(
+          rawQuote.feesMZN
+        ) || 0,
+        8
+      ),
 
     paymentAsset:
       rawQuote.paymentAsset ||
@@ -951,23 +1393,30 @@ function normalizeQuote(provider, input, rawQuote) {
       CONFIG.treasuryAddress,
 
     createdAt:
-      new Date(createdAt).toISOString(),
+      new Date(
+        createdAt
+      ).toISOString(),
 
     expiresAt:
-      new Date(expiresAt).toISOString(),
+      new Date(
+        expiresAt
+      ).toISOString(),
 
-    raw: rawQuote
+    raw:
+      rawQuote,
   };
 }
 
 /* =========================================================
- * RATE / SLIPPAGE
+ * RATE
  * =======================================================*/
 
 async function getMarketRate() {
-  const fn = loadRateProvider();
+  const fn =
+    loadRateProvider();
 
-  const result = await fn(false);
+  const result =
+    await fn(false);
 
   const rate =
     safeNumber(
@@ -976,7 +1425,10 @@ async function getMarketRate() {
         result?.value
     );
 
-  if (!rate || rate <= 0) {
+  if (
+    !rate ||
+    rate <= 0
+  ) {
     throw new LiquidityRouterError(
       "Taxa de mercado inválida.",
       "INVALID_MARKET_RATE"
@@ -994,28 +1446,44 @@ async function getMarketRate() {
       result?.fetchedAt ||
       isoNow(),
 
-    raw: result
+    raw:
+      result,
   };
 }
 
-function getMaximumAcceptableRate(marketRate) {
+function getMaximumAcceptableRate(
+  marketRate,
+  slippagePercent =
+    CONFIG.maxSlippagePercent
+) {
   return round(
     marketRate *
-      (1 + CONFIG.maxSlippagePercent / 100),
+      (1 +
+        slippagePercent /
+          100),
     8
   );
 }
 
 function validateQuoteAgainstMarket(
   quote,
-  marketRate
+  marketRate,
+  slippagePercent =
+    CONFIG.maxSlippagePercent
 ) {
   const maxRate =
-    getMaximumAcceptableRate(marketRate);
+    getMaximumAcceptableRate(
+      marketRate,
+      slippagePercent
+    );
 
-  if (quote.effectiveRate > maxRate) {
+  if (
+    quote.effectiveRate >
+    maxRate
+  ) {
     return {
-      acceptable: false,
+      acceptable:
+        false,
 
       reason:
         "A cotação está acima do limite máximo de slippage.",
@@ -1025,19 +1493,20 @@ function validateQuoteAgainstMarket(
       quoteRate:
         quote.effectiveRate,
 
-      maxRate
+      maxRate,
     };
   }
 
   return {
-    acceptable: true,
+    acceptable:
+      true,
 
     marketRate,
 
     quoteRate:
       quote.effectiveRate,
 
-    maxRate
+    maxRate,
   };
 }
 
@@ -1045,12 +1514,15 @@ function validateQuoteAgainstMarket(
  * INPUT
  * =======================================================*/
 
-function normalizeInput(input = {}) {
-  const amountMZN = assertMznAmount(
-    input.amountMZN ??
-      input.amountMzn ??
-      input.mzn
-  );
+function normalizeInput(
+  input = {}
+) {
+  const amountMZN =
+    assertMznAmount(
+      input.amountMZN ??
+        input.amountMzn ??
+        input.mzn
+    );
 
   const orderId =
     input.orderId ||
@@ -1067,7 +1539,8 @@ function normalizeInput(input = {}) {
   assertTreasuryConfigured();
 
   return {
-    orderId: String(orderId),
+    orderId:
+      String(orderId),
 
     amountMZN,
 
@@ -1082,10 +1555,13 @@ function normalizeInput(input = {}) {
       CONFIG.treasuryAddress,
 
     binanceDestination:
-      CONFIG.binanceDestination || null,
+      CONFIG.binanceDestination ||
+      null,
 
     maxRate:
-      safeNumber(input.maxRate) || null,
+      safeNumber(
+        input.maxRate
+      ) || null,
 
     maxSlippagePercent:
       safeNumber(
@@ -1095,9 +1571,10 @@ function normalizeInput(input = {}) {
 
     metadata:
       input.metadata &&
-      typeof input.metadata === "object"
+      typeof input.metadata ===
+        "object"
         ? input.metadata
-        : {}
+        : {},
   };
 }
 
@@ -1112,20 +1589,37 @@ async function discoverSources(
   const results = [];
 
   for (const adapter of adapters) {
-    let configured = false;
+    let configured =
+      false;
 
     try {
       configured =
         Boolean(
-          await adapter.isConfigured(input)
+          await adapter.isConfigured(
+            input
+          )
         );
     } catch (err) {
       results.push({
-        provider: adapter.name,
-        configured: false,
-        executionAvailable: false,
-        available: false,
-        error: err.message
+        provider:
+          adapter.name,
+
+        configured:
+          false,
+
+        quoteAvailable:
+          Boolean(
+            adapter.quoteAvailable
+          ),
+
+        executionAvailable:
+          false,
+
+        available:
+          false,
+
+        error:
+          err.message,
       });
 
       continue;
@@ -1133,36 +1627,53 @@ async function discoverSources(
 
     if (!configured) {
       results.push({
-        provider: adapter.name,
-        configured: false,
+        provider:
+          adapter.name,
+
+        configured:
+          false,
+
+        quoteAvailable:
+          Boolean(
+            adapter.quoteAvailable
+          ),
+
         executionAvailable:
-          Boolean(adapter.executionAvailable),
-        available: false,
-        reason:
-          "Provider não configurado."
-      });
+          Boolean(
+            adapter.executionAvailable
+          ),
 
-      continue;
-    }
+        available:
+          false,
 
-    if (!adapter.executionAvailable) {
-      results.push({
-        provider: adapter.name,
-        configured: true,
-        executionAvailable: false,
-        available: false,
         reason:
-          "Provider configurado, mas execução está desabilitada."
+          "Provider não configurado.",
       });
 
       continue;
     }
 
     results.push({
-      provider: adapter.name,
-      configured: true,
-      executionAvailable: true,
-      available: null
+      provider:
+        adapter.name,
+
+      configured:
+        true,
+
+      quoteAvailable:
+        Boolean(
+          adapter.quoteAvailable
+        ),
+
+      executionAvailable:
+        Boolean(
+          adapter.executionAvailable
+        ),
+
+      available:
+        Boolean(
+          adapter.executionAvailable
+        ),
     });
   }
 
@@ -1171,33 +1682,66 @@ async function discoverSources(
 
 /* =========================================================
  * QUOTATION
+ *
+ * quoteAvailable:
+ *   permite consultar preço.
+ *
+ * executionAvailable:
+ *   permite executar compra.
+ *
+ * Isto é importante para Binance Connect:
+ * podemos testar a cotação sem liberar
+ * movimentação financeira.
  * =======================================================*/
 
 async function getQuotes(
   input,
   adapters,
-  marketRate
+  marketRate,
+  options = {}
 ) {
   const quotes = [];
   const rejected = [];
 
+  const executionOnly =
+    options.executionOnly === true;
+
   for (const adapter of adapters) {
-    if (!adapter.executionAvailable) {
+    const canQuote =
+      adapter.quoteAvailable !==
+        false;
+
+    if (!canQuote) {
       continue;
     }
 
-    let configured = false;
+    if (
+      executionOnly &&
+      !adapter.executionAvailable
+    ) {
+      continue;
+    }
+
+    let configured =
+      false;
 
     try {
       configured =
         Boolean(
-          await adapter.isConfigured(input)
+          await adapter.isConfigured(
+            input
+          )
         );
     } catch (err) {
       rejected.push({
-        provider: adapter.name,
-        stage: "configuration",
-        reason: err.message
+        provider:
+          adapter.name,
+
+        stage:
+          "configuration",
+
+        reason:
+          err.message,
       });
 
       continue;
@@ -1213,14 +1757,23 @@ async function getQuotes(
       rawQuote =
         await adapter.getQuote({
           ...input,
-          marketRate
+
+          marketRate,
         });
     } catch (err) {
       rejected.push({
-        provider: adapter.name,
-        stage: "quote",
-        reason: err.message,
-        code: err.code || null
+        provider:
+          adapter.name,
+
+        stage:
+          "quote",
+
+        reason:
+          err.message,
+
+        code:
+          err.code ||
+          null,
       });
 
       continue;
@@ -1229,17 +1782,26 @@ async function getQuotes(
     let quote;
 
     try {
-      quote = normalizeQuote(
-        adapter.name,
-        input,
-        rawQuote
-      );
+      quote =
+        normalizeQuote(
+          adapter.name,
+          input,
+          rawQuote
+        );
     } catch (err) {
       rejected.push({
-        provider: adapter.name,
-        stage: "quote_validation",
-        reason: err.message,
-        code: err.code || null
+        provider:
+          adapter.name,
+
+        stage:
+          "quote_validation",
+
+        reason:
+          err.message,
+
+        code:
+          err.code ||
+          null,
       });
 
       continue;
@@ -1248,14 +1810,21 @@ async function getQuotes(
     const marketValidation =
       validateQuoteAgainstMarket(
         quote,
-        marketRate
+        marketRate,
+        input.maxSlippagePercent
       );
 
-    if (!marketValidation.acceptable) {
+    if (
+      !marketValidation.acceptable
+    ) {
       rejected.push({
-        provider: adapter.name,
-        stage: "price",
-        ...marketValidation
+        provider:
+          adapter.name,
+
+        stage:
+          "price",
+
+        ...marketValidation,
       });
 
       continue;
@@ -1263,15 +1832,21 @@ async function getQuotes(
 
     if (
       input.maxRate &&
-      quote.effectiveRate > input.maxRate
+      quote.effectiveRate >
+        input.maxRate
     ) {
       rejected.push({
-        provider: adapter.name,
-        stage: "max_rate",
+        provider:
+          adapter.name,
+
+        stage:
+          "max_rate",
+
         quoteRate:
           quote.effectiveRate,
+
         maxRate:
-          input.maxRate
+          input.maxRate,
       });
 
       continue;
@@ -1279,18 +1854,26 @@ async function getQuotes(
 
     const age =
       now() -
-      new Date(quote.createdAt).getTime();
+      new Date(
+        quote.createdAt
+      ).getTime();
 
     const expiresAt =
-      new Date(quote.expiresAt).getTime();
+      new Date(
+        quote.expiresAt
+      ).getTime();
 
     if (
-      age > CONFIG.maxQuoteAgeMs ||
+      age >
+        CONFIG.maxQuoteAgeMs ||
       now() >= expiresAt
     ) {
       rejected.push({
-        provider: adapter.name,
-        stage: "quote_expired"
+        provider:
+          adapter.name,
+
+        stage:
+          "quote_expired",
       });
 
       continue;
@@ -1298,13 +1881,20 @@ async function getQuotes(
 
     quotes.push({
       adapter,
+
       quote,
-      marketValidation
+
+      marketValidation,
+
+      executionAvailable:
+        Boolean(
+          adapter.executionAvailable
+        ),
     });
   }
 
   /*
-   * Menor MZN/USDT = melhor preço para comprar USDT.
+   * Menor MZN/USDT = melhor preço.
    */
   quotes.sort(
     (a, b) =>
@@ -1314,7 +1904,8 @@ async function getQuotes(
 
   return {
     quotes,
-    rejected
+
+    rejected,
   };
 }
 
@@ -1336,46 +1927,66 @@ async function checkProviderLiquidity(
         quote
       );
   } catch (err) {
-    /*
-     * Falha no check não significa necessariamente
-     * que o provider não tem dinheiro.
-     *
-     * Portanto, é tratado como falha definitiva
-     * somente se o adapter declarar definitive=true.
-     */
-    if (err.definitive === true) {
+    if (
+      err instanceof
+        DefinitiveLiquidityError ||
+      err.code ===
+        "DEFINITIVE_LIQUIDITY_FAILURE" ||
+      err.definitive === true
+    ) {
       return {
-        available: false,
-        definitive: true,
-        reason: err.message
+        available:
+          false,
+
+        definitive:
+          true,
+
+        reason:
+          err.message,
       };
     }
 
     return {
-      available: false,
-      definitive: false,
-      reason: err.message
+      available:
+        false,
+
+      definitive:
+        false,
+
+      reason:
+        err.message,
     };
   }
 
-  if (!result || typeof result !== "object") {
+  if (
+    !result ||
+    typeof result !==
+      "object"
+  ) {
     return {
-      available: false,
-      definitive: false,
+      available:
+        false,
+
+      definitive:
+        false,
+
       reason:
-        "Provider não retornou resultado de liquidez."
+        "Provider não retornou resultado de liquidez.",
     };
   }
 
   return {
     available:
-      result.available === true,
+      result.available ===
+      true,
 
     definitive:
-      result.definitive === true,
+      result.definitive ===
+      true,
 
     reason:
-      result.reason || null,
+      result.reason ||
+      null,
 
     availableUSDT:
       safeNumber(
@@ -1387,7 +1998,8 @@ async function checkProviderLiquidity(
         result.availablePaymentAsset
       ),
 
-    raw: result
+    raw:
+      result,
   };
 }
 
@@ -1401,12 +2013,13 @@ function normalizeExecution(
 ) {
   if (
     !execution ||
-    typeof execution !== "object"
+    typeof execution !==
+      "object"
   ) {
     throw new UncertainExecutionError(
       `${provider}: resposta de execução inválida.`,
       {
-        provider
+        provider,
       }
     );
   }
@@ -1421,7 +2034,8 @@ function normalizeExecution(
       `${provider}: execução retornou sem executionId.`,
       {
         provider,
-        execution
+
+        execution,
       }
     );
   }
@@ -1430,20 +2044,24 @@ function normalizeExecution(
     provider,
 
     executionId:
-      String(executionId),
+      String(
+        executionId
+      ),
 
     status:
       execution.status ||
       "UNKNOWN",
 
     submitted:
-      execution.submitted !== false,
+      execution.submitted !==
+      false,
 
     definitive:
-      execution.definitive === true,
+      execution.definitive ===
+      true,
 
     raw:
-      execution
+      execution,
   };
 }
 
@@ -1468,56 +2086,67 @@ async function verifyExecution(
     throw new UncertainExecutionError(
       `${adapter.name}: não foi possível verificar a execução.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        cause: err.message
+
+        cause:
+          err.message,
       }
     );
   }
 
-  if (!status || typeof status !== "object") {
+  if (
+    !status ||
+    typeof status !==
+      "object"
+  ) {
     throw new UncertainExecutionError(
       `${adapter.name}: status de execução inválido.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
-          execution.executionId
+          execution.executionId,
       }
     );
   }
 
   const normalizedStatus =
     String(
-      status.status || ""
+      status.status ||
+        ""
     ).toUpperCase();
 
-  /*
-   * Estados definitivamente falhados.
-   */
   if (
     [
       "FAILED",
       "REJECTED",
       "CANCELED",
       "CANCELLED",
-      "EXPIRED"
-    ].includes(normalizedStatus)
+      "EXPIRED",
+    ].includes(
+      normalizedStatus
+    )
   ) {
     throw new DefinitiveLiquidityError(
       `${adapter.name}: execução não foi concluída.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        status: normalizedStatus
+
+        status:
+          normalizedStatus,
       }
     );
   }
 
-  /*
-   * Estados ainda incertos/em andamento.
-   */
   if (
     [
       "",
@@ -1526,16 +2155,22 @@ async function verifyExecution(
       "OPEN",
       "PROCESSING",
       "NEW",
-      "PARTIALLY_FILLED"
-    ].includes(normalizedStatus)
+      "PARTIALLY_FILLED",
+    ].includes(
+      normalizedStatus
+    )
   ) {
     throw new UncertainExecutionError(
       `${adapter.name}: execução ainda não está definitivamente concluída.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        status: normalizedStatus
+
+        status:
+          normalizedStatus,
       }
     );
   }
@@ -1564,25 +2199,33 @@ async function verifyAcquiredUSDT(
     throw new UncertainExecutionError(
       `${adapter.name}: não foi possível verificar USDT adquirido.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        cause: err.message
+
+        cause:
+          err.message,
       }
     );
   }
 
   if (
     !acquired ||
-    acquired.confirmed !== true
+    acquired.confirmed !==
+      true
   ) {
     throw new UncertainExecutionError(
       `${adapter.name}: USDT adquirido não foi confirmado.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        acquired
+
+        acquired,
       }
     );
   }
@@ -1599,10 +2242,13 @@ async function verifyAcquiredUSDT(
     throw new UncertainExecutionError(
       `${adapter.name}: quantidade USDT adquirida inválida.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        acquired
+
+        acquired,
       }
     );
   }
@@ -1611,7 +2257,10 @@ async function verifyAcquiredUSDT(
     ...acquired,
 
     amountUSDT:
-      round(amountUSDT, 8)
+      round(
+        amountUSDT,
+        8
+      ),
   };
 }
 
@@ -1638,34 +2287,39 @@ async function verifySettlement(
     throw new UncertainExecutionError(
       `${adapter.name}: não foi possível confirmar settlement.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        cause: err.message
+
+        cause:
+          err.message,
       }
     );
   }
 
   if (
     !settlement ||
-    settlement.confirmed !== true ||
-    settlement.settled !== true
+    settlement.confirmed !==
+      true ||
+    settlement.settled !==
+      true
   ) {
     throw new UncertainExecutionError(
       `${adapter.name}: USDT ainda não foi confirmado na tesouraria.`,
       {
-        provider: adapter.name,
+        provider:
+          adapter.name,
+
         executionId:
           execution.executionId,
-        settlement
+
+        settlement,
       }
     );
   }
 
-  /*
-   * O settlement deve chegar à carteira USDTMZ.
-   * Nunca aceitar automaticamente outro endereço.
-   */
   if (
     settlement.address &&
     settlement.address !==
@@ -1677,12 +2331,15 @@ async function verifySettlement(
       {
         expected:
           input.treasuryAddress,
+
         received:
           settlement.address,
+
         provider:
           adapter.name,
+
         executionId:
-          execution.executionId
+          execution.executionId,
       }
     );
   }
@@ -1699,48 +2356,59 @@ async function executeLiquidityPurchase(
   options = {}
 ) {
   const input =
-    normalizeInput(rawInput);
+    normalizeInput(
+      rawInput
+    );
 
   const adapters =
-    Array.isArray(options.adapters)
+    Array.isArray(
+      options.adapters
+    )
       ? options.adapters.filter(
           validateAdapter
         )
       : getDefaultAdapters();
 
-  if (!adapters.length) {
+  /*
+   * Para EXECUÇÃO, somente adapters que realmente
+   * declaram executionAvailable podem participar.
+   */
+  const executableAdapters =
+    adapters.filter(
+      (adapter) =>
+        adapter.executionAvailable ===
+        true
+    );
+
+  if (
+    !executableAdapters.length
+  ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       status:
         ROUTER_STATUS.LIQUIDITY_REQUIRED,
 
       code:
-        "NO_LIQUIDITY_ADAPTERS",
+        "NO_EXECUTABLE_LIQUIDITY",
 
       orderId:
         input.orderId,
 
+      amountMZN:
+        input.amountMZN,
+
       message:
-        "Nenhum adapter de liquidez disponível."
+        "Nenhuma fonte de liquidez com execução real está habilitada.",
     };
   }
 
-  /*
-   * Uma idempotency key por orderId.
-   *
-   * O mesmo orderId nunca deve iniciar duas compras
-   * externas simultâneas.
-   */
   const idempotencyKey =
     makeIdempotencyKey(
       input.orderId
     );
 
-  /*
-   * Taxa de mercado somente para comparação.
-   * Não é usada como prova de execução.
-   */
   const market =
     await getMarketRate();
 
@@ -1750,26 +2418,35 @@ async function executeLiquidityPurchase(
   const marketMaxRate =
     input.maxRate ||
     getMaximumAcceptableRate(
-      marketRate
+      marketRate,
+      input.maxSlippagePercent
     );
 
   /*
-   * Obter quotes.
+   * Aqui exigimos execução real.
    */
   const quoteResult =
     await getQuotes(
       {
         ...input,
+
         maxRate:
-          marketMaxRate
+          marketMaxRate,
       },
-      adapters,
-      marketRate
+      executableAdapters,
+      marketRate,
+      {
+        executionOnly:
+          true,
+      }
     );
 
-  if (!quoteResult.quotes.length) {
+  if (
+    !quoteResult.quotes.length
+  ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       status:
         ROUTER_STATUS.LIQUIDITY_REQUIRED,
@@ -1789,20 +2466,23 @@ async function executeLiquidityPurchase(
         marketMaxRate,
 
       rejected:
-        quoteResult.rejected
+        quoteResult.rejected,
     };
   }
 
   /*
-   * Tentar os providers pela melhor cotação.
+   * Tentar providers pela melhor cotação.
    */
   for (
     let index = 0;
-    index < quoteResult.quotes.length;
+    index <
+      quoteResult.quotes.length;
     index++
   ) {
     const candidate =
-      quoteResult.quotes[index];
+      quoteResult.quotes[
+        index
+      ];
 
     const adapter =
       candidate.adapter;
@@ -1810,25 +2490,20 @@ async function executeLiquidityPurchase(
     const quote =
       candidate.quote;
 
-    /*
-     * Revalidar que a quote ainda está fresca.
-     */
     const expiresAt =
       new Date(
         quote.expiresAt
       ).getTime();
 
     if (
-      !Number.isFinite(expiresAt) ||
+      !Number.isFinite(
+        expiresAt
+      ) ||
       now() >= expiresAt
     ) {
       continue;
     }
 
-    /*
-     * Confirmar liquidez imediatamente antes
-     * da execução.
-     */
     const liquidity =
       await checkProviderLiquidity(
         adapter,
@@ -1836,27 +2511,26 @@ async function executeLiquidityPurchase(
         quote
       );
 
-    if (!liquidity.available) {
+    if (
+      !liquidity.available
+    ) {
       /*
-       * Falta definitiva de liquidez:
-       * podemos tentar outro provider.
+       * Falha definitiva de liquidez:
+       * podemos tentar a próxima fonte.
        */
-      if (liquidity.definitive) {
+      if (
+        liquidity.definitive
+      ) {
         continue;
       }
 
       /*
-       * Se o provider não consegue dizer se há
-       * liquidez, não devemos executar cegamente.
-       *
-       * Passamos ao próximo provider.
+       * Liquidez desconhecida:
+       * NÃO executamos cegamente.
        */
       continue;
     }
 
-    /*
-     * EXECUÇÃO REAL
-     */
     let rawExecution;
 
     try {
@@ -1868,18 +2542,16 @@ async function executeLiquidityPurchase(
         );
     } catch (err) {
       /*
-       * MUITO IMPORTANTE:
-       *
-       * Se não sabemos se o provider recebeu/executou
-       * a ordem, NÃO tentamos outro provider.
-       *
-       * Isso evita comprar duas vezes.
+       * Só podemos tentar outro provider se
+       * a Binance/provider disser claramente
+       * que NÃO executou.
        */
       if (
         err instanceof
           DefinitiveLiquidityError ||
         err.code ===
-          "DEFINITIVE_LIQUIDITY_FAILURE"
+          "DEFINITIVE_LIQUIDITY_FAILURE" ||
+        err.definitive === true
       ) {
         continue;
       }
@@ -1889,33 +2561,22 @@ async function executeLiquidityPurchase(
         {
           provider:
             adapter.name,
+
           orderId:
             input.orderId,
+
           cause:
-            err.message
+            err.message,
         }
       );
     }
 
-    let execution;
+    const execution =
+      normalizeExecution(
+        adapter.name,
+        rawExecution
+      );
 
-    try {
-      execution =
-        normalizeExecution(
-          adapter.name,
-          rawExecution
-        );
-    } catch (err) {
-      /*
-       * Se o provider aceitou algo mas não deu
-       * executionId, não podemos tentar outro.
-       */
-      throw err;
-    }
-
-    /*
-     * Verificar execução real.
-     */
     let executionStatus;
 
     try {
@@ -1927,8 +2588,7 @@ async function executeLiquidityPurchase(
         );
     } catch (err) {
       /*
-       * Uma execução que pode ter ocorrido
-       * não deve gerar nova compra.
+       * Mesmo se falhar, NÃO comprar novamente.
        */
       if (
         err instanceof
@@ -1940,9 +2600,6 @@ async function executeLiquidityPurchase(
       throw err;
     }
 
-    /*
-     * Confirmar USDT efetivamente adquirido.
-     */
     const acquired =
       await verifyAcquiredUSDT(
         adapter,
@@ -1950,9 +2607,6 @@ async function executeLiquidityPurchase(
         execution
       );
 
-    /*
-     * Confirmar que o USDT chegou à tesouraria.
-     */
     const settlement =
       await verifySettlement(
         adapter,
@@ -1961,20 +2615,9 @@ async function executeLiquidityPurchase(
         acquired
       );
 
-    /*
-     * Neste ponto temos:
-     *
-     *   execução real
-     *   +
-     *   USDT real adquirido
-     *   +
-     *   settlement confirmado
-     *
-     * Só agora estamos autorizados a considerar
-     * a compra pronta para transferência.
-     */
     const result = {
-      ok: true,
+      ok:
+        true,
 
       status:
         ROUTER_STATUS.READY_TO_SEND,
@@ -2002,7 +2645,7 @@ async function executeLiquidityPurchase(
           quote.feesMZN,
 
         expiresAt:
-          quote.expiresAt
+          quote.expiresAt,
       },
 
       market: {
@@ -2016,7 +2659,7 @@ async function executeLiquidityPurchase(
           market.fetchedAt,
 
         maxAcceptableRate:
-          marketMaxRate
+          marketMaxRate,
       },
 
       execution: {
@@ -2024,12 +2667,12 @@ async function executeLiquidityPurchase(
           execution.executionId,
 
         status:
-          executionStatus.status
+          executionStatus.status,
       },
 
       acquired: {
         amountUSDT:
-          acquired.amountUSDT
+          acquired.amountUSDT,
       },
 
       settlement: {
@@ -2046,7 +2689,7 @@ async function executeLiquidityPurchase(
         txHash:
           settlement.txHash ||
           settlement.transactionHash ||
-          null
+          null,
       },
 
       treasuryAddress:
@@ -2055,15 +2698,11 @@ async function executeLiquidityPurchase(
       binanceDestination:
         input.binanceDestination,
 
-      idempotencyKey
+      idempotencyKey,
     };
 
     /*
-     * ENV opcional:
-     *
-     * USDTMZ_AUTO_SEND_TO_BINANCE=true
-     *
-     * Só é executado depois do settlement.
+     * Só depois de USDT estar realmente na tesouraria.
      */
     if (
       CONFIG.autoSendToBinance
@@ -2082,18 +2721,14 @@ async function executeLiquidityPurchase(
           );
       } catch (err) {
         /*
-         * O USDT já foi comprado.
-         *
-         * Portanto NÃO devemos executar a compra
-         * novamente.
-         *
-         * O problema agora é somente no envio
-         * da tesouraria para Binance.
+         * Compra já ocorreu.
+         * NÃO repetir a compra.
          */
         return {
           ...result,
 
-          ok: false,
+          ok:
+            false,
 
           status:
             ROUTER_STATUS.READY_TO_SEND,
@@ -2108,7 +2743,7 @@ async function executeLiquidityPurchase(
             true,
 
           acquiredUSDT:
-            acquired.amountUSDT
+            acquired.amountUSDT,
         };
       }
 
@@ -2120,19 +2755,16 @@ async function executeLiquidityPurchase(
           ROUTER_STATUS.SENT_TO_BINANCE,
 
         transfer:
-          transferResult
+          transferResult,
       };
     }
 
     return result;
   }
 
-  /*
-   * Nenhum provider conseguiu executar
-   * definitivamente.
-   */
   return {
-    ok: false,
+    ok:
+      false,
 
     status:
       ROUTER_STATUS.LIQUIDITY_REQUIRED,
@@ -2152,15 +2784,22 @@ async function executeLiquidityPurchase(
       marketMaxRate,
 
     rejected:
-      quoteResult.rejected
+      quoteResult.rejected,
   };
 }
 
 /* =========================================================
  * QUOTE-ONLY
  *
- * Não compra nada.
- * Útil para o painel administrativo.
+ * IMPORTANTE:
+ * Aqui Binance Connect pode aparecer mesmo que
+ * executionAvailable=false.
+ *
+ * Isto permite testar:
+ *
+ *   MZN → USDT
+ *
+ * sem comprar.
  * =======================================================*/
 
 async function getBestLiquidityQuote(
@@ -2168,10 +2807,14 @@ async function getBestLiquidityQuote(
   options = {}
 ) {
   const input =
-    normalizeInput(rawInput);
+    normalizeInput(
+      rawInput
+    );
 
   const adapters =
-    Array.isArray(options.adapters)
+    Array.isArray(
+      options.adapters
+    )
       ? options.adapters.filter(
           validateAdapter
         )
@@ -2184,21 +2827,37 @@ async function getBestLiquidityQuote(
     await getQuotes(
       input,
       adapters,
-      market.rate
+      market.rate,
+      {
+        executionOnly:
+          false,
+      }
     );
 
-  if (!quoteResult.quotes.length) {
+  if (
+    !quoteResult.quotes.length
+  ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       status:
         ROUTER_STATUS.LIQUIDITY_REQUIRED,
 
+      code:
+        "NO_QUOTES_AVAILABLE",
+
+      amountMZN:
+        input.amountMZN,
+
       marketRate:
         market.rate,
 
+      marketSource:
+        market.source,
+
       rejected:
-        quoteResult.rejected
+        quoteResult.rejected,
     };
   }
 
@@ -2206,13 +2865,19 @@ async function getBestLiquidityQuote(
     quoteResult.quotes[0];
 
   return {
-    ok: true,
+    ok:
+      true,
 
     status:
       ROUTER_STATUS.QUOTED,
 
     provider:
       best.adapter.name,
+
+    executionAvailable:
+      Boolean(
+        best.adapter.executionAvailable
+      ),
 
     quote:
       best.quote,
@@ -2226,23 +2891,32 @@ async function getBestLiquidityQuote(
 
       maxAcceptableRate:
         getMaximumAcceptableRate(
-          market.rate
-        )
+          market.rate,
+          input.maxSlippagePercent
+        ),
     },
 
     alternatives:
       quoteResult.quotes
         .slice(1)
-        .map((item) => ({
-          provider:
-            item.adapter.name,
+        .map(
+          (item) => ({
+            provider:
+              item.adapter.name,
 
-          quote:
-            item.quote
-        })),
+            executionAvailable:
+              Boolean(
+                item.adapter
+                  .executionAvailable
+              ),
+
+            quote:
+              item.quote,
+          })
+        ),
 
     rejected:
-      quoteResult.rejected
+      quoteResult.rejected,
   };
 }
 
@@ -2254,7 +2928,9 @@ async function getLiquiditySources(
   options = {}
 ) {
   const adapters =
-    Array.isArray(options.adapters)
+    Array.isArray(
+      options.adapters
+    )
       ? options.adapters.filter(
           validateAdapter
         )
@@ -2263,7 +2939,8 @@ async function getLiquiditySources(
   const sources = [];
 
   for (const adapter of adapters) {
-    let configured = false;
+    let configured =
+      false;
 
     try {
       configured =
@@ -2271,7 +2948,8 @@ async function getLiquiditySources(
           await adapter.isConfigured()
         );
     } catch {
-      configured = false;
+      configured =
+        false;
     }
 
     sources.push({
@@ -2280,10 +2958,15 @@ async function getLiquiditySources(
 
       configured,
 
+      quoteAvailable:
+        Boolean(
+          adapter.quoteAvailable
+        ),
+
       executionAvailable:
         Boolean(
           adapter.executionAvailable
-        )
+        ),
     });
   }
 
@@ -2294,7 +2977,9 @@ async function getLiquiditySources(
  * ADMIN SESSION
  * =======================================================*/
 
-function parseCookies(header) {
+function parseCookies(
+  header
+) {
   const cookies = {};
 
   if (!header) {
@@ -2302,9 +2987,13 @@ function parseCookies(header) {
   }
 
   const parts =
-    String(header).split(";");
+    String(header).split(
+      ";"
+    );
 
-  for (const part of parts) {
+  for (
+    const part of parts
+  ) {
     const index =
       part.indexOf("=");
 
@@ -2314,22 +3003,32 @@ function parseCookies(header) {
 
     const key =
       part
-        .slice(0, index)
+        .slice(
+          0,
+          index
+        )
         .trim();
 
     const value =
       part
-        .slice(index + 1)
+        .slice(
+          index + 1
+        )
         .trim();
 
     cookies[key] =
-      decodeURIComponent(value);
+      decodeURIComponent(
+        value
+      );
   }
 
   return cookies;
 }
 
-function safeEqualStrings(a, b) {
+function safeEqualStrings(
+  a,
+  b
+) {
   const aa =
     Buffer.from(
       String(a)
@@ -2340,7 +3039,10 @@ function safeEqualStrings(a, b) {
       String(b)
     );
 
-  if (aa.length !== bb.length) {
+  if (
+    aa.length !==
+    bb.length
+  ) {
     return false;
   }
 
@@ -2350,19 +3052,25 @@ function safeEqualStrings(a, b) {
   );
 }
 
-function verifyAdminSession(req) {
-  if (!CONFIG.adminSessionSecret) {
+function verifyAdminSession(
+  req
+) {
+  if (
+    !CONFIG.adminSessionSecret
+  ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "ADMIN_SESSION_SECRET não configurado."
+        "ADMIN_SESSION_SECRET não configurado.",
     };
   }
 
   const cookies =
     parseCookies(
-      req.headers?.cookie || ""
+      req.headers?.cookie ||
+        ""
     );
 
   const token =
@@ -2372,10 +3080,11 @@ function verifyAdminSession(req) {
 
   if (!token) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Sessão administrativa ausente."
+        "Sessão administrativa ausente.",
     };
   }
 
@@ -2384,10 +3093,11 @@ function verifyAdminSession(req) {
 
   if (firstDot <= 0) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Sessão administrativa inválida."
+        "Sessão administrativa inválida.",
     };
   }
 
@@ -2408,7 +3118,9 @@ function verifyAdminSession(req) {
         "sha256",
         CONFIG.adminSessionSecret
       )
-      .update(payloadB64)
+      .update(
+        payloadB64
+      )
       .digest("hex");
 
   if (
@@ -2418,10 +3130,11 @@ function verifyAdminSession(req) {
     )
   ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Assinatura da sessão inválida."
+        "Assinatura da sessão inválida.",
     };
   }
 
@@ -2433,58 +3146,72 @@ function verifyAdminSession(req) {
         Buffer.from(
           payloadB64,
           "base64url"
-        ).toString("utf8")
+        ).toString(
+          "utf8"
+        )
       );
   } catch {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Payload da sessão inválido."
+        "Payload da sessão inválido.",
     };
   }
 
   if (
     !payload ||
-    payload.id !== "admin"
+    payload.id !==
+      "admin"
   ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Sessão não pertence ao administrador."
+        "Sessão não pertence ao administrador.",
     };
   }
 
   if (
     !Number.isFinite(
-      Number(payload.exp)
+      Number(
+        payload.exp
+      )
     )
   ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Sessão sem expiração válida."
+        "Sessão sem expiração válida.",
     };
   }
 
   if (
-    Number(payload.exp) <
-    Math.floor(Date.now() / 1000)
+    Number(
+      payload.exp
+    ) <
+    Math.floor(
+      Date.now() / 1000
+    )
   ) {
     return {
-      ok: false,
+      ok:
+        false,
 
       reason:
-        "Sessão administrativa expirada."
+        "Sessão administrativa expirada.",
     };
   }
 
   return {
-    ok: true,
+    ok:
+      true,
 
-    payload
+    payload,
   };
 }
 
@@ -2492,16 +3219,22 @@ function verifyAdminSession(req) {
  * JSON BODY
  * =======================================================*/
 
-async function readJsonBody(req) {
+async function readJsonBody(
+  req
+) {
   if (
     req.body &&
-    typeof req.body === "object"
+    typeof req.body ===
+      "object"
   ) {
     return req.body;
   }
 
   return new Promise(
-    (resolve, reject) => {
+    (
+      resolve,
+      reject
+    ) => {
       let data = "";
 
       req.on(
@@ -2509,10 +3242,6 @@ async function readJsonBody(req) {
         (chunk) => {
           data += chunk;
 
-          /*
-           * Limite simples para impedir payload
-           * administrativo gigante.
-           */
           if (
             data.length >
             1024 * 1024
@@ -2541,7 +3270,9 @@ async function readJsonBody(req) {
 
           try {
             resolve(
-              JSON.parse(data)
+              JSON.parse(
+                data
+              )
             );
           } catch {
             reject(
@@ -2563,7 +3294,7 @@ async function readJsonBody(req) {
 }
 
 /* =========================================================
- * HTTP RESPONSE
+ * RESPONSE
  * =======================================================*/
 
 function sendJson(
@@ -2571,7 +3302,9 @@ function sendJson(
   status,
   body
 ) {
-  if (res.headersSent) {
+  if (
+    res.headersSent
+  ) {
     return;
   }
 
@@ -2589,60 +3322,54 @@ function sendJson(
   );
 
   res.end(
-    JSON.stringify(body)
+    JSON.stringify(
+      body
+    )
   );
 }
 
 /* =========================================================
  * HTTP HANDLER
- *
- * POST:
- *
- *   { action: "sources" }
- *
- *   { action: "quote", ... }
- *
- *   { action: "execute", ... }
- *
- *   { action: "send_to_binance",
- *     purchase_order_id: "..." }
- *
  * =======================================================*/
 
-async function handler(req, res) {
-  /*
-   * Somente POST.
-   */
+async function handler(
+  req,
+  res
+) {
   if (
-    req.method !== "POST"
+    req.method !==
+    "POST"
   ) {
     sendJson(
       res,
       405,
       {
-        ok: false,
+        ok:
+          false,
+
         error:
-          "Método não permitido."
+          "Método não permitido.",
       }
     );
 
     return;
   }
 
-  /*
-   * Toda operação do router é administrativa.
-   */
   const session =
-    verifyAdminSession(req);
+    verifyAdminSession(
+      req
+    );
 
   if (!session.ok) {
     sendJson(
       res,
       401,
       {
-        ok: false,
+        ok:
+          false,
+
         error:
-          "Não autorizado."
+          "Não autorizado.",
       }
     );
 
@@ -2651,19 +3378,25 @@ async function handler(req, res) {
 
   try {
     const body =
-      await readJsonBody(req);
+      await readJsonBody(
+        req
+      );
 
     const action =
       String(
-        body.action || ""
+        body.action ||
+          ""
       ).trim();
 
-    /*
+    /* =====================================================
      * SOURCES
-     */
+     * ===================================================*/
+
     if (
-      action === "sources" ||
-      action === "liquidity_sources"
+      action ===
+        "sources" ||
+      action ===
+        "liquidity_sources"
     ) {
       const sources =
         await getLiquiditySources();
@@ -2672,7 +3405,8 @@ async function handler(req, res) {
         res,
         200,
         {
-          ok: true,
+          ok:
+            true,
 
           sources,
 
@@ -2682,19 +3416,22 @@ async function handler(req, res) {
           binanceConfigured:
             Boolean(
               CONFIG.binanceDestination
-            )
+            ),
         }
       );
 
       return;
     }
 
-    /*
+    /* =====================================================
      * QUOTE
-     */
+     * ===================================================*/
+
     if (
-      action === "quote" ||
-      action === "best_quote"
+      action ===
+        "quote" ||
+      action ===
+        "best_quote"
     ) {
       const result =
         await getBestLiquidityQuote(
@@ -2703,23 +3440,27 @@ async function handler(req, res) {
 
       sendJson(
         res,
-        result.ok ? 200 : 409,
+        result.ok
+          ? 200
+          : 409,
         result
       );
 
       return;
     }
 
-    /*
+    /* =====================================================
      * EXECUTE
-     */
+     * ===================================================*/
+
     if (
-      action === "execute" ||
-      action === "buy_usdt"
+      action ===
+        "execute" ||
+      action ===
+        "buy_usdt"
     ) {
       /*
-       * A chamada HTTP nunca deve aceitar
-       * destination arbitrário.
+       * Nunca aceitar destino vindo do browser.
        */
       delete body.destination;
       delete body.withdrawAddress;
@@ -2731,10 +3472,6 @@ async function handler(req, res) {
           body
         );
 
-      /*
-       * Liquidez inexistente:
-       * 409 é melhor que 500.
-       */
       if (
         result.status ===
         ROUTER_STATUS.LIQUIDITY_REQUIRED
@@ -2748,10 +3485,6 @@ async function handler(req, res) {
         return;
       }
 
-      /*
-       * Reconciliação:
-       * execução potencialmente feita.
-       */
       if (
         result.status ===
         ROUTER_STATUS.RECONCILIATION_REQUIRED
@@ -2767,21 +3500,19 @@ async function handler(req, res) {
 
       sendJson(
         res,
-        result.ok ? 200 : 409,
+        result.ok
+          ? 200
+          : 409,
         result
       );
 
       return;
     }
 
-    /*
+    /* =====================================================
      * SEND TO BINANCE
-     *
-     * Este action NÃO compra USDT.
-     *
-     * Ele apenas chama o processador que já existe,
-     * depois que o USDT real está na tesouraria.
-     */
+     * ===================================================*/
+
     if (
       action ===
       "send_to_binance"
@@ -2795,10 +3526,11 @@ async function handler(req, res) {
           res,
           400,
           {
-            ok: false,
+            ok:
+              false,
 
             error:
-              "purchase_order_id é obrigatório."
+              "purchase_order_id é obrigatório.",
           }
         );
 
@@ -2819,13 +3551,14 @@ async function handler(req, res) {
         res,
         200,
         {
-          ok: true,
+          ok:
+            true,
 
           status:
             result?.status ||
             ROUTER_STATUS.SENT_TO_BINANCE,
 
-          result
+          result,
         }
       );
 
@@ -2836,7 +3569,8 @@ async function handler(req, res) {
       res,
       400,
       {
-        ok: false,
+        ok:
+          false,
 
         error:
           "Ação inválida.",
@@ -2845,8 +3579,8 @@ async function handler(req, res) {
           "sources",
           "quote",
           "execute",
-          "send_to_binance"
-        ]
+          "send_to_binance",
+        ],
       }
     );
   } catch (err) {
@@ -2863,7 +3597,8 @@ async function handler(req, res) {
         res,
         409,
         {
-          ok: false,
+          ok:
+            false,
 
           status:
             ROUTER_STATUS.RECONCILIATION_REQUIRED,
@@ -2875,7 +3610,8 @@ async function handler(req, res) {
             err.message,
 
           details:
-            err.details || {}
+            err.details ||
+            {},
         }
       );
 
@@ -2890,7 +3626,8 @@ async function handler(req, res) {
         res,
         409,
         {
-          ok: false,
+          ok:
+            false,
 
           status:
             ROUTER_STATUS.LIQUIDITY_REQUIRED,
@@ -2902,7 +3639,8 @@ async function handler(req, res) {
             err.message,
 
           details:
-            err.details || {}
+            err.details ||
+            {},
         }
       );
 
@@ -2917,7 +3655,8 @@ async function handler(req, res) {
         res,
         400,
         {
-          ok: false,
+          ok:
+            false,
 
           code:
             err.code,
@@ -2926,7 +3665,8 @@ async function handler(req, res) {
             err.message,
 
           details:
-            err.details || {}
+            err.details ||
+            {},
         }
       );
 
@@ -2937,10 +3677,11 @@ async function handler(req, res) {
       res,
       500,
       {
-        ok: false,
+        ok:
+          false,
 
         error:
-          "Erro interno do Liquidity Router."
+          "Erro interno do Liquidity Router.",
       }
     );
   }
@@ -2950,7 +3691,8 @@ async function handler(req, res) {
  * EXPORTS
  * =======================================================*/
 
-module.exports = handler;
+module.exports =
+  handler;
 
 module.exports.handler =
   handler;
@@ -2964,6 +3706,9 @@ module.exports.getBestLiquidityQuote =
 module.exports.getLiquiditySources =
   getLiquiditySources;
 
+module.exports.discoverSources =
+  discoverSources;
+
 module.exports.ROUTER_STATUS =
   ROUTER_STATUS;
 
@@ -2976,12 +3721,11 @@ module.exports.DefinitiveLiquidityError =
 module.exports.UncertainExecutionError =
   UncertainExecutionError;
 
-/*
- * Permite registrar adapters reais posteriormente
- * sem alterar a lógica central do router.
- */
 module.exports.validateAdapter =
   validateAdapter;
 
 module.exports.makeIdempotencyKey =
   makeIdempotencyKey;
+
+module.exports.loadBinanceLiquidityAdapter =
+  loadBinanceLiquidityAdapter;
