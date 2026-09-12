@@ -5,7 +5,6 @@
 //
 // EXCLUSIVAMENTE ADMIN.
 // NÃO é API de cliente.
-// NÃO cria API13.
 //
 // FUNÇÕES:
 // - Dashboard da tesouraria
@@ -23,8 +22,25 @@
 // - Operações recentes
 // - Depósitos pendentes
 //
-// SECRETS SOMENTE NO VERCEL.
-// NUNCA enviar AFRICA_API_KEY, Pagar secrets ou private key ao frontend.
+// REGRAS:
+// - NÃO existe taxa fixa de 64 MZN/USDT.
+// - 64 MZN é apenas o mínimo de operação.
+// - NÃO existe margem/spread artificial da USDTMZ.
+// - NÃO existe fallback artificial USDT = 1 USD.
+// - USDT somente pode ser entregue quando houver liquidez USDT real.
+// - Fontes externas só são consideradas executáveis quando
+//   as respectivas credenciais/adaptadores estiverem configurados.
+// - Secrets somente no servidor.
+//
+// IMPORTANTE:
+// O motor cambial calcula o valor de mercado.
+// O motor de liquidez é responsável por garantir que exista
+// USDT REAL para executar a conversão.
+// A existência de uma taxa de mercado não cria USDT.
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
 
 import {
   createHash,
@@ -61,16 +77,23 @@ const PAGAR_API_BASE_URL =
   process.env.PAGAR_API_BASE_URL ||
   "https://api.pagar.co.mz/api/v1";
 
+// Cache curto para evitar excesso de chamadas
+// aos provedores cambiais.
 const RATE_CACHE_MS = 60 * 1000;
-
-const RATE_SPREAD_PERCENT = Number(
-  process.env.USDTMZ_RATE_SPREAD_PERCENT || 0
-);
 
 let rateCache = null;
 
 // ============================================================================
 // FONTES DE LIQUIDEZ
+// ============================================================================
+//
+// Estes IDs representam possíveis fontes.
+// A existência/configuração de uma fonte NÃO significa que
+// ela já consegue executar uma compra real.
+//
+// A fonte só será considerada EXECUTÁVEL quando o respectivo
+// adaptador/API estiver realmente configurado.
+//
 // ============================================================================
 
 const SOURCES = [
@@ -81,6 +104,9 @@ const SOURCES = [
   "EXTERNAL_WALLET",
   "USDT_PURCHASE",
   "LIQUIDITY_PARTNER",
+  "BINANCE",
+  "KOTANI",
+  "REDPAY",
   "MANUAL_APPROVED"
 ];
 
@@ -548,7 +574,6 @@ async function pagarPost(
   const rawBody =
     JSON.stringify(body);
 
-  // CORRETO: SHA256 do corpo.
   const bodyHash =
     createHash("sha256")
       .update(rawBody)
@@ -1011,7 +1036,7 @@ async function getUsdMznFromAfricaApi() {
 }
 
 // ============================================================================
-// OPEN ER API — FALLBACK USD/MZN
+// OPEN ER API — USD/MZN
 // ============================================================================
 
 async function getUsdMznFromOpenERApi() {
@@ -1059,7 +1084,7 @@ async function getUsdMznFromOpenERApi() {
 }
 
 // ============================================================================
-// MONEYCONVERT — FALLBACK
+// MONEYCONVERT — USD/MZN
 // ============================================================================
 
 async function getUsdMznFromMoneyConvert() {
@@ -1258,25 +1283,27 @@ async function getUsdtUsd() {
     }
   }
 
-  // USDT é tratado como paridade apenas
-  // se os provedores de USDT/USD falharem.
-  // Nunca é fallback para USD/MZN.
-  return {
-    rate: 1,
-    source:
-      "USDT-PEG",
-    updatedAt:
-      new Date().toISOString(),
-    warning:
-      errors.join(" | ")
-  };
+  // NÃO usar USDT=1 como fallback.
+  //
+  // Se não sabemos o preço USDT/USD,
+  // não inventamos uma taxa.
+  throw new Error(
+    "Todas as fontes USDT/USD falharam: " +
+    errors.join(" | ")
+  );
 }
 
 // ============================================================================
-// TAXA FINAL
+// TAXA FINAL DE MERCADO
+// ============================================================================
+//
+// Fórmula:
+// USD/MZN × USDT/USD = USDT/MZN
+//
+// Não existe spread/margem da USDTMZ.
 // ============================================================================
 
-async function getRealUsdtMznRate(
+export async function getRealUsdtMznRate(
   force = false
 ) {
   const now =
@@ -1313,27 +1340,16 @@ async function getRealUsdtMznRate(
     );
   }
 
-  const spread =
-    Number.isFinite(
-      RATE_SPREAD_PERCENT
-    )
-      ? RATE_SPREAD_PERCENT
-      : 0;
-
-  const finalRate =
-    marketRate *
-    (1 + spread / 100);
-
   const result = {
     value:
       roundMoney(
-        finalRate,
+        marketRate,
         6
       ),
 
     rate:
       roundMoney(
-        finalRate,
+        marketRate,
         6
       ),
 
@@ -1355,14 +1371,12 @@ async function getRealUsdtMznRate(
         8
       ),
 
-    spread:
-      roundMoney(
-        finalRate - marketRate,
-        6
-      ),
+    // Mantido para compatibilidade
+    // com o frontend antigo.
+    // Sempre ZERO.
+    spread: 0,
 
-    spreadPercent:
-      spread,
+    spreadPercent: 0,
 
     source:
       `${usdMzn.source}+${usdtUsd.source}`,
@@ -1374,7 +1388,6 @@ async function getRealUsdtMznRate(
       usdMzn.updatedAt,
 
     warning:
-      usdtUsd.warning ||
       null
   };
 
@@ -1549,7 +1562,6 @@ async function verifyUsdtTransfer(
     USDT_CONTRACT.toLowerCase();
 
   let totalReceived = 0;
-
   let matched = false;
 
   for (
@@ -1592,8 +1604,7 @@ async function verifyUsdtTransfer(
       result?._value ||
       result?.["2"];
 
-    let destination =
-      null;
+    let destination = null;
 
     if (
       typeof to === "string"
@@ -1614,8 +1625,7 @@ async function verifyUsdtTransfer(
     let amount = null;
 
     if (
-      typeof value ===
-        "string" &&
+      typeof value === "string" &&
       /^\d+$/.test(value)
     ) {
       amount =
@@ -1926,6 +1936,13 @@ async function registerMZNDeposit(
 // ============================================================================
 // CONFIRMAR MZN
 // ============================================================================
+//
+// IMPORTANTE:
+// Primeiro fazemos a mudança de estado PENDING -> COMPLETED.
+// O crédito no saldo só acontece se essa mudança ocorrer.
+//
+// Isto evita que duas chamadas simultâneas creditem duas vezes.
+// ============================================================================
 
 async function confirmMZNDeposit(
   body
@@ -1996,11 +2013,7 @@ async function confirmMZNDeposit(
     );
   }
 
-  await changeWalletBalance(
-    "MZN",
-    amount
-  );
-
+  // Operação protegida contra dupla confirmação.
   const updated =
     await sql`
       UPDATE transactions
@@ -2011,11 +2024,44 @@ async function confirmMZNDeposit(
     `;
 
   if (!updated.length) {
+    const current =
+      await sql`
+        SELECT *
+        FROM transactions
+        WHERE id = ${transaction.id}
+        LIMIT 1
+      `;
+
     return {
       success: true,
-      confirmed: true,
-      reference
+      confirmed:
+        current[0]?.status ===
+        "COMPLETED",
+      alreadyCompleted:
+        current[0]?.status ===
+        "COMPLETED",
+      reference,
+      transaction:
+        current[0] || transaction
     };
+  }
+
+  try {
+    await changeWalletBalance(
+      "MZN",
+      amount
+    );
+  } catch (error) {
+    // Não podemos fingir que a operação foi concluída
+    // se o saldo não conseguiu ser atualizado.
+    await sql`
+      UPDATE transactions
+      SET status = 'PENDING'
+      WHERE id = ${transaction.id}
+      AND status = 'COMPLETED'
+    `;
+
+    throw error;
   }
 
   return {
@@ -2244,11 +2290,6 @@ async function confirmUSDTDeposit(
     };
   }
 
-  await changeWalletBalance(
-    "USDT",
-    verified.amount
-  );
-
   const updated =
     await sql`
       UPDATE transactions
@@ -2261,18 +2302,139 @@ async function confirmUSDTDeposit(
       RETURNING *
     `;
 
+  if (!updated.length) {
+    const current =
+      await sql`
+        SELECT *
+        FROM transactions
+        WHERE id = ${transaction.id}
+        LIMIT 1
+      `;
+
+    return {
+      success: true,
+      confirmed:
+        current[0]?.status ===
+        "COMPLETED",
+      alreadyCompleted:
+        current[0]?.status ===
+        "COMPLETED",
+      blockchain:
+        verified,
+      transaction:
+        current[0] || transaction
+    };
+  }
+
+  try {
+    await changeWalletBalance(
+      "USDT",
+      verified.amount
+    );
+  } catch (error) {
+    await sql`
+      UPDATE transactions
+      SET
+        status = 'PENDING',
+        amount = ${transaction.amount}
+      WHERE id = ${transaction.id}
+      AND status = 'COMPLETED'
+    `;
+
+    throw error;
+  }
+
   return {
     success: true,
     confirmed: true,
     blockchain:
       verified,
     transaction:
-      updated[0] || transaction
+      updated[0]
+  };
+}
+
+// ============================================================================
+// VERIFICAR LIQUIDEZ USDT
+// ============================================================================
+//
+// A taxa cambial não cria USDT.
+//
+// Aqui verificamos se existe USDT REAL na tesouraria.
+// Posteriormente poderemos acrescentar adaptadores de parceiros
+// externos que efetivamente comprem/forneçam USDT.
+// ============================================================================
+
+async function checkUSDTLiquidity(
+  amountUSDT
+) {
+  const required =
+    positiveNumber(
+      amountUSDT
+    );
+
+  if (!required) {
+    throw new Error(
+      "Quantidade USDT necessária inválida."
+    );
+  }
+
+  const balances =
+    await getWalletBalances();
+
+  if (
+    balances.usdt >= required
+  ) {
+    return {
+      available: true,
+      executable: true,
+      source:
+        "TREASURY_TRON",
+      availableUsdt:
+        balances.usdt,
+      requiredUsdt:
+        required
+    };
+  }
+
+  return {
+    available: false,
+    executable: false,
+    source: null,
+    availableUsdt:
+      balances.usdt,
+    requiredUsdt:
+      required,
+    missingUsdt:
+      roundMoney(
+        required -
+        balances.usdt,
+        6
+      ),
+    message:
+      "Não existe USDT real suficiente na tesouraria. Uma fonte externa de liquidez deverá executar a compra antes da entrega."
   };
 }
 
 // ============================================================================
 // CONVERSÃO MZN -> USDT
+// ============================================================================
+//
+// Esta função NÃO cria USDT.
+//
+// Ela usa:
+// 1. taxa real de mercado;
+// 2. Fundo MZN real;
+// 3. USDT real já disponível.
+//
+// Quando adicionarmos um adaptador de liquidez externo,
+// o processo poderá ser:
+//
+// MZN -> fornecedor externo -> USDT real -> tesouraria
+//
+// Só depois:
+//
+// MZN -> USDTMZ balance/accounting
 // ============================================================================
 
 async function convertMZNToUSDT(
@@ -2317,6 +2479,19 @@ async function convertMZNToUSDT(
     );
   }
 
+  const liquidity =
+    await checkUSDTLiquidity(
+      amountUSDT
+    );
+
+  if (
+    !liquidity.available
+  ) {
+    throw new Error(
+      liquidity.message
+    );
+  }
+
   const balances =
     await getWalletBalances();
 
@@ -2329,15 +2504,6 @@ async function convertMZNToUSDT(
     );
   }
 
-  if (
-    balances.usdt <
-    amountUSDT
-  ) {
-    throw new Error(
-      `USDT insuficiente. Disponível: ${balances.usdt} USDT.`
-    );
-  }
-
   const reference =
     String(
       body.reference || ""
@@ -2346,8 +2512,29 @@ async function convertMZNToUSDT(
       "CONVERSION"
     );
 
-  // Débito MZN somente se houver saldo suficiente.
-  const debit =
+  // Impede reutilização da mesma referência.
+  const existing =
+    await sql`
+      SELECT *
+      FROM transactions
+      WHERE reference = ${reference}
+      LIMIT 1
+    `;
+
+  if (existing.length) {
+    return {
+      success: true,
+      existing: true,
+      transaction:
+        existing[0]
+    };
+  }
+
+  // ----------------------------------------------------------
+  // Débito MZN
+  // ----------------------------------------------------------
+
+  const debitMZN =
     await sql`
       UPDATE wallets
       SET
@@ -2363,14 +2550,18 @@ async function convertMZNToUSDT(
       RETURNING *
     `;
 
-  if (!debit.length) {
+  if (!debitMZN.length) {
     throw new Error(
       "Não foi possível reservar o MZN para a conversão."
     );
   }
 
+  // ----------------------------------------------------------
+  // Débito USDT real
+  // ----------------------------------------------------------
+
   try {
-    const credit =
+    const debitUSDT =
       await sql`
         UPDATE wallets
         SET
@@ -2386,7 +2577,7 @@ async function convertMZNToUSDT(
         RETURNING *
       `;
 
-    if (!credit.length) {
+    if (!debitUSDT.length) {
       await sql`
         UPDATE wallets
         SET
@@ -2405,28 +2596,30 @@ async function convertMZNToUSDT(
       );
     }
 
-    await sql`
-      INSERT INTO transactions
-      (
-        user_id,
-        type,
-        asset,
-        amount,
-        status,
-        reference,
-        created_at
-      )
-      VALUES
-      (
-        NULL,
-        'CONVERSION_MZN_USDT',
-        'USDT',
-        ${amountUSDT},
-        'COMPLETED',
-        ${reference},
-        NOW()
-      )
-    `;
+    const transaction =
+      await sql`
+        INSERT INTO transactions
+        (
+          user_id,
+          type,
+          asset,
+          amount,
+          status,
+          reference,
+          created_at
+        )
+        VALUES
+        (
+          NULL,
+          'CONVERSION_MZN_USDT',
+          'USDT',
+          ${amountUSDT},
+          'COMPLETED',
+          ${reference},
+          NOW()
+        )
+        RETURNING *
+      `;
 
     return {
       success: true,
@@ -2440,6 +2633,15 @@ async function convertMZNToUSDT(
       output: {
         amountUsdt:
           amountUSDT
+      },
+
+      liquidity: {
+        source:
+          "TREASURY_TRON",
+        executable:
+          true,
+        realUsdt:
+          true
       },
 
       rate: {
@@ -2458,17 +2660,57 @@ async function convertMZNToUSDT(
         source:
           rate.source,
 
+        spread: 0,
+
+        spreadPercent: 0,
+
         updatedAt:
           rate.updatedAt
-      }
+      },
+
+      transaction:
+        transaction[0]
     };
   } catch (error) {
+    // Só tentamos recuperar o MZN quando sabemos que o
+    // débito USDT falhou antes de concluir a operação.
+    //
+    // Se o INSERT da transação falhar depois do débito USDT,
+    // o USDT não pode ser devolvido cegamente em paralelo
+    // sem reconciliação.
+    //
+    // Para produção definitiva, esta operação deve migrar
+    // para uma transação SQL/ledger atômica.
+    //
+    // Por segurança, fazemos a recuperação do MZN apenas
+    // quando o erro indica insuficiência no USDT.
+    if (
+      String(
+        error?.message || ""
+      ).includes(
+        "USDT insuficiente"
+      )
+    ) {
+      throw error;
+    }
+
     throw error;
   }
 }
 
 // ============================================================================
 // RESERVA USDT
+// ============================================================================
+//
+// IMPORTANTE:
+// A reserva é contabilizada separadamente.
+//
+// Não usamos o balance como "disponível" depois da reserva.
+// O balance representa USDT total contabilizado.
+// reserved representa USDT comprometido.
+// available = total - reserved.
+//
+// Isto evita dupla subtração.
 // ============================================================================
 
 async function reserveUSDT(
@@ -2517,30 +2759,36 @@ async function reserveUSDT(
   const balance =
     Number(wallet.balance) || 0;
 
+  const reservedRows =
+    await sql`
+      SELECT
+        COALESCE(
+          SUM(amount),
+          0
+        ) AS reserved
+      FROM transactions
+      WHERE type = 'USDT_RESERVATION'
+      AND status = 'PENDING'
+    `;
+
+  const reserved =
+    Number(
+      reservedRows[0]?.reserved ||
+      0
+    );
+
+  const available =
+    Math.max(
+      0,
+      balance - reserved
+    );
+
   if (
-    balance <
+    available <
     value
   ) {
     throw new Error(
-      "USDT disponível insuficiente."
-    );
-  }
-
-  const updated =
-    await sql`
-      UPDATE wallets
-      SET
-        balance =
-          balance - ${value},
-        updated_at = NOW()
-      WHERE id = ${wallet.id}
-      AND balance >= ${value}
-      RETURNING *
-    `;
-
-  if (!updated.length) {
-    throw new Error(
-      "Não foi possível reservar USDT."
+      `USDT disponível insuficiente. Disponível: ${roundMoney(available, 6)} USDT.`
     );
   }
 
@@ -2630,16 +2878,6 @@ async function releaseReservation(
     };
   }
 
-  const amount =
-    Number(
-      reservation.amount
-    );
-
-  await changeWalletBalance(
-    "USDT",
-    amount
-  );
-
   const updated =
     await sql`
       UPDATE transactions
@@ -2652,7 +2890,9 @@ async function releaseReservation(
   return {
     success: true,
     released:
-      amount,
+      Number(
+        reservation.amount
+      ),
     transaction:
       updated[0] ||
       reservation
@@ -2662,6 +2902,36 @@ async function releaseReservation(
 // ============================================================================
 // FONTES DE LIQUIDEZ
 // ============================================================================
+//
+// ATENÇÃO:
+// "configured" significa que as credenciais/variáveis existem.
+// "executionAvailable" significa que existe um adaptador de execução
+// efetivamente implementado.
+//
+// Não vamos declarar uma fonte como operacional apenas porque
+// existe uma API key.
+// ============================================================================
+
+function externalLiquidityConfiguration() {
+  return {
+    binance: Boolean(
+      process.env.BINANCE_API_KEY &&
+      process.env.BINANCE_API_SECRET
+    ),
+
+    kotani: Boolean(
+      process.env.KOTANI_API_KEY
+    ),
+
+    redpay: Boolean(
+      process.env.REDPAY_API_KEY
+    ),
+
+    genericPartner: Boolean(
+      process.env.USDTMZ_LIQUIDITY_PARTNER
+    )
+  };
+}
 
 async function getLiquiditySources() {
   const balances =
@@ -2677,27 +2947,59 @@ async function getLiquiditySources() {
       null;
   }
 
+  const external =
+    externalLiquidityConfiguration();
+
   return {
     success: true,
+
+    policy: {
+      artificialSpread:
+        false,
+
+      usdtPegFallback:
+        false,
+
+      fixedUsdtMznRate:
+        false,
+
+      marketRateRequired:
+        true,
+
+      realLiquidityRequired:
+        true
+    },
 
     sources: [
       {
         id:
           "TREASURY_TRON",
+
         type:
           "USDT_TRON",
+
         name:
           "Tesouraria USDTMZ",
+
         configured:
           Boolean(
             treasuryAddress
           ),
+
+        executionAvailable:
+          Boolean(
+            treasuryAddress
+          ),
+
         address:
           treasuryAddress,
+
         asset:
           "USDT",
+
         network:
           "TRON/TRC20",
+
         balance:
           balances.usdt
       },
@@ -2705,12 +3007,19 @@ async function getLiquiditySources() {
       {
         id:
           "PAGAR_MPESA",
+
         type:
           "MPESA_BUSINESS",
+
         name:
           "Pagar M-Pesa",
+
         configured:
           pagarConfigured(),
+
+        executionAvailable:
+          pagarConfigured(),
+
         asset:
           "MZN"
       },
@@ -2718,29 +3027,124 @@ async function getLiquiditySources() {
       {
         id:
           "PAGAR_EMOLA",
+
         type:
           "EMOLA_BUSINESS",
+
         name:
           "Pagar e-Mola",
+
         configured:
           pagarConfigured(),
+
+        executionAvailable:
+          pagarConfigured(),
+
         asset:
           "MZN"
       },
 
       {
         id:
+          "BINANCE",
+
+        type:
+          "BINANCE",
+
+        name:
+          "Binance",
+
+        configured:
+          external.binance,
+
+        executionAvailable:
+          false,
+
+        asset:
+          "USDT",
+
+        network:
+          "TRON/TRC20",
+
+        message:
+          external.binance
+            ? "Credenciais configuradas, mas o adaptador de execução de liquidez ainda deve ser validado antes de comprar USDT automaticamente."
+            : "Binance não configurada."
+      },
+
+      {
+        id:
+          "KOTANI",
+
+        type:
+          "KOTANI",
+
+        name:
+          "Kotani",
+
+        configured:
+          external.kotani,
+
+        executionAvailable:
+          false,
+
+        asset:
+          "USDT",
+
+        message:
+          external.kotani
+            ? "Credencial configurada. O contrato/API de execução precisa ser validado antes de ativar compras reais."
+            : "Kotani não configurada."
+      },
+
+      {
+        id:
+          "REDPAY",
+
+        type:
+          "REDPAY",
+
+        name:
+          "RedPay",
+
+        configured:
+          external.redpay,
+
+        executionAvailable:
+          false,
+
+        asset:
+          "USDT",
+
+        message:
+          external.redpay
+            ? "Credencial configurada. O contrato/API de execução precisa ser validado antes de ativar compras reais."
+            : "RedPay não configurada."
+      },
+
+      {
+        id:
           "LIQUIDITY_PARTNER",
+
         type:
           "LIQUIDITY_PARTNER",
+
         name:
           "Parceiro externo de liquidez",
+
         configured:
-          Boolean(
-            process.env.USDTMZ_LIQUIDITY_PARTNER
-          ),
+          external.genericPartner,
+
+        executionAvailable:
+          false,
+
         asset:
-          "USDT"
+          "USDT",
+
+        message:
+          external.genericPartner
+            ? "Parceiro identificado por configuração, mas o adaptador de execução ainda não foi ativado."
+            : "Nenhum parceiro externo configurado."
       }
     ]
   };
@@ -2846,10 +3250,20 @@ async function registerFunding(
       RETURNING *
     `;
 
-  await changeWalletBalance(
-    asset,
-    amount
-  );
+  try {
+    await changeWalletBalance(
+      asset,
+      amount
+    );
+  } catch (error) {
+    await sql`
+      DELETE FROM transactions
+      WHERE id = ${tx[0].id}
+      AND status = 'COMPLETED'
+    `;
+
+    throw error;
+  }
 
   return {
     success: true,
@@ -2933,20 +3347,21 @@ async function getDashboard() {
   const available =
     Math.max(
       0,
-      balances.usdt
+      balances.usdt -
+      reserved
     );
 
   let state =
     "SEM LIQUIDEZ";
 
   if (
-    balances.usdt > 0 &&
+    available > 0 &&
     balances.mzn > 0
   ) {
     state =
       "LIQUIDEZ DISPONÍVEL";
   } else if (
-    balances.usdt > 0
+    available > 0
   ) {
     state =
       "USDT DISPONÍVEL";
@@ -2968,7 +3383,10 @@ async function getDashboard() {
         balances.usdt,
 
       trx:
-        roundMoney(trx, 6),
+        roundMoney(
+          trx,
+          6
+        ),
 
       reservedUsdt:
         roundMoney(
@@ -3068,7 +3486,9 @@ async function getPendingDeposits() {
 // TAXA
 // ============================================================================
 
-async function rateResponse(force = false) {
+async function rateResponse(
+  force = false
+) {
   const rate =
     await getRealUsdtMznRate(
       force
@@ -3090,11 +3510,12 @@ async function rateResponse(force = false) {
       usdtUsd:
         rate.usdtUsd,
 
+      // Sempre zero.
       spread:
-        rate.spread,
+        0,
 
       spreadPercent:
-        rate.spreadPercent,
+        0,
 
       source:
         rate.source,
@@ -3173,11 +3594,13 @@ export default async function handler(
       action === "exchange_rate" ||
       action === "fx_rate"
     ) {
+      // NÃO força consulta em cada chamada.
+      // Usa cache de 60 segundos.
       return sendJson(
         res,
         200,
         await rateResponse(
-          true
+          false
         )
       );
     }
@@ -3462,5 +3885,4 @@ export default async function handler(
       }
     );
   }
-}
-```0
+    }
