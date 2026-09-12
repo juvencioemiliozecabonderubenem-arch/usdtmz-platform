@@ -15,7 +15,11 @@ import {
   getRealUsdtMznRate
 } from "./admin-withdrawals.js";
 
-export const config = { api: { bodyParser: false } };
+export const config = {
+  api: {
+    bodyParser: false
+  }
+};
 
 /*
  * ============================================================
@@ -23,18 +27,23 @@ export const config = { api: { bodyParser: false } };
  * ============================================================
  *
  * IMPORTANTE:
- * RATE FIXA FOI REMOVIDA.
  *
- * A taxa agora vem do motor cambial real do API06.
+ * NÃO EXISTE TAXA FIXA AQUI.
  *
- * MIN e MAX são limites comerciais da compra,
+ * A taxa USDT/MZN vem exclusivamente do motor cambial
+ * real do API06.
+ *
+ * MIN / MAX são limites comerciais da compra.
  * NÃO são taxa de câmbio.
  */
 
 const MIN = 64;
 const MAX = 40000;
 
-const METHODS = ["MPESA", "EMOLA"];
+const METHODS = [
+  "MPESA",
+  "EMOLA"
+];
 
 /*
  * ============================================================
@@ -70,45 +79,65 @@ function db() {
  * ============================================================
  */
 
-const text = v => String(v ?? "").trim();
+const text = value =>
+  String(value ?? "").trim();
 
-const payment = v =>
-  text(v).toUpperCase();
+const payment = value =>
+  text(value).toUpperCase();
 
 function orderId() {
-  return `USDTMZ-${Date.now()}-${randomUUID()
-    .replace(/-/g, "")
-    .slice(0, 12)
-    .toUpperCase()}`;
+  return (
+    `USDTMZ-${Date.now()}-` +
+    randomUUID()
+      .replace(/-/g, "")
+      .slice(0, 12)
+      .toUpperCase()
+  );
 }
 
 function header(req, name) {
-  const v = req.headers?.[name];
+  const value =
+    req.headers?.[name];
 
-  return Array.isArray(v)
-    ? String(v[0] || "")
-    : String(v || "");
+  return Array.isArray(value)
+    ? String(value[0] || "")
+    : String(value || "");
 }
 
-function errorMessage(e) {
+function errorMessage(error) {
   return (
-    e?.message ||
-    e?.error ||
-    e?.detail ||
-    String(e || "Erro desconhecido.")
+    error?.message ||
+    error?.error ||
+    error?.detail ||
+    String(
+      error ||
+      "Erro desconhecido."
+    )
   );
 }
 
 /*
- * Comparação em tempo constante.
+ * ============================================================
+ * COMPARAÇÃO EM TEMPO CONSTANTE
+ * ============================================================
  */
-function compare(a, b) {
-  const A = Buffer.from(String(a));
-  const B = Buffer.from(String(b));
 
-  return (
-    A.length === B.length &&
-    timingSafeEqual(A, B)
+function compare(a, b) {
+  const A =
+    Buffer.from(String(a));
+
+  const B =
+    Buffer.from(String(b));
+
+  if (
+    A.length !== B.length
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(
+    A,
+    B
   );
 }
 
@@ -182,7 +211,8 @@ async function pagarPost(
     Date.now().toString();
 
   const nonce =
-    randomBytes(18).toString("base64url");
+    randomBytes(18)
+      .toString("base64url");
 
   const rawBody =
     JSON.stringify(body);
@@ -213,8 +243,11 @@ async function pagarPost(
       method: "POST",
 
       headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
+        Accept:
+          "application/json",
+
+        "Content-Type":
+          "application/json",
 
         Authorization:
           `Bearer ${key}`,
@@ -251,21 +284,23 @@ async function pagarPost(
   }
 
   if (!response.ok) {
-    const e = new Error(
-      data?.message ||
-      data?.error ||
-      data?.detail ||
-      bodyText ||
-      `Pagar HTTP ${response.status}`
-    );
+    const error =
+      new Error(
+        data?.message ||
+        data?.error ||
+        data?.detail ||
+        bodyText ||
+        `Pagar HTTP ${response.status}`
+      );
 
-    e.status =
+    error.status =
       response.status;
 
-    e.requestId =
-      data?.requestId || null;
+    error.requestId =
+      data?.requestId ||
+      null;
 
-    throw e;
+    throw error;
   }
 
   return data;
@@ -292,25 +327,27 @@ async function pagarGet(path) {
       `${PAGAR_BASE}${path}`,
       {
         headers: {
-          Accept: "application/json",
+          Accept:
+            "application/json",
+
           Authorization:
             `Bearer ${key}`
         }
       }
     );
 
-  const t =
+  const bodyText =
     await response.text();
 
   let data = {};
 
   try {
-    data = t
-      ? JSON.parse(t)
+    data = bodyText
+      ? JSON.parse(bodyText)
       : {};
   } catch {
     data = {
-      raw: t
+      raw: bodyText
     };
   }
 
@@ -319,7 +356,7 @@ async function pagarGet(path) {
       data?.message ||
       data?.error ||
       data?.detail ||
-      t ||
+      bodyText ||
       `Pagar HTTP ${response.status}`
     );
   }
@@ -372,9 +409,15 @@ function paymentStatus(data) {
  * ============================================================
  */
 
-function webhookEvent(req, body) {
+function webhookEvent(
+  req,
+  body
+) {
   return text(
-    header(req, "pagar-event-id") ||
+    header(
+      req,
+      "pagar-event-id"
+    ) ||
     body?.event_id ||
     body?.eventId ||
     body?.id
@@ -447,41 +490,50 @@ function verifyWebhook(
     process.env.PAGAR_WEBHOOK_SECRET;
 
   const eventId =
-    header(req, "pagar-event-id");
+    header(
+      req,
+      "pagar-event-id"
+    );
 
-  const sig =
-    header(req, "pagar-signature");
+  const signature =
+    header(
+      req,
+      "pagar-signature"
+    );
 
   if (
     !secret ||
     !eventId ||
-    !sig
+    !signature
   ) {
     return false;
   }
 
   const parts =
     Object.fromEntries(
-      sig
+      signature
         .split(",")
-        .map(x => {
-          const i =
-            x.indexOf("=");
+        .map(item => {
+          const index =
+            item.indexOf("=");
 
-          return i === -1
-            ? []
-            : [
-                x
-                  .slice(0, i)
-                  .trim(),
+          if (index === -1) {
+            return [];
+          }
 
-                x
-                  .slice(i + 1)
-                  .trim()
-              ];
+          return [
+            item
+              .slice(0, index)
+              .trim(),
+
+            item
+              .slice(index + 1)
+              .trim()
+          ];
         })
         .filter(
-          x => x.length
+          item =>
+            item.length
         )
     );
 
@@ -500,7 +552,9 @@ function verifyWebhook(
   }
 
   if (
-    !/^[a-f0-9]{64}$/i.test(received)
+    !/^[a-f0-9]{64}$/i.test(
+      received
+    )
   ) {
     return false;
   }
@@ -535,12 +589,22 @@ function verifyWebhook(
  * PROCESSAMENTO APÓS PAGAMENTO
  * ============================================================
  *
- * Esta função NÃO calcula a taxa.
+ * IMPORTANTE:
  *
- * A taxa e o USDT já ficam gravados na ordem.
+ * Esta função NÃO cria USDT.
+ * NÃO inventa liquidez.
+ * NÃO recalcula a taxa.
  *
- * O terceiro API será responsável pelo processamento
- * financeiro/entrega propriamente dito.
+ * A ordem já contém:
+ *
+ * - MZN
+ * - USDT
+ * - taxa
+ *
+ * O processamento seguinte deve trabalhar com liquidez
+ * USDT REAL.
+ *
+ * A execução efetiva continua no API de processamento.
  */
 
 async function processPaid(
@@ -558,7 +622,8 @@ async function processPaid(
         rate,
         blockchain_tx_hash
       FROM orders
-      WHERE order_id = ${id}
+      WHERE order_id =
+        ${id}
       LIMIT 1
     `;
 
@@ -568,19 +633,32 @@ async function processPaid(
     );
   }
 
-  const o =
+  const order =
     rows[0];
 
-  if (o.blockchain_tx_hash) {
+  /*
+   * Se já existe TX válida na ordem,
+   * não tentar enviar novamente.
+   */
+
+  if (
+    order.blockchain_tx_hash
+  ) {
     return {
-      status: "COMPLETED",
+      status:
+        "COMPLETED",
+
       tx_hash:
-        o.blockchain_tx_hash
+        order.blockchain_tx_hash
     };
   }
 
+  /*
+   * Confirmar operação correta.
+   */
+
   if (
-    String(o.operation)
+    String(order.operation)
       .toUpperCase() !==
     "BUY_USDT_ADMIN"
   ) {
@@ -590,10 +668,11 @@ async function processPaid(
   }
 
   /*
-   * Nunca processar uma ordem sem pagamento confirmado.
+   * Nunca processar sem pagamento confirmado.
    */
+
   if (
-    String(o.status)
+    String(order.status)
       .toUpperCase() !==
     "PAYMENT_CONFIRMED"
   ) {
@@ -603,17 +682,18 @@ async function processPaid(
   }
 
   /*
-   * Segurança:
-   * quantidade USDT e taxa devem existir no banco.
+   * Validar USDT gravado.
    */
-  const storedUsdt =
-    Number(o.usdt_amount);
 
-  const storedRate =
-    Number(o.rate);
+  const storedUsdt =
+    Number(
+      order.usdt_amount
+    );
 
   if (
-    !Number.isFinite(storedUsdt) ||
+    !Number.isFinite(
+      storedUsdt
+    ) ||
     storedUsdt <= 0
   ) {
     throw new Error(
@@ -621,8 +701,19 @@ async function processPaid(
     );
   }
 
+  /*
+   * Validar taxa gravada.
+   */
+
+  const storedRate =
+    Number(
+      order.rate
+    );
+
   if (
-    !Number.isFinite(storedRate) ||
+    !Number.isFinite(
+      storedRate
+    ) ||
     storedRate <= 0
   ) {
     throw new Error(
@@ -631,8 +722,12 @@ async function processPaid(
   }
 
   /*
-   * O motor de execução será analisado na terceira API.
+   * A execução real é delegada ao motor de transferência.
+   *
+   * Esse motor deverá garantir que o USDT enviado existe
+   * realmente na carteira/liq uidez autorizada.
    */
+
   return processAdminPurchaseToBinanceInternal(
     id
   );
@@ -640,7 +735,7 @@ async function processPaid(
 
 /*
  * ============================================================
- * WEBHOOK
+ * WEBHOOK PAGAR
  * ============================================================
  */
 
@@ -650,6 +745,10 @@ async function webhook(
   sql,
   rawBody
 ) {
+  /*
+   * Primeiro validar assinatura.
+   */
+
   if (
     !verifyWebhook(
       req,
@@ -685,13 +784,13 @@ async function webhook(
   const eventType =
     webhookType(body);
 
-  const pId =
+  const paymentIdValue =
     webhookPaymentId(body);
 
   const ref =
     reference(body);
 
-  const pStatus =
+  const paymentState =
     webhookStatus(body);
 
   if (
@@ -707,17 +806,45 @@ async function webhook(
 
   /*
    * ========================================================
+   * LOCALIZAR ORDEM PRIMEIRO
+   * ========================================================
+   *
+   * Evita guardar permanentemente um evento para uma ordem
+   * inexistente.
+   */
+
+  const orders =
+    await sql`
+      SELECT *
+      FROM orders
+      WHERE order_id =
+        ${ref}
+      LIMIT 1
+    `;
+
+  if (!orders.length) {
+    return res.status(404).json({
+      success: false,
+      message:
+        "Ordem USDTMZ não encontrada."
+    });
+  }
+
+  const order =
+    orders[0];
+
+  /*
+   * ========================================================
    * IDEMPOTÊNCIA DO WEBHOOK
    * ========================================================
    *
-   * Em vez de:
+   * Se o evento já existir:
    *
-   * SELECT -> INSERT
+   * - se já foi processado, responder duplicate;
+   * - se ainda não foi processado, permitir nova tentativa.
    *
-   * fazemos INSERT ... ON CONFLICT ... RETURNING.
-   *
-   * Assim duas entregas simultâneas do mesmo evento não
-   * devem passar ambas para o processamento.
+   * Isso é importante porque uma falha depois do INSERT
+   * não pode bloquear definitivamente o processamento.
    */
 
   const insertedEvent =
@@ -734,7 +861,7 @@ async function webhook(
       VALUES (
         ${eventId},
         ${eventType || "UNKNOWN"},
-        ${pId || null},
+        ${paymentIdValue || null},
         ${ref},
         ${JSON.stringify(body)},
         NOW()
@@ -745,72 +872,85 @@ async function webhook(
     `;
 
   if (!insertedEvent.length) {
-    return res.status(200).json({
-      success: true,
-      duplicate: true,
-      event_id: eventId
-    });
+    const existing =
+      await sql`
+        SELECT
+          event_id,
+          processed_at
+        FROM pagar_webhook_events
+        WHERE event_id =
+          ${eventId}
+        LIMIT 1
+      `;
+
+    if (
+      existing.length &&
+      existing[0].processed_at
+    ) {
+      return res.status(200).json({
+        success: true,
+        duplicate: true,
+        event_id:
+          eventId
+      });
+    }
+
+    /*
+     * Evento existe mas não foi processado.
+     *
+     * Continuamos para permitir recuperação.
+     */
   }
 
   /*
-   * Localizar ordem.
-   */
-
-  const orders =
-    await sql`
-      SELECT *
-      FROM orders
-      WHERE order_id = ${ref}
-      LIMIT 1
-    `;
-
-  if (!orders.length) {
-    return res.status(404).json({
-      success: false,
-      message:
-        "Ordem USDTMZ não encontrada."
-    });
-  }
-
-  const o =
-    orders[0];
-
-  /*
-   * Guardar informações do pagamento.
+   * ========================================================
+   * GUARDAR INFORMAÇÕES PAGAR
+   * ========================================================
    */
 
   await sql`
     UPDATE orders SET
       pagar_payment_id =
         COALESCE(
-          ${pId || null},
+          ${paymentIdValue || null},
           pagar_payment_id
         ),
+
       pagar_event_id =
         ${eventId},
+
       updated_at =
         NOW()
+
     WHERE order_id =
       ${ref}
   `;
 
   /*
-   * Já concluída.
+   * ========================================================
+   * JÁ CONCLUÍDA
+   * ========================================================
    */
 
-  if (o.blockchain_tx_hash) {
+  if (
+    order.blockchain_tx_hash
+  ) {
     await sql`
       UPDATE pagar_webhook_events
-      SET processed_at = NOW()
-      WHERE event_id = ${eventId}
+      SET processed_at =
+        NOW()
+      WHERE event_id =
+        ${eventId}
     `;
 
     return res.status(200).json({
       success: true,
-      order_id: ref,
-      status: "COMPLETED",
+      order_id:
+        ref,
+      status:
+        "COMPLETED",
       tx_hash:
-        o.blockchain_tx_hash
+        order.blockchain_tx_hash
     });
   }
 
@@ -823,16 +963,20 @@ async function webhook(
   if (
     eventType ===
       "payment.succeeded" ||
-    pStatus === "PAID"
+    paymentState ===
+      "PAID"
   ) {
     await sql`
       UPDATE orders SET
         status =
           'PAYMENT_CONFIRMED',
+
         updated_at =
           NOW()
+
       WHERE order_id =
         ${ref}
+
       AND blockchain_tx_hash IS NULL
     `;
 
@@ -853,47 +997,59 @@ async function webhook(
 
       return res.status(200).json({
         success: true,
-        order_id: ref,
+
+        order_id:
+          ref,
+
         status:
           result?.status ||
           "COMPLETED",
+
         tx_hash:
           result?.tx_hash ||
           null
       });
 
-    } catch (e) {
+    } catch (error) {
       console.error(
-        "PAGAR PAID -> BINANCE ERROR:",
-        e
+        "PAGAR PAID -> USDT PROCESSING ERROR:",
+        error
       );
 
       /*
-       * O dinheiro foi confirmado.
+       * O pagamento já foi confirmado.
        *
-       * Não marcamos FAILED simplesmente porque a entrega
-       * do USDT falhou.
+       * Não marcar FAILED porque a transferência USDT
+       * pode ser processada posteriormente.
        *
-       * A ordem continua PAYMENT_CONFIRMED para permitir
-       * processamento posterior.
+       * O evento NÃO recebe processed_at aqui.
+       * Assim uma nova entrega do webhook pode tentar
+       * novamente.
        */
 
       await sql`
         UPDATE orders SET
           status =
             'PAYMENT_CONFIRMED',
+
           updated_at =
             NOW()
+
         WHERE order_id =
           ${ref}
+
         AND blockchain_tx_hash IS NULL
       `;
 
       return res.status(202).json({
         success: true,
-        order_id: ref,
+
+        order_id:
+          ref,
+
         status:
           "PAYMENT_CONFIRMED",
+
         message:
           "Pagamento confirmado; transferência USDT requer processamento."
       });
@@ -909,16 +1065,20 @@ async function webhook(
   if (
     eventType ===
       "payment.failed" ||
-    pStatus === "FAILED"
+    paymentState ===
+      "FAILED"
   ) {
     await sql`
       UPDATE orders SET
         status =
           'FAILED',
+
         updated_at =
           NOW()
+
       WHERE order_id =
         ${ref}
+
       AND blockchain_tx_hash IS NULL
     `;
 
@@ -932,8 +1092,12 @@ async function webhook(
 
     return res.status(200).json({
       success: true,
-      order_id: ref,
-      status: "FAILED"
+
+      order_id:
+        ref,
+
+      status:
+        "FAILED"
     });
   }
 
@@ -944,17 +1108,20 @@ async function webhook(
    */
 
   if (
-    pStatus ===
+    paymentState ===
     "CANCELLED"
   ) {
     await sql`
       UPDATE orders SET
         status =
           'CANCELLED',
+
         updated_at =
           NOW()
+
       WHERE order_id =
         ${ref}
+
       AND blockchain_tx_hash IS NULL
     `;
 
@@ -968,8 +1135,12 @@ async function webhook(
 
     return res.status(200).json({
       success: true,
-      order_id: ref,
-      status: "CANCELLED"
+
+      order_id:
+        ref,
+
+      status:
+        "CANCELLED"
     });
   }
 
@@ -983,10 +1154,13 @@ async function webhook(
     UPDATE orders SET
       status =
         'PENDING',
+
       updated_at =
         NOW()
+
     WHERE order_id =
       ${ref}
+
     AND blockchain_tx_hash IS NULL
   `;
 
@@ -994,14 +1168,19 @@ async function webhook(
     UPDATE pagar_webhook_events
     SET processed_at =
       NOW()
+
     WHERE event_id =
       ${eventId}
   `;
 
   return res.status(200).json({
     success: true,
-    order_id: ref,
-    status: "PENDING"
+
+    order_id:
+      ref,
+
+    status:
+      "PENDING"
   });
 }
 
@@ -1010,36 +1189,36 @@ async function webhook(
  * MOTOR DE COTAÇÃO PARA NOVA COMPRA
  * ============================================================
  *
- * A cotação NÃO é inventada aqui.
+ * NÃO existe RATE = 64.
  *
- * API07 pede ao motor cambial do API06.
+ * O API07 pergunta ao motor cambial do API06.
  *
- * Se o motor não conseguir uma cotação válida,
- * a compra NÃO é criada.
+ * O motor deve:
  *
- * Isto evita vender USDT com uma taxa falsa.
+ * USD/MZN × USDT/USD
+ *
+ * e devolver uma taxa de mercado.
+ *
+ * Se todas as fontes falharem:
+ *
+ * NÃO existe fallback artificial.
+ *
+ * A compra fica indisponível.
  */
 
 async function getPurchaseRate() {
   let rateData;
 
   try {
-    /*
-     * false = respeitar o cache controlado do motor cambial.
-     *
-     * O motor continua sendo atualizado periodicamente,
-     * mas não vamos bombardear os provedores externos a
-     * cada clique de cada cliente.
-     */
     rateData =
       await getRealUsdtMznRate(
         false
       );
 
-  } catch (e) {
+  } catch (error) {
     console.error(
       "LIVE FX RATE ERROR:",
-      e
+      error
     );
 
     throw new Error(
@@ -1048,12 +1227,18 @@ async function getPurchaseRate() {
   }
 
   const rate =
-    Number(rateData?.rate);
+    Number(
+      rateData?.rate
+    );
 
   const marketRate =
     Number(
       rateData?.marketRate
     );
+
+  /*
+   * A taxa efetiva deve ser positiva.
+   */
 
   if (
     !Number.isFinite(rate) ||
@@ -1065,7 +1250,8 @@ async function getPurchaseRate() {
   }
 
   /*
-   * Se existir marketRate, também validamos.
+   * Se o motor fornecer marketRate,
+   * também validar.
    */
 
   if (
@@ -1083,17 +1269,43 @@ async function getPurchaseRate() {
     );
   }
 
+  /*
+   * IMPORTANTE:
+   *
+   * Não aplicar spread aqui.
+   *
+   * Se o motor retornar spread = 0,
+   * apenas informamos.
+   *
+   * Se o motor retornar spread diferente de zero,
+   * API07 NÃO cria outro spread.
+   */
+
+  const spread =
+    Number(
+      rateData?.spread
+    );
+
+  const spreadPercent =
+    Number(
+      rateData?.spreadPercent
+    );
+
   return {
     rate,
+
     marketRate:
-      Number.isFinite(marketRate)
+      Number.isFinite(
+        marketRate
+      )
         ? marketRate
         : null,
 
     source:
       text(
         rateData?.source
-      ) || "UNKNOWN",
+      ) ||
+      "UNKNOWN",
 
     updatedAt:
       rateData?.updatedAt ||
@@ -1105,20 +1317,16 @@ async function getPurchaseRate() {
 
     spread:
       Number.isFinite(
-        Number(rateData?.spread)
+        spread
       )
-        ? Number(rateData.spread)
+        ? spread
         : null,
 
     spreadPercent:
       Number.isFinite(
-        Number(
-          rateData?.spreadPercent
-        )
+        spreadPercent
       )
-        ? Number(
-            rateData.spreadPercent
-          )
+        ? spreadPercent
         : null,
 
     warning:
@@ -1145,10 +1353,14 @@ async function createPurchase(
     json(rawBody);
 
   const name =
-    text(body.name);
+    text(
+      body.name
+    );
 
   const phone =
-    text(body.phone);
+    text(
+      body.phone
+    );
 
   const method =
     payment(
@@ -1187,8 +1399,12 @@ async function createPurchase(
   }
 
   if (
-    !Number.isFinite(amount) ||
-    !Number.isInteger(amount)
+    !Number.isFinite(
+      amount
+    ) ||
+    !Number.isInteger(
+      amount
+    )
   ) {
     return res.status(400).json({
       success: false,
@@ -1197,7 +1413,9 @@ async function createPurchase(
     });
   }
 
-  if (amount < MIN) {
+  if (
+    amount < MIN
+  ) {
     return res.status(400).json({
       success: false,
       message:
@@ -1205,7 +1423,9 @@ async function createPurchase(
     });
   }
 
-  if (amount > MAX) {
+  if (
+    amount > MAX
+  ) {
     return res.status(400).json({
       success: false,
       message:
@@ -1213,7 +1433,11 @@ async function createPurchase(
     });
   }
 
-  if (!METHODS.includes(method)) {
+  if (
+    !METHODS.includes(
+      method
+    )
+  ) {
     return res.status(400).json({
       success: false,
       message:
@@ -1226,12 +1450,17 @@ async function createPurchase(
    * COTAÇÃO REAL
    * ========================================================
    *
-   * PRIMEIRO calculamos a taxa.
+   * PRIMEIRO:
+   *   obter taxa.
    *
-   * DEPOIS criamos a ordem.
+   * DEPOIS:
+   *   calcular USDT.
    *
-   * Assim a ordem fica gravada com a cotação exata
-   * utilizada naquela compra.
+   * DEPOIS:
+   *   gravar ordem.
+   *
+   * DEPOIS:
+   *   criar pagamento.
    */
 
   let rateData;
@@ -1240,10 +1469,10 @@ async function createPurchase(
     rateData =
       await getPurchaseRate();
 
-  } catch (e) {
+  } catch (error) {
     console.error(
       "PURCHASE RATE UNAVAILABLE:",
-      e
+      error
     );
 
     return res.status(503).json({
@@ -1254,12 +1483,24 @@ async function createPurchase(
   }
 
   const rate =
-    Number(rateData.rate);
+    Number(
+      rateData.rate
+    );
 
   /*
-   * Quantidade final de USDT.
+   * ========================================================
+   * CALCULAR USDT
+   * ========================================================
    *
-   * 6 casas porque USDT TRC20 usa 6 decimais.
+   * Exemplo:
+   *
+   * MZN = 640
+   * taxa = 64
+   *
+   * USDT = 10
+   *
+   * A taxa real utilizada será aquela devolvida pelo
+   * motor de mercado.
    */
 
   const usdtAmount =
@@ -1292,68 +1533,53 @@ async function createPurchase(
   const id =
     orderId();
 
-  let created;
-
   /*
    * ========================================================
    * GRAVAR ORDEM
    * ========================================================
    *
-   * Guardamos:
+   * A taxa é congelada para esta ordem.
    *
-   * amount       = MZN pago
-   * usdt_amount  = USDT prometido
-   * rate         = taxa efetivamente usada
+   * O mercado pode mudar depois.
    *
-   * Desta forma a ordem não muda simplesmente porque o
-   * mercado mudou depois.
+   * Isto impede que uma ordem já criada tenha a quantidade
+   * USDT alterada silenciosamente.
    */
 
   try {
-    created =
-      await sql`
-        INSERT INTO orders (
-          order_id,
-          name,
-          phone,
-          operation,
-          payment,
-          amount,
-          usdt_amount,
-          rate,
-          status,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          ${id},
-          ${name},
-          ${phone},
-          'BUY_USDT_ADMIN',
-          ${method},
-          ${amount},
-          ${usdtAmount},
-          ${rate},
-          'PENDING',
-          NOW(),
-          NOW()
-        )
-        RETURNING
-          order_id,
-          name,
-          phone,
-          payment,
-          amount,
-          usdt_amount,
-          rate,
-          status,
-          created_at
-      `;
+    await sql`
+      INSERT INTO orders (
+        order_id,
+        name,
+        phone,
+        operation,
+        payment,
+        amount,
+        usdt_amount,
+        rate,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        ${id},
+        ${name},
+        ${phone},
+        'BUY_USDT_ADMIN',
+        ${method},
+        ${amount},
+        ${usdtAmount},
+        ${rate},
+        'PENDING',
+        NOW(),
+        NOW()
+      )
+    `;
 
-  } catch (e) {
+  } catch (error) {
     console.error(
       "DATABASE CREATE ORDER ERROR:",
-      e
+      error
     );
 
     return res.status(500).json({
@@ -1373,8 +1599,10 @@ async function createPurchase(
     const pagar =
       await pagarPost(
         "/payments",
+
         {
-          reference: id,
+          reference:
+            id,
 
           title:
             "Compra de USDT",
@@ -1392,11 +1620,9 @@ async function createPurchase(
         },
 
         /*
-         * Idempotency-Key exclusiva.
-         *
-         * Se a mesma requisição for repetida, a Pagar
-         * recebe a mesma chave.
+         * Idempotência.
          */
+
         `payment:${id}`
       );
 
@@ -1405,37 +1631,44 @@ async function createPurchase(
         pagar
       );
 
-    const pId =
+    const pagarPaymentId =
       paymentId(
         pagar
       );
 
-    const pStatus =
+    const pagarStatus =
       paymentStatus(
         pagar
       );
 
     /*
-     * A Pagar precisa devolver um payment_id.
+     * A Pagar deve devolver payment_id.
      */
 
-    if (!pId) {
+    if (
+      !pagarPaymentId
+    ) {
       await sql`
         UPDATE orders
         SET
           status =
             'FAILED',
+
           updated_at =
             NOW()
+
         WHERE order_id =
           ${id}
       `;
 
       return res.status(502).json({
         success: false,
+
         message:
           "A Pagar respondeu sem payment_id.",
-        order_id: id
+
+        order_id:
+          id
       });
     }
 
@@ -1446,7 +1679,8 @@ async function createPurchase(
      */
 
     const internalStatus =
-      pStatus === "PAID"
+      pagarStatus ===
+        "PAID"
         ? "PAYMENT_CONFIRMED"
         : "PENDING";
 
@@ -1454,7 +1688,7 @@ async function createPurchase(
       UPDATE orders
       SET
         pagar_payment_id =
-          ${pId},
+          ${pagarPaymentId},
 
         status =
           ${internalStatus},
@@ -1473,7 +1707,8 @@ async function createPurchase(
      */
 
     if (
-      pStatus === "PAID"
+      pagarStatus ===
+      "PAID"
     ) {
       try {
         const result =
@@ -1531,13 +1766,10 @@ async function createPurchase(
 
           pagar: {
             payment_id:
-              pId,
+              pagarPaymentId,
 
             status:
-              pStatus,
-
-            data:
-              p
+              pagarStatus
           },
 
           tx_hash:
@@ -1545,10 +1777,10 @@ async function createPurchase(
             null
         });
 
-      } catch (e) {
+      } catch (error) {
         console.error(
-          "PAID -> BINANCE ERROR:",
-          e
+          "PAID -> USDT PROCESSING ERROR:",
+          error
         );
 
         return res.status(202).json({
@@ -1599,10 +1831,10 @@ async function createPurchase(
 
           pagar: {
             payment_id:
-              pId,
+              pagarPaymentId,
 
             status:
-              pStatus
+              pagarStatus
           }
         });
       }
@@ -1610,7 +1842,7 @@ async function createPurchase(
 
     /*
      * ======================================================
-     * PAGAMENTO AINDA PENDING / PROCESSING
+     * PAGAMENTO PENDING / PROCESSING
      * ======================================================
      */
 
@@ -1662,28 +1894,25 @@ async function createPurchase(
 
       pagar: {
         payment_id:
-          pId,
+          pagarPaymentId,
 
         status:
-          pStatus ||
-          "PROCESSING",
-
-        data:
-          p
+          pagarStatus ||
+          "PROCESSING"
       }
     });
 
-  } catch (e) {
+  } catch (error) {
     console.error(
       "PAGAR CREATE PAYMENT ERROR:",
-      e
+      error
     );
 
     /*
-     * Não podemos afirmar que o pagamento falhou
-     * se houve erro de comunicação.
+     * Não afirmar que o pagamento falhou apenas porque
+     * houve erro de comunicação.
      *
-     * Mantemos PENDING.
+     * A ordem permanece PENDING.
      */
 
     await sql`
@@ -1701,13 +1930,14 @@ async function createPurchase(
       AND blockchain_tx_hash IS NULL
     `;
 
+    const errorStatus =
+      Number(
+        error?.status || 0
+      );
+
     const statusCode =
-      Number(
-        e?.status || 0
-      ) >= 400 &&
-      Number(
-        e?.status || 0
-      ) < 500
+      errorStatus >= 400 &&
+      errorStatus < 500
         ? 502
         : 202;
 
@@ -1723,14 +1953,7 @@ async function createPurchase(
         id,
 
       status:
-        "PENDING",
-
-      detail:
-        errorMessage(e),
-
-      request_id:
-        e?.requestId ||
-        null
+        "PENDING"
     });
   }
 }
@@ -1739,6 +1962,10 @@ async function createPurchase(
  * ============================================================
  * CONSULTAR ESTADO DA ORDEM
  * ============================================================
+ *
+ * Esta rota é interna.
+ *
+ * O segredo NÃO deve ser exposto ao cliente.
  */
 
 async function statusCheck(
@@ -1746,10 +1973,6 @@ async function statusCheck(
   res,
   sql
 ) {
-  /*
-   * Esta rota é protegida pelo segredo interno.
-   */
-
   const secret =
     process.env.PAGAR_SIGNING_SECRET;
 
@@ -1812,15 +2035,17 @@ async function statusCheck(
     });
   }
 
-  const o =
+  const order =
     rows[0];
 
   /*
-   * Já concluída.
+   * ========================================================
+   * JÁ CONCLUÍDA
+   * ========================================================
    */
 
   if (
-    o.blockchain_tx_hash
+    order.blockchain_tx_hash
   ) {
     return res.status(200).json({
       success: true,
@@ -1832,45 +2057,56 @@ async function statusCheck(
         "COMPLETED",
 
       tx_hash:
-        o.blockchain_tx_hash,
+        order.blockchain_tx_hash,
 
       amount_mzn:
-        Number(o.amount),
+        Number(
+          order.amount
+        ),
 
       usdt_amount:
-        Number(o.usdt_amount),
+        Number(
+          order.usdt_amount
+        ),
 
       rate:
-        Number(o.rate)
+        Number(
+          order.rate
+        )
     });
   }
 
   /*
-   * Sem pagamento ainda.
+   * ========================================================
+   * SEM PAGAMENTO
+   * ========================================================
    */
 
   if (
-    !o.pagar_payment_id
+    !order.pagar_payment_id
   ) {
     return res.status(409).json({
       success: false,
+
       message:
         "A ordem ainda não possui pagar_payment_id."
     });
   }
 
   /*
-   * Consultar Pagar.
+   * ========================================================
+   * CONSULTAR PAGAR
+   * ========================================================
    */
 
   const data =
     await pagarGet(
       `/payments/${encodeURIComponent(
-        o.pagar_payment_id
+        order.pagar_payment_id
       )}`
     );
 
-  const pStatus =
+  const pagarStatus =
     paymentStatus(
       data
     );
@@ -1882,7 +2118,8 @@ async function statusCheck(
    */
 
   if (
-    pStatus === "PAID"
+    pagarStatus ===
+    "PAID"
   ) {
     await sql`
       UPDATE orders
@@ -1921,19 +2158,25 @@ async function statusCheck(
           null,
 
         amount_mzn:
-          Number(o.amount),
+          Number(
+            order.amount
+          ),
 
         usdt_amount:
-          Number(o.usdt_amount),
+          Number(
+            order.usdt_amount
+          ),
 
         rate:
-          Number(o.rate)
+          Number(
+            order.rate
+          )
       });
 
-    } catch (e) {
+    } catch (error) {
       console.error(
-        "STATUS -> BINANCE ERROR:",
-        e
+        "STATUS -> USDT PROCESSING ERROR:",
+        error
       );
 
       return res.status(202).json({
@@ -1946,16 +2189,22 @@ async function statusCheck(
           "PAYMENT_CONFIRMED",
 
         message:
-          "Pagamento confirmado; transferência requer processamento.",
+          "Pagamento confirmado; transferência USDT requer processamento.",
 
         amount_mzn:
-          Number(o.amount),
+          Number(
+            order.amount
+          ),
 
         usdt_amount:
-          Number(o.usdt_amount),
+          Number(
+            order.usdt_amount
+          ),
 
         rate:
-          Number(o.rate)
+          Number(
+            order.rate
+          )
       });
     }
   }
@@ -1967,9 +2216,11 @@ async function statusCheck(
    */
 
   const internalStatus =
-    pStatus === "FAILED"
+    pagarStatus ===
+      "FAILED"
       ? "FAILED"
-      : pStatus === "CANCELLED"
+      : pagarStatus ===
+          "CANCELLED"
         ? "CANCELLED"
         : "PENDING";
 
@@ -1995,20 +2246,26 @@ async function statusCheck(
       id,
 
     payment_status:
-      pStatus ||
+      pagarStatus ||
       "PENDING",
 
     status:
       internalStatus,
 
     amount_mzn:
-      Number(o.amount),
+      Number(
+        order.amount
+      ),
 
     usdt_amount:
-      Number(o.usdt_amount),
+      Number(
+        order.usdt_amount
+      ),
 
     rate:
-      Number(o.rate)
+      Number(
+        order.rate
+      )
   });
 }
 
@@ -2029,13 +2286,16 @@ export default async function handler(
     if (!databaseUrl) {
       return res.status(500).json({
         success: false,
+
         message:
           "Banco de dados não configurado."
       });
     }
 
     const sql =
-      neon(databaseUrl);
+      neon(
+        databaseUrl
+      );
 
     /*
      * ======================================================
@@ -2044,7 +2304,8 @@ export default async function handler(
      */
 
     if (
-      req.method === "POST" &&
+      req.method ===
+        "POST" &&
       header(
         req,
         "pagar-event-id"
@@ -2072,7 +2333,8 @@ export default async function handler(
      */
 
     if (
-      req.method === "GET" &&
+      req.method ===
+        "GET" &&
       (
         req.query?.order_id ||
         req.query?.orderId
@@ -2092,7 +2354,8 @@ export default async function handler(
      */
 
     if (
-      req.method === "POST"
+      req.method ===
+      "POST"
     ) {
       return createPurchase(
         req,
@@ -2109,22 +2372,27 @@ export default async function handler(
 
     return res.status(405).json({
       success: false,
+
       message:
         "Método não permitido."
     });
 
-  } catch (e) {
+  } catch (error) {
     console.error(
       "CREATE PURCHASE FATAL ERROR:",
-      e
+      error
     );
+
+    /*
+     * Nunca devolver stack trace ou detalhes internos
+     * para o cliente em produção.
+     */
 
     return res.status(500).json({
       success: false,
+
       message:
-        "Erro interno ao processar a operação.",
-      detail:
-        errorMessage(e)
+        "Erro interno ao processar a operação."
     });
   }
 }
