@@ -1,5 +1,9 @@
 import { neon } from "@neondatabase/serverless";
-import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import {
+  createHmac,
+  timingSafeEqual,
+  randomBytes
+} from "node:crypto";
 import { TronWeb } from "tronweb";
 
 const sql = neon(process.env.DATABASE_URL);
@@ -155,7 +159,9 @@ function getTreasuryAddress() {
 }
 
 function getTronWeb() {
-  const apiKey = process.env.TRON_PRO_API_KEY;
+  const apiKey = String(
+    process.env.TRON_PRO_API_KEY || ""
+  ).trim();
 
   const headers = apiKey
     ? {
@@ -197,7 +203,11 @@ async function fetchJson(url, options = {}, timeoutMs = 8000) {
   try {
     const response = await fetch(url, {
       ...options,
-      signal: controller.signal
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(options.headers || {})
+      }
     });
 
     const text = await response.text();
@@ -205,22 +215,32 @@ async function fetchJson(url, options = {}, timeoutMs = 8000) {
     let data = null;
 
     try {
-      data = JSON.parse(text);
+      data = text ? JSON.parse(text) : null;
     } catch {
       throw new Error(
-        `Resposta JSON inválida do fornecedor (${response.status}).`
+        `Resposta JSON inválida do fornecedor (HTTP ${response.status}).`
       );
     }
 
     if (!response.ok) {
-      throw new Error(
+      const message =
         data?.message ||
         data?.error ||
-        `Fornecedor respondeu HTTP ${response.status}.`
-      );
+        data?.detail ||
+        `Fornecedor respondeu HTTP ${response.status}.`;
+
+      throw new Error(String(message));
     }
 
     return data;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(
+        "Tempo limite excedido ao consultar o fornecedor."
+      );
+    }
+
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -242,31 +262,45 @@ let rateCache = {
 
 const RATE_CACHE_MS = 60 * 1000;
 
-/*
- * USD/MZN:
- *
- * 1. Africa API
- * 2. AfriRate
- * 3. MoneyConvert
- *
- * USDT/USD:
- *
- * 1. Coinbase
- * 2. CoinGecko
- *
- * NÃO existe fallback fixo de 64 MZN.
- */
+/* =========================================================
+   AUXILIAR — NÚMERO
+========================================================= */
+
+function parsePositiveRate(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0
+      ? value
+      : null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/,/g, "");
+
+    const number = Number(normalized);
+
+    return Number.isFinite(number) && number > 0
+      ? number
+      : null;
+  }
+
+  return null;
+}
 
 /* =========================================================
    AFRICA API
 ========================================================= */
 
 async function getUsdMznFromAfricaApi() {
-  const apiKey = process.env.AFRICA_API_KEY;
+  const apiKey = String(
+    process.env.AFRICA_API_KEY || ""
+  ).trim();
 
   if (!apiKey) {
     throw new Error(
-      "AFRICA_API_KEY não configurada."
+      "AFRICA_API_KEY não configurada no servidor."
     );
   }
 
@@ -283,11 +317,11 @@ async function getUsdMznFromAfricaApi() {
         Authorization: `Bearer ${apiKey}`
       }
     },
-    8000
+    10000
   );
 
   /*
-   * Formato esperado:
+   * Formato principal esperado:
    *
    * {
    *   data: [
@@ -307,11 +341,18 @@ async function getUsdMznFromAfricaApi() {
   const row = rows.find((item) => {
     const country =
       String(
-        item?.country_code || ""
+        item?.country_code ||
+        item?.country ||
+        item?.countryCode ||
+        ""
       ).toUpperCase();
 
     const value =
-      Number(item?.value);
+      parsePositiveRate(
+        item?.value ??
+        item?.rate ??
+        item?.value_numeric
+      );
 
     return (
       country === "MZ" &&
@@ -320,28 +361,51 @@ async function getUsdMznFromAfricaApi() {
     );
   });
 
-  if (!row) {
-    throw new Error(
-      "Africa API não devolveu USD/MZN válido."
-    );
+  if (row) {
+    const rate =
+      parsePositiveRate(
+        row?.value ??
+        row?.rate ??
+        row?.value_numeric
+      );
+
+    if (rate) {
+      return {
+        rate,
+        source: "AFRICA_API"
+      };
+    }
   }
 
-  const rate =
-    Number(row.value);
+  /*
+   * Algumas respostas podem vir como objeto único.
+   */
 
-  if (
-    !Number.isFinite(rate) ||
-    rate <= 0
-  ) {
-    throw new Error(
-      "Taxa USD/MZN da Africa API é inválida."
-    );
+  const directCandidates = [
+    data?.value,
+    data?.rate,
+    data?.usd_mzn,
+    data?.USD_MZN,
+    data?.data?.value,
+    data?.data?.rate,
+    data?.data?.usd_mzn,
+    data?.data?.USD_MZN
+  ];
+
+  for (const candidate of directCandidates) {
+    const rate = parsePositiveRate(candidate);
+
+    if (rate) {
+      return {
+        rate,
+        source: "AFRICA_API"
+      };
+    }
   }
 
-  return {
-    rate,
-    source: "AFRICA_API"
-  };
+  throw new Error(
+    "Africa API respondeu, mas não devolveu uma taxa USD/MZN válida."
+  );
 }
 
 /* =========================================================
@@ -352,33 +416,30 @@ async function getUsdMznFromAfriRate() {
   const data = await fetchJson(
     "https://afrirate.com/api/v1/rates/latest?country=MZ",
     {},
-    8000
+    10000
   );
-
-  /*
-   * Aceitamos diferentes formatos de resposta
-   * para tornar o fallback mais resistente.
-   */
 
   const candidates = [
     data?.rate,
-    data?.data?.rate,
-    data?.data?.usd_mzn,
-    data?.data?.USD_MZN,
+    data?.value,
     data?.usd_mzn,
     data?.USD_MZN,
+
+    data?.data?.rate,
+    data?.data?.value,
+    data?.data?.usd_mzn,
+    data?.data?.USD_MZN,
+
     data?.rates?.USD_MZN,
     data?.rates?.["USD/MZN"],
-    data?.rates?.USD?.MZN
+    data?.rates?.usd_mzn,
+    data?.rates?.["usd/mzn"]
   ];
 
   for (const candidate of candidates) {
-    const rate = Number(candidate);
+    const rate = parsePositiveRate(candidate);
 
-    if (
-      Number.isFinite(rate) &&
-      rate > 0
-    ) {
+    if (rate) {
       return {
         rate,
         source: "AFRIRATE"
@@ -386,9 +447,27 @@ async function getUsdMznFromAfriRate() {
     }
   }
 
-  /*
-   * Alguns fornecedores devolvem uma lista.
-   */
+  const nestedUsd =
+    data?.rates?.USD;
+
+  if (
+    nestedUsd &&
+    typeof nestedUsd === "object"
+  ) {
+    const candidate =
+      nestedUsd?.MZN ??
+      nestedUsd?.mzn;
+
+    const rate =
+      parsePositiveRate(candidate);
+
+    if (rate) {
+      return {
+        rate,
+        source: "AFRIRATE"
+      };
+    }
+  }
 
   const arrays = [
     data?.data,
@@ -404,32 +483,42 @@ async function getUsdMznFromAfriRate() {
           item?.pair ||
           item?.symbol ||
           item?.currency ||
+          item?.code ||
           ""
         )
           .replace(/-/g, "/")
           .replace(/_/g, "/")
+          .replace(/\s/g, "")
           .toUpperCase();
 
-      if (
-        pair === "USD/MZN" ||
-        pair === "USDMZN"
-      ) {
-        const rate =
-          Number(
-            item?.rate ??
-            item?.value ??
-            item?.price
-          );
+      const country =
+        String(
+          item?.country ||
+          item?.country_code ||
+          ""
+        ).toUpperCase();
 
-        if (
-          Number.isFinite(rate) &&
-          rate > 0
-        ) {
-          return {
-            rate,
-            source: "AFRIRATE"
-          };
-        }
+      const candidate =
+        item?.rate ??
+        item?.value ??
+        item?.price ??
+        item?.usd_mzn;
+
+      const rate =
+        parsePositiveRate(candidate);
+
+      if (
+        rate &&
+        (
+          pair === "USD/MZN" ||
+          pair === "USDMZN" ||
+          country === "MZ"
+        )
+      ) {
+        return {
+          rate,
+          source: "AFRIRATE"
+        };
       }
     }
   }
@@ -447,18 +536,15 @@ async function getUsdMznFromMoneyConvert() {
   const data = await fetchJson(
     "https://cdn.moneyconvert.net/api/latest.json",
     {},
-    8000
+    10000
   );
 
   const rate =
-    Number(
+    parsePositiveRate(
       data?.rates?.MZN
     );
 
-  if (
-    !Number.isFinite(rate) ||
-    rate <= 0
-  ) {
+  if (!rate) {
     throw new Error(
       "MoneyConvert não devolveu MZN válido."
     );
@@ -471,7 +557,7 @@ async function getUsdMznFromMoneyConvert() {
 }
 
 /* =========================================================
-   USD/MZN
+   USD/MZN — FALLBACK
 ========================================================= */
 
 async function getUsdMzn() {
@@ -481,7 +567,7 @@ async function getUsdMzn() {
     return await getUsdMznFromAfricaApi();
   } catch (error) {
     errors.push(
-      `Africa API: ${error.message}`
+      `Africa API: ${String(error?.message || error)}`
     );
   }
 
@@ -489,7 +575,7 @@ async function getUsdMzn() {
     return await getUsdMznFromAfriRate();
   } catch (error) {
     errors.push(
-      `AfriRate: ${error.message}`
+      `AfriRate: ${String(error?.message || error)}`
     );
   }
 
@@ -497,7 +583,7 @@ async function getUsdMzn() {
     return await getUsdMznFromMoneyConvert();
   } catch (error) {
     errors.push(
-      `MoneyConvert: ${error.message}`
+      `MoneyConvert: ${String(error?.message || error)}`
     );
   }
 
@@ -516,18 +602,15 @@ async function getUsdtUsdFromCoinbase() {
   const data = await fetchJson(
     "https://api.coinbase.com/v2/exchange-rates?currency=USDT",
     {},
-    8000
+    10000
   );
 
   const usd =
-    Number(
+    parsePositiveRate(
       data?.data?.rates?.USD
     );
 
-  if (
-    !Number.isFinite(usd) ||
-    usd <= 0
-  ) {
+  if (!usd) {
     throw new Error(
       "Coinbase não devolveu USDT/USD válido."
     );
@@ -547,18 +630,15 @@ async function getUsdtUsdFromCoinGecko() {
   const data = await fetchJson(
     "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=usd",
     {},
-    8000
+    10000
   );
 
   const usd =
-    Number(
+    parsePositiveRate(
       data?.tether?.usd
     );
 
-  if (
-    !Number.isFinite(usd) ||
-    usd <= 0
-  ) {
+  if (!usd) {
     throw new Error(
       "CoinGecko não devolveu USDT/USD válido."
     );
@@ -571,7 +651,7 @@ async function getUsdtUsdFromCoinGecko() {
 }
 
 /* =========================================================
-   USDT/USD
+   USDT/USD — FALLBACK
 ========================================================= */
 
 async function getUsdtUsd() {
@@ -581,7 +661,7 @@ async function getUsdtUsd() {
     return await getUsdtUsdFromCoinbase();
   } catch (error) {
     errors.push(
-      `Coinbase: ${error.message}`
+      `Coinbase: ${String(error?.message || error)}`
     );
   }
 
@@ -589,7 +669,7 @@ async function getUsdtUsd() {
     return await getUsdtUsdFromCoinGecko();
   } catch (error) {
     errors.push(
-      `CoinGecko: ${error.message}`
+      `CoinGecko: ${String(error?.message || error)}`
     );
   }
 
@@ -604,9 +684,7 @@ async function getUsdtUsd() {
    TAXA FINAL USDT/MZN
 ========================================================= */
 
-async function getRealUsdtMznRate(
-  force = false
-) {
+async function getRealUsdtMznRate(force = false) {
   const now = Date.now();
 
   if (
@@ -618,20 +696,18 @@ async function getRealUsdtMznRate(
     return rateCache;
   }
 
-  const [usdMzn, usdtUsd] =
-    await Promise.all([
-      getUsdMzn(),
-      getUsdtUsd()
-    ]);
+  const usdMzn =
+    await getUsdMzn();
+
+  const usdtUsd =
+    await getUsdtUsd();
 
   const marketRate =
     Number(usdMzn.rate) *
     Number(usdtUsd.rate);
 
   if (
-    !Number.isFinite(
-      marketRate
-    ) ||
+    !Number.isFinite(marketRate) ||
     marketRate <= 0
   ) {
     throw new Error(
@@ -703,16 +779,13 @@ function topicToAddress(topic) {
     String(topic || "")
       .replace(/^0x/, "");
 
-  if (
-    clean.length !== 64
-  ) {
+  if (clean.length !== 64) {
     return null;
   }
 
   try {
     return TronWeb.address.fromHex(
-      "41" +
-        clean.slice(-40)
+      "41" + clean.slice(-40)
     );
   } catch {
     return null;
@@ -729,9 +802,7 @@ function topicToAmount(data) {
   try {
     return (
       Number(
-        BigInt(
-          "0x" + clean
-        )
+        BigInt("0x" + clean)
       ) /
       10 ** USDT_DECIMALS
     );
@@ -740,11 +811,11 @@ function topicToAmount(data) {
   }
 }
 
-async function getTransactionInfo(
-  txHash
-) {
+async function getTransactionInfo(txHash) {
   const apiKey =
-    process.env.TRON_PRO_API_KEY;
+    String(
+      process.env.TRON_PRO_API_KEY || ""
+    ).trim();
 
   if (!apiKey) {
     throw new Error(
@@ -759,6 +830,7 @@ async function getTransactionInfo(
       )}`,
       {
         headers: {
+          Accept: "application/json",
           "TRON-PRO-API-KEY":
             apiKey
         }
@@ -804,8 +876,7 @@ async function verifyUsdtTransfer(
   }
 
   const cleanHash =
-    String(txHash || "")
-      .trim();
+    String(txHash || "").trim();
 
   if (
     !/^[a-fA-F0-9]{64}$/.test(
@@ -872,7 +943,9 @@ async function verifyUsdtTransfer(
 
   try {
     const apiKey =
-      process.env.TRON_PRO_API_KEY;
+      String(
+        process.env.TRON_PRO_API_KEY || ""
+      ).trim();
 
     const response =
       await fetch(
@@ -881,6 +954,7 @@ async function verifyUsdtTransfer(
         )}/events?only_confirmed=true&limit=200`,
         {
           headers: {
+            Accept: "application/json",
             "TRON-PRO-API-KEY":
               apiKey
           }
@@ -949,7 +1023,6 @@ async function verifyUsdtTransfer(
     let to =
       event?.result?.to ||
       event?.result?.["1"] ||
-      event?.result?.["0"] ||
       null;
 
     let value =
@@ -984,9 +1057,7 @@ async function verifyUsdtTransfer(
 
     try {
       if (
-        String(to).startsWith(
-          "41"
-        )
+        String(to).startsWith("41")
       ) {
         normalizedTo =
           TronWeb.address.fromHex(
@@ -1005,14 +1076,10 @@ async function verifyUsdtTransfer(
     }
 
     let amount =
-      Number(
-        value || 0
-      );
+      Number(value || 0);
 
     if (
-      !Number.isFinite(
-        amount
-      ) ||
+      !Number.isFinite(amount) ||
       amount <= 0
     ) {
       amount =
@@ -1022,9 +1089,7 @@ async function verifyUsdtTransfer(
     }
 
     if (
-      Number.isFinite(
-        amount
-      ) &&
+      Number.isFinite(amount) &&
       amount > 0
     ) {
       received += amount;
@@ -1037,9 +1102,7 @@ async function verifyUsdtTransfer(
       USDT_DECIMALS
     );
 
-  if (
-    received <= 0
-  ) {
+  if (received <= 0) {
     return {
       confirmed: false,
       pending: true,
@@ -1050,14 +1113,10 @@ async function verifyUsdtTransfer(
   }
 
   const expected =
-    Number(
-      requestedAmount
-    );
+    Number(requestedAmount);
 
   if (
-    Number.isFinite(
-      expected
-    ) &&
+    Number.isFinite(expected) &&
     expected > 0 &&
     received + 0.000001 <
       expected
@@ -1083,12 +1142,9 @@ async function verifyUsdtTransfer(
    WALLETS
 ========================================================= */
 
-async function getOrCreateWallet(
-  asset
-) {
+async function getOrCreateWallet(asset) {
   const normalizedAsset =
-    String(asset)
-      .toUpperCase();
+    String(asset).toUpperCase();
 
   const existing =
     await sql`
@@ -1111,8 +1167,7 @@ async function getOrCreateWallet(
   }
 
   const address =
-    normalizedAsset ===
-    "USDT"
+    normalizedAsset === "USDT"
       ? getTreasuryAddress()
       : null;
 
@@ -1130,8 +1185,7 @@ async function getOrCreateWallet(
       VALUES (
         ${address},
         ${
-          normalizedAsset ===
-          "USDT"
+          normalizedAsset === "USDT"
             ? "TRON"
             : "MZN"
         },
@@ -1151,9 +1205,7 @@ async function getOrCreateWallet(
    DEPÓSITO MZN
 ========================================================= */
 
-async function registerMZNDeposit(
-  body
-) {
+async function registerMZNDeposit(body) {
   const amount =
     Number(body.amount);
 
@@ -1168,9 +1220,7 @@ async function registerMZNDeposit(
     ).trim();
 
   if (
-    !Number.isFinite(
-      amount
-    ) ||
+    !Number.isFinite(amount) ||
     amount < MIN_MZN
   ) {
     return {
@@ -1183,9 +1233,7 @@ async function registerMZNDeposit(
     };
   }
 
-  if (
-    amount > MAX_MZN
-  ) {
+  if (amount > MAX_MZN) {
     return {
       status: 400,
       body: {
@@ -1196,11 +1244,7 @@ async function registerMZNDeposit(
     };
   }
 
-  if (
-    !isValidSource(
-      source
-    )
-  ) {
+  if (!isValidSource(source)) {
     return {
       status: 400,
       body: {
@@ -1229,9 +1273,7 @@ async function registerMZNDeposit(
       LIMIT 1
     `;
 
-  if (
-    existing.length
-  ) {
+  if (existing.length) {
     return {
       status: 200,
       body: {
@@ -1251,9 +1293,7 @@ async function registerMZNDeposit(
     };
   }
 
-  await getOrCreateWallet(
-    "MZN"
-  );
+  await getOrCreateWallet("MZN");
 
   await sql`
     INSERT INTO transactions (
@@ -1295,9 +1335,7 @@ async function registerMZNDeposit(
    CONFIRMAR MZN
 ========================================================= */
 
-async function confirmMZNDeposit(
-  body
-) {
+async function confirmMZNDeposit(body) {
   const reference =
     String(
       body.reference || ""
@@ -1314,9 +1352,7 @@ async function confirmMZNDeposit(
     };
   }
 
-  await getOrCreateWallet(
-    "MZN"
-  );
+  await getOrCreateWallet("MZN");
 
   const result =
     await sql`
@@ -1356,9 +1392,7 @@ async function confirmMZNDeposit(
         status
     `;
 
-  if (
-    !result.length
-  ) {
+  if (!result.length) {
     const existing =
       await sql`
         SELECT
@@ -1417,9 +1451,7 @@ async function confirmMZNDeposit(
    DEPÓSITO USDT
 ========================================================= */
 
-async function registerUSDTDeposit(
-  body
-) {
+async function registerUSDTDeposit(body) {
   const requestedAmount =
     positiveNumber(
       body.amount
@@ -1435,7 +1467,7 @@ async function registerUSDTDeposit(
   const source =
     normalizeSource(
       body.source ||
-        "USDT_TRON"
+      "USDT_TRON"
     );
 
   if (
@@ -1453,10 +1485,7 @@ async function registerUSDTDeposit(
     };
   }
 
-  if (
-    source !==
-    "USDT_TRON"
-  ) {
+  if (source !== "USDT_TRON") {
     return {
       status: 400,
       body: {
@@ -1467,9 +1496,7 @@ async function registerUSDTDeposit(
     };
   }
 
-  await getOrCreateWallet(
-    "USDT"
-  );
+  await getOrCreateWallet("USDT");
 
   const existing =
     await sql`
@@ -1484,9 +1511,7 @@ async function registerUSDTDeposit(
       LIMIT 1
     `;
 
-  if (
-    existing.length
-  ) {
+  if (existing.length) {
     if (
       existing[0].status ===
       "COMPLETED"
@@ -1519,8 +1544,7 @@ async function registerUSDTDeposit(
       ) {
         return await confirmUSDTDeposit({
           reference:
-            existing[0]
-              .reference,
+            existing[0].reference,
           tx_hash:
             txHash
         });
@@ -1532,8 +1556,7 @@ async function registerUSDTDeposit(
           success: true,
           status: "PENDING",
           reference:
-            existing[0]
-              .reference,
+            existing[0].reference,
           message:
             verification.reason
         }
@@ -1585,12 +1608,8 @@ async function registerUSDTDeposit(
       requestedAmount
     );
 
-  if (
-    !verification.confirmed
-  ) {
-    if (
-      !verification.pending
-    ) {
+  if (!verification.confirmed) {
+    if (!verification.pending) {
       await sql`
         UPDATE transactions
         SET status = 'FAILED'
@@ -1633,9 +1652,7 @@ async function registerUSDTDeposit(
    CONFIRMAR USDT
 ========================================================= */
 
-async function confirmUSDTDeposit(
-  body
-) {
+async function confirmUSDTDeposit(body) {
   const reference =
     String(
       body.reference || ""
@@ -1657,9 +1674,7 @@ async function confirmUSDTDeposit(
     };
   }
 
-  await getOrCreateWallet(
-    "USDT"
-  );
+  await getOrCreateWallet("USDT");
 
   const pending =
     await sql`
@@ -1676,9 +1691,7 @@ async function confirmUSDTDeposit(
       LIMIT 1
     `;
 
-  if (
-    !pending.length
-  ) {
+  if (!pending.length) {
     return {
       status: 404,
       body: {
@@ -1711,9 +1724,8 @@ async function confirmUSDTDeposit(
   const hash =
     txHash ||
     String(
-      transaction
-        .blockchain_tx_hash ||
-        ""
+      transaction.blockchain_tx_hash ||
+      ""
     ).trim();
 
   if (
@@ -1737,9 +1749,7 @@ async function confirmUSDTDeposit(
       0
     );
 
-  if (
-    !verification.confirmed
-  ) {
+  if (!verification.confirmed) {
     return {
       status: 200,
       body: {
@@ -1808,9 +1818,7 @@ async function confirmUSDTDeposit(
         blockchain_tx_hash
     `;
 
-  if (
-    !result.length
-  ) {
+  if (!result.length) {
     const existing =
       await sql`
         SELECT
@@ -1869,18 +1877,14 @@ async function confirmUSDTDeposit(
    CONVERSÃO MZN -> USDT
 ========================================================= */
 
-async function convertMZNToUSDT(
-  body
-) {
+async function convertMZNToUSDT(body) {
   const amountMZN =
     Number(
       body.amount_mzn
     );
 
   if (
-    !Number.isFinite(
-      amountMZN
-    ) ||
+    !Number.isFinite(amountMZN) ||
     amountMZN < MIN_MZN ||
     amountMZN > MAX_MZN
   ) {
@@ -1924,9 +1928,7 @@ async function convertMZNToUSDT(
     );
 
   if (
-    !Number.isFinite(
-      usdtAmount
-    ) ||
+    !Number.isFinite(usdtAmount) ||
     usdtAmount <= 0
   ) {
     return {
@@ -1943,9 +1945,7 @@ async function convertMZNToUSDT(
     String(
       body.reference || ""
     ).trim() ||
-    makeReference(
-      "LIQUIDITY"
-    );
+    makeReference("LIQUIDITY");
 
   const result =
     await sql`
@@ -2142,9 +2142,7 @@ async function convertMZNToUSDT(
    LIBERTAR RESERVA
 ========================================================= */
 
-async function releaseReservation(
-  body
-) {
+async function releaseReservation(body) {
   const reference =
     String(
       body.reference || ""
@@ -2175,9 +2173,7 @@ async function releaseReservation(
       LIMIT 1
     `;
 
-  if (
-    !rows.length
-  ) {
+  if (!rows.length) {
     return {
       status: 404,
       body: {
@@ -2225,9 +2221,7 @@ async function releaseReservation(
       RETURNING id
     `;
 
-  if (
-    !result.length
-  ) {
+  if (!result.length) {
     return {
       status: 409,
       body: {
@@ -2311,7 +2305,8 @@ async function getLiquiditySources() {
     rateStatus = {
       available: false,
       rate: null,
-      source: null
+      source: null,
+      updated_at: null
     };
   }
 
@@ -2413,6 +2408,8 @@ async function getLiquiditySources() {
         "Parceiro de liquidez",
       asset:
         "USDT",
+      network:
+        "TRON",
       configured:
         false,
       active:
@@ -2461,14 +2458,10 @@ async function getLiquiditySources() {
 
 async function getDashboard() {
   const mznWallet =
-    await getOrCreateWallet(
-      "MZN"
-    );
+    await getOrCreateWallet("MZN");
 
   const usdtWallet =
-    await getOrCreateWallet(
-      "USDT"
-    );
+    await getOrCreateWallet("USDT");
 
   const pendingDeposits =
     await getPendingDeposits();
@@ -2562,39 +2555,31 @@ async function getDashboard() {
     treasury: {
       mzn:
         Number(
-          mznWallet?.balance ||
-            0
+          mznWallet?.balance || 0
         ),
 
       usdt:
         Number(
-          usdtWallet?.balance ||
-            0
+          usdtWallet?.balance || 0
         ),
 
       rate:
-        rate?.value ||
-        null,
+        rate?.value || null,
 
       market_rate:
-        rate?.marketRate ||
-        null,
+        rate?.marketRate || null,
 
       usd_mzn:
-        rate?.usdMzn ||
-        null,
+        rate?.usdMzn || null,
 
       usdt_usd:
-        rate?.usdtUsd ||
-        null,
+        rate?.usdtUsd || null,
 
       rate_source:
-        rate?.source ||
-        null,
+        rate?.source || null,
 
       rate_updated_at:
-        rate?.updatedAt ||
-        null,
+        rate?.updatedAt || null,
 
       min_mzn:
         MIN_MZN,
@@ -2621,14 +2606,12 @@ async function getDashboard() {
     liquidity: {
       real_usdt_available:
         Number(
-          usdtWallet?.balance ||
-            0
+          usdtWallet?.balance || 0
         ),
 
       mzn_available:
         Number(
-          mznWallet?.balance ||
-            0
+          mznWallet?.balance || 0
         )
     },
 
@@ -2649,28 +2632,22 @@ async function getDashboard() {
 
     system: {
       rate:
-        rate?.value ||
-        null,
+        rate?.value || null,
 
       market_rate:
-        rate?.marketRate ||
-        null,
+        rate?.marketRate || null,
 
       usd_mzn:
-        rate?.usdMzn ||
-        null,
+        rate?.usdMzn || null,
 
       usdt_usd:
-        rate?.usdtUsd ||
-        null,
+        rate?.usdtUsd || null,
 
       rate_source:
-        rate?.source ||
-        null,
+        rate?.source || null,
 
       rate_updated_at:
-        rate?.updatedAt ||
-        null,
+        rate?.updatedAt || null,
 
       min_mzn:
         MIN_MZN,
@@ -2712,9 +2689,7 @@ async function getDashboard() {
    REGISTER FUNDING
 ========================================================= */
 
-async function registerFunding(
-  body
-) {
+async function registerFunding(body) {
   const type =
     String(
       body.type || ""
@@ -2722,22 +2697,18 @@ async function registerFunding(
       .trim()
       .toUpperCase();
 
-  if (
-    type === "MZN"
-  ) {
+  if (type === "MZN") {
     return await registerMZNDeposit({
       ...body,
       source:
         normalizeSource(
           body.source ||
-            "MANUAL_APPROVED"
+          "MANUAL_APPROVED"
         )
     });
   }
 
-  if (
-    type === "USDT"
-  ) {
+  if (type === "USDT") {
     return await registerUSDTDeposit({
       ...body,
       source:
@@ -2791,6 +2762,11 @@ async function handleAction(
             data: rate
           });
       } catch (error) {
+        console.error(
+          "USDTMZ FX RATE ERROR:",
+          error
+        );
+
         return res
           .status(503)
           .json({
@@ -2800,7 +2776,10 @@ async function handleAction(
             message:
               "Taxa cambial real indisponível.",
             detail:
-              error.message
+              String(
+                error?.message ||
+                "Erro desconhecido."
+              )
           });
       }
 
