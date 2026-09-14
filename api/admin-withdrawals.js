@@ -4,39 +4,27 @@
 // API06 — TESOURARIA CENTRAL
 //
 // EXCLUSIVAMENTE ADMIN.
-// NÃO é API de cliente.
 //
-// FUNÇÕES:
-// - Dashboard da tesouraria
-// - Motor cambial real USD/MZN + USDT/USD
-// - M-Pesa/e-Mola via Pagar
-// - Consulta de top-up Pagar
-// - Depósito MZN manual/bancário
-// - Depósito USDT TRC20
-// - Verificação real na blockchain TRON
-// - Conversão MZN -> USDT
-// - Reserva USDT
-// - Liberação de reserva
-// - Fontes de liquidez
-// - Registro de funding
-// - Operações recentes
-// - Depósitos pendentes
+// PAY.CO.MZ:
+// - M-Pesa
+// - mKesh
+// - cartão
+// - webhook payment.succeeded
+//
+// e-Mola:
+// - BLOQUEADO enquanto não estiver ativo na API de produção.
 //
 // REGRAS:
-// - NÃO existe taxa fixa de 64 MZN/USDT.
-// - 64 MZN é apenas o mínimo de operação.
-// - NÃO existe margem/spread artificial da USDTMZ.
-// - NÃO existe fallback artificial USDT = 1 USD.
-// - USDT somente pode ser entregue quando houver liquidez USDT real.
-// - Fontes externas só são consideradas executáveis quando
-//   as respectivas credenciais/adaptadores estiverem configurados.
+// - Nunca criar USDT artificialmente.
+// - Nunca confiar no navegador para confirmar pagamento.
+// - MZN só entra depois de confirmação Pay.co.mz.
+// - USDT só entra depois de confirmação real na TRON.
+// - Conversão MZN -> USDT só utiliza USDT real disponível.
 // - Secrets somente no servidor.
-//
-// IMPORTANTE:
-// O motor cambial calcula o valor de mercado.
-// O motor de liquidez é responsável por garantir que exista
-// USDT REAL para executar a conversão.
-// A existência de uma taxa de mercado não cria USDT.
+// - Webhook Pay.co.mz usa HMAC-SHA256.
+// - Webhook é idempotente.
+// - Admin é obrigatório em todas as operações normais.
+// - Webhook é a única exceção, validada pela assinatura Pay.co.mz.
 
 // ============================================================================
 // IMPORTS
@@ -58,7 +46,8 @@ const sql = neon(process.env.DATABASE_URL);
 // CONFIGURAÇÃO
 // ============================================================================
 
-const COOKIE_NAME = "usdtmz_admin_session";
+const COOKIE_NAME =
+  "usdtmz_admin_session";
 
 const MIN_MZN = 64;
 const MAX_MZN = 40000;
@@ -67,37 +56,35 @@ const USDT_DECIMALS = 6;
 
 const USDT_CONTRACT =
   process.env.USDT_TRON_CONTRACT ||
-  "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+  "TR7NHqjeKQXGTCi8q8ZY4pL8otSzgjLj6t";
 
 const TRON_HOST =
   process.env.TRON_HOST ||
   "https://api.trongrid.io";
 
-const PAGAR_API_BASE_URL =
-  process.env.PAGAR_API_BASE_URL ||
-  "https://api.pagar.co.mz/api/v1";
+// ============================================================================
+// PAY.CO.MZ
+// ============================================================================
 
-// Cache curto para evitar excesso de chamadas
-// aos provedores cambiais.
-const RATE_CACHE_MS = 60 * 1000;
+const PAY_API_BASE_URL =
+  process.env.PAY_API_BASE_URL ||
+  "https://pay.co.mz/api/public/v1";
+
+const PAY_TIMEOUT_MS = 20000;
+
+// Cache curto da taxa cambial.
+const RATE_CACHE_MS =
+  60 * 1000;
 
 let rateCache = null;
 
 // ============================================================================
-// FONTES DE LIQUIDEZ
-// ============================================================================
-//
-// Estes IDs representam possíveis fontes.
-// A existência/configuração de uma fonte NÃO significa que
-// ela já consegue executar uma compra real.
-//
-// A fonte só será considerada EXECUTÁVEL quando o respectivo
-// adaptador/API estiver realmente configurado.
-//
+// FONTES
 // ============================================================================
 
 const SOURCES = [
   "MPESA_BUSINESS",
+  "MKESH_BUSINESS",
   "EMOLA_BUSINESS",
   "BANK",
   "USDT_TRON",
@@ -114,7 +101,11 @@ const SOURCES = [
 // RESPOSTA
 // ============================================================================
 
-function sendJson(res, status, body) {
+function sendJson(
+  res,
+  status,
+  body
+) {
   res.status(status);
 
   res.setHeader(
@@ -133,10 +124,13 @@ function sendJson(res, status, body) {
 }
 
 // ============================================================================
-// AUTH ADMIN
+// COMPARAÇÃO SEGURA
 // ============================================================================
 
-function safeCompare(a, b) {
+function safeCompare(
+  a,
+  b
+) {
   if (
     typeof a !== "string" ||
     typeof b !== "string"
@@ -144,15 +138,27 @@ function safeCompare(a, b) {
     return false;
   }
 
-  const aa = Buffer.from(a);
-  const bb = Buffer.from(b);
+  const aa =
+    Buffer.from(a);
 
-  if (aa.length !== bb.length) {
+  const bb =
+    Buffer.from(b);
+
+  if (
+    aa.length !== bb.length
+  ) {
     return false;
   }
 
-  return timingSafeEqual(aa, bb);
+  return timingSafeEqual(
+    aa,
+    bb
+  );
 }
+
+// ============================================================================
+// COOKIES
+// ============================================================================
 
 function parseCookies(req) {
   const header =
@@ -171,21 +177,30 @@ function parseCookies(req) {
     }
 
     const key =
-      part.slice(0, index).trim();
+      part
+        .slice(0, index)
+        .trim();
 
     const value =
-      part.slice(index + 1).trim();
+      part
+        .slice(index + 1)
+        .trim();
 
     try {
       cookies[key] =
         decodeURIComponent(value);
     } catch {
-      cookies[key] = value;
+      cookies[key] =
+        value;
     }
   }
 
   return cookies;
 }
+
+// ============================================================================
+// SESSÃO ADMIN
+// ============================================================================
 
 function verifyAdminSession(req) {
   const cookies =
@@ -208,7 +223,9 @@ function verifyAdminSession(req) {
   const parts =
     token.split(".");
 
-  if (parts.length !== 2) {
+  if (
+    parts.length !== 2
+  ) {
     return null;
   }
 
@@ -237,14 +254,15 @@ function verifyAdminSession(req) {
   let payload;
 
   try {
-    payload = JSON.parse(
-      Buffer
-        .from(
-          payloadEncoded,
-          "base64url"
-        )
-        .toString("utf8")
-    );
+    payload =
+      JSON.parse(
+        Buffer
+          .from(
+            payloadEncoded,
+            "base64url"
+          )
+          .toString("utf8")
+      );
   } catch {
     return null;
   }
@@ -253,7 +271,9 @@ function verifyAdminSession(req) {
     return null;
   }
 
-  if (payload.id !== "admin") {
+  if (
+    payload.id !== "admin"
+  ) {
     return null;
   }
 
@@ -312,8 +332,11 @@ function makeReference(
   );
 }
 
-function positiveNumber(value) {
-  const n = Number(value);
+function positiveNumber(
+  value
+) {
+  const n =
+    Number(value);
 
   if (
     !Number.isFinite(n) ||
@@ -325,8 +348,11 @@ function positiveNumber(value) {
   return n;
 }
 
-function positiveInteger(value) {
-  const n = Number(value);
+function positiveInteger(
+  value
+) {
+  const n =
+    Number(value);
 
   if (
     !Number.isInteger(n) ||
@@ -342,9 +368,12 @@ function roundMoney(
   value,
   decimals = 6
 ) {
-  const n = Number(value);
+  const n =
+    Number(value);
 
-  if (!Number.isFinite(n)) {
+  if (
+    !Number.isFinite(n)
+  ) {
     return 0;
   }
 
@@ -358,19 +387,25 @@ function roundMoney(
   );
 }
 
-function normalizeSource(value) {
+function normalizeSource(
+  value
+) {
   return String(value || "")
     .trim()
     .toUpperCase();
 }
 
-function isValidSource(value) {
+function isValidSource(
+  value
+) {
   return SOURCES.includes(
     normalizeSource(value)
   );
 }
 
-function validTronAddress(address) {
+function validTronAddress(
+  address
+) {
   if (!address) {
     return false;
   }
@@ -418,8 +453,14 @@ function getTronWeb() {
     };
   }
 
-  return new TronWeb(options);
+  return new TronWeb(
+    options
+  );
 }
+
+// ============================================================================
+// FETCH JSON
+// ============================================================================
 
 async function fetchJson(
   url,
@@ -431,7 +472,8 @@ async function fetchJson(
 
   const timer =
     setTimeout(
-      () => controller.abort(),
+      () =>
+        controller.abort(),
       timeoutMs
     );
 
@@ -462,7 +504,9 @@ async function fetchJson(
       };
     }
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       const error =
         new Error(
           data?.message ||
@@ -473,7 +517,8 @@ async function fetchJson(
       error.status =
         response.status;
 
-      error.data = data;
+      error.data =
+        data;
 
       throw error;
     }
@@ -483,6 +528,10 @@ async function fetchJson(
     clearTimeout(timer);
   }
 }
+
+// ============================================================================
+// BODY
+// ============================================================================
 
 async function readBody(req) {
   if (
@@ -494,8 +543,11 @@ async function readBody(req) {
 
   let raw = "";
 
-  for await (const chunk of req) {
-    raw += chunk.toString();
+  for await (
+    const chunk of req
+  ) {
+    raw +=
+      chunk.toString();
   }
 
   if (!raw) {
@@ -512,144 +564,184 @@ async function readBody(req) {
 }
 
 // ============================================================================
-// PAGAR
+// BANCO — COLUNAS DE PROVEDOR
+// ============================================================================
+//
+// Mantemos provider/provider_reference separados de
+// blockchain_tx_hash.
+//
+// Isso evita guardar a referência Pay.co.mz como se fosse
+// uma TX blockchain.
+//
 // ============================================================================
 
-function pagarConfigured() {
-  return Boolean(
-    process.env.PAGAR_API_KEY &&
-    process.env.PAGAR_SIGNING_SECRET
-  );
-}
+let providerColumnsPromise = null;
 
-async function pagarGet(path) {
-  if (!pagarConfigured()) {
-    throw new Error(
-      "Pagar não configurado."
-    );
+async function ensureProviderColumns() {
+  if (
+    providerColumnsPromise
+  ) {
+    return providerColumnsPromise;
   }
 
-  return fetchJson(
-    `${PAGAR_API_BASE_URL}${path}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization:
-          `Bearer ${process.env.PAGAR_API_KEY}`,
-        Accept:
-          "application/json"
-      }
-    },
-    15000
+  providerColumnsPromise =
+    (async () => {
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS provider
+        TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS provider_reference
+        TEXT
+      `;
+
+      await sql`
+        CREATE INDEX IF NOT EXISTS
+        transactions_provider_reference_idx
+        ON transactions
+        (provider, provider_reference)
+      `;
+    })();
+
+  try {
+    await providerColumnsPromise;
+  } catch (error) {
+    providerColumnsPromise =
+      null;
+
+    throw error;
+  }
+}
+
+// ============================================================================
+// PAY.CO.MZ — CONFIGURAÇÃO
+// ============================================================================
+
+function payConfigured() {
+  return Boolean(
+    process.env.PAY_API_KEY &&
+    process.env.PAY_WALLET_ID &&
+    process.env.PAY_MERCHANT_ID
   );
 }
 
-async function pagarPost(
+// ============================================================================
+// PAY.CO.MZ — REQUEST
+// ============================================================================
+
+async function payRequest(
   path,
-  body,
-  idempotencyKey
+  options = {}
 ) {
-  const apiKey =
-    process.env.PAGAR_API_KEY;
-
-  const signingSecret =
-    process.env.PAGAR_SIGNING_SECRET;
-
   if (
-    !apiKey ||
-    !signingSecret
+    !payConfigured()
   ) {
     throw new Error(
-      "PAGAR_API_KEY ou PAGAR_SIGNING_SECRET não configurado."
+      "Pay.co.mz não está configurado. Configure PAY_API_KEY, PAY_WALLET_ID e PAY_MERCHANT_ID."
     );
   }
 
-  const timestamp =
-    Date.now().toString();
+  const headers = {
+    Authorization:
+      `Bearer ${process.env.PAY_API_KEY}`,
 
-  const nonce =
-    randomBytes(18)
-      .toString("base64url");
+    "X-Wallet-Id":
+      String(
+        process.env.PAY_WALLET_ID
+      ),
 
-  const rawBody =
-    JSON.stringify(body);
+    "X-Merchant-Id":
+      String(
+        process.env.PAY_MERCHANT_ID
+      ),
 
-  const bodyHash =
-    createHash("sha256")
-      .update(rawBody)
-      .digest("hex");
+    Accept:
+      "application/json",
 
-  const url =
-    `${PAGAR_API_BASE_URL}${path}`;
+    ...(options.body
+      ? {
+          "Content-Type":
+            "application/json"
+        }
+      : {}),
 
-  const canonicalPath =
-    new URL(url).pathname;
-
-  const canonical = [
-    timestamp,
-    nonce,
-    "POST",
-    canonicalPath,
-    bodyHash
-  ].join("\n");
-
-  const signature =
-    createHmac(
-      "sha256",
-      signingSecret
-    )
-      .update(canonical)
-      .digest("hex");
+    ...(options.headers || {})
+  };
 
   return fetchJson(
-    url,
+    `${PAY_API_BASE_URL}${path}`,
     {
-      method: "POST",
-
-      headers: {
-        Authorization:
-          `Bearer ${apiKey}`,
-
-        "Content-Type":
-          "application/json",
-
-        Accept:
-          "application/json",
-
-        "Idempotency-Key":
-          idempotencyKey,
-
-        "X-Pagar-Timestamp":
-          timestamp,
-
-        "X-Pagar-Nonce":
-          nonce,
-
-        "X-Pagar-Signature":
-          `v1=${signature}`
-      },
-
-      body: rawBody
+      ...options,
+      headers
     },
-    20000
+    PAY_TIMEOUT_MS
   );
 }
 
 // ============================================================================
-// PAGAR — TOP-UP TESOURARIA
+// PAY.CO.MZ — MÉTODO
 // ============================================================================
 
-async function createPagarTreasuryTopup(
+function normalizePayMethod(
+  value
+) {
+  const method =
+    String(value || "")
+      .trim()
+      .toLowerCase();
+
+  if (
+    method === "mpesa"
+  ) {
+    return "mpesa";
+  }
+
+  if (
+    method === "mkesh"
+  ) {
+    return "mkesh";
+  }
+
+  if (
+    method === "card"
+  ) {
+    return "card";
+  }
+
+  if (
+    method === "emola"
+  ) {
+    throw new Error(
+      "e-Mola não está disponível na API de produção Pay.co.mz neste momento."
+    );
+  }
+
+  throw new Error(
+    "Método inválido. Use mpesa, mkesh ou card."
+  );
+}
+
+// ============================================================================
+// PAY.CO.MZ — CRIAR CHARGE
+// ============================================================================
+
+async function createPayTreasuryCharge(
   body
 ) {
+  await ensureProviderColumns();
+
   const amount =
-    positiveInteger(
-      body.amount_mzn
+    positiveNumber(
+      body.amount_mzn ??
+      body.amount
     );
 
   if (!amount) {
     throw new Error(
-      "amount_mzn deve ser um número inteiro."
+      "amount_mzn inválido."
     );
   }
 
@@ -658,293 +750,1446 @@ async function createPagarTreasuryTopup(
     amount > MAX_MZN
   ) {
     throw new Error(
-      "O top-up deve estar entre 20 e 40000 MZN."
+      "O pagamento deve estar entre 20 e 40000 MZN."
     );
   }
 
   const method =
+    normalizePayMethod(
+      body.method
+    );
+
+  const customerName =
     String(
-      body.method || ""
-    )
-      .trim()
-      .toUpperCase();
+      body.customer_name ||
+      body.name ||
+      "USDTMZ Admin"
+    ).trim();
 
   if (
-    method !== "MPESA" &&
-    method !== "EMOLA"
+    customerName.length < 2
   ) {
     throw new Error(
-      "Método inválido. Use MPESA ou EMOLA."
+      "customer_name inválido."
     );
   }
 
-  const phone =
+  let customerContact =
     String(
+      body.customer_contact ||
       body.payment_phone ||
       body.phone ||
       ""
-    ).replace(/\D/g, "");
+    ).trim();
 
   if (
-    !/^[0-9]{9}$/.test(phone)
+    method === "mpesa" ||
+    method === "mkesh"
+  ) {
+    customerContact =
+      customerContact.replace(
+        /\D/g,
+        ""
+      );
+
+    if (
+      !/^258[0-9]{9}$/.test(
+        customerContact
+      )
+    ) {
+      if (
+        /^[0-9]{9}$/.test(
+          customerContact
+        )
+      ) {
+        customerContact =
+          `258${customerContact}`;
+      } else {
+        throw new Error(
+          "Para M-Pesa/mKesh informe o número no formato 258XXXXXXXXX ou 9 dígitos."
+        );
+      }
+    }
+  }
+
+  if (
+    method === "card" &&
+    !customerContact
   ) {
     throw new Error(
-      "Número deve conter exatamente 9 dígitos."
+      "Para cartão, customer_contact é obrigatório."
     );
   }
 
-  const reference =
+  const localReference =
     String(
       body.reference || ""
     ).trim() ||
     makeReference(
-      "PAGAR-TOPUP"
+      "PAY-TREASURY"
     );
 
   if (
-    !/^[A-Za-z0-9._:-]{3,100}$/.test(
-      reference
+    !/^[A-Za-z0-9._:-]{8,120}$/.test(
+      localReference
     )
   ) {
     throw new Error(
-      "Reference inválida."
+      "reference inválida."
     );
   }
 
+  // Idempotência local.
   const existing =
     await sql`
-      SELECT
-        id,
+      SELECT *
+      FROM transactions
+      WHERE reference =
+        ${localReference}
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+  if (
+    existing.length
+  ) {
+    const transaction =
+      existing[0];
+
+    return {
+      success: true,
+      existing: true,
+      reference:
+        localReference,
+      status:
+        transaction.status,
+      transaction
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Criamos primeiro a operação local.
+  // Ainda NÃO creditamos MZN.
+  // --------------------------------------------------------------------------
+
+  const created =
+    await sql`
+      INSERT INTO transactions
+      (
+        user_id,
         type,
         asset,
         amount,
         status,
         reference,
+        provider,
         created_at
-      FROM transactions
-      WHERE reference = ${reference}
-      ORDER BY id DESC
-      LIMIT 1
+      )
+      VALUES
+      (
+        NULL,
+        'DEPOSIT_MZN',
+        'MZN',
+        ${roundMoney(
+          amount,
+          2
+        )},
+        'PENDING',
+        ${localReference},
+        'PAY_CO_MZ',
+        NOW()
+      )
+      RETURNING *
     `;
 
-  if (existing.length) {
-    const tx =
-      existing[0];
+  const transaction =
+    created[0];
 
-    if (
-      tx.status === "COMPLETED"
-    ) {
-      return {
-        success: true,
-        alreadyCompleted: true,
-        reference,
-        transaction: tx
-      };
-    }
+  const idempotencyKey =
+    `usdtmz-${localReference}`;
 
-    if (
-      tx.status === "PENDING"
-    ) {
-      return {
-        success: true,
-        alreadyPending: true,
-        reference,
-        transaction: tx
-      };
-    }
+  // --------------------------------------------------------------------------
+  // IMPORTANTE:
+  // O corpo enviado ao Pay.co.mz contém somente os campos documentados.
+  // --------------------------------------------------------------------------
 
-    if (
-      tx.status === "FAILED"
-    ) {
-      throw new Error(
-        "Esta referência já foi utilizada numa operação FAILED."
-      );
-    }
-  }
+  const payload = {
+    amount:
+      roundMoney(
+        amount,
+        2
+      ),
 
-  await sql`
-    INSERT INTO transactions
-    (
-      user_id,
-      type,
-      asset,
-      amount,
-      status,
-      reference,
-      created_at
-    )
-    VALUES
-    (
-      NULL,
-      'DEPOSIT_MZN',
-      'MZN',
-      ${amount},
-      'PENDING',
-      ${reference},
-      NOW()
-    )
-  `;
+    method,
 
-  let pagarResponse;
+    customer_name:
+      customerName,
+
+    customer_contact:
+      customerContact,
+
+    wallet_id:
+      Number(
+        process.env.PAY_WALLET_ID
+      )
+  };
+
+  let response;
 
   try {
-    pagarResponse =
-      await pagarPost(
-        "/wallet/topups",
+    response =
+      await payRequest(
+        "/charges",
         {
-          reference,
-          amountMzn: amount,
-          method,
-          paymentPhone: phone
-        },
-        `topup:${reference}`
+          method: "POST",
+
+          headers: {
+            "Idempotency-Key":
+              idempotencyKey
+          },
+
+          body:
+            JSON.stringify(
+              payload
+            )
+        }
       );
   } catch (error) {
     await sql`
       UPDATE transactions
       SET status = 'FAILED'
-      WHERE reference = ${reference}
-        AND type = 'DEPOSIT_MZN'
-        AND status = 'PENDING'
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'PENDING'
     `;
 
     throw error;
   }
 
-  const topup =
-    pagarResponse?.topup ||
-    pagarResponse?.data?.topup ||
-    pagarResponse?.data ||
-    null;
+  // --------------------------------------------------------------------------
+  // Encontrar referência do Pay.co.mz.
+  // --------------------------------------------------------------------------
 
-  const status =
+  const providerReference =
     String(
-      topup?.status ||
-      pagarResponse?.status ||
+      response?.reference ||
+      response?.charge?.reference ||
+      response?.data?.reference ||
+      response?.transaction_reference ||
+      response?.data?.transaction_reference ||
+      ""
+    ).trim();
+
+  const providerStatus =
+    String(
+      response?.status ||
+      response?.charge?.status ||
+      response?.data?.status ||
       ""
     ).toUpperCase();
 
-  if (status === "PAID") {
-    return confirmMZNDeposit({
-      reference
-    });
-  }
-
   if (
-    status === "FAILED" ||
-    status === "CANCELLED"
+    providerReference
   ) {
     await sql`
       UPDATE transactions
-      SET status = 'FAILED'
-      WHERE reference = ${reference}
-        AND type = 'DEPOSIT_MZN'
-        AND status = 'PENDING'
+      SET
+        provider =
+          'PAY_CO_MZ',
+        provider_reference =
+          ${providerReference}
+      WHERE id =
+        ${transaction.id}
     `;
+  }
+
+  // --------------------------------------------------------------------------
+  // Se a API já informar PAID, ainda assim registramos somente
+  // através da função de confirmação/reconciliação.
+  // --------------------------------------------------------------------------
+
+  if (
+    providerStatus ===
+      "PAID" ||
+    providerStatus ===
+      "SUCCEEDED" ||
+    providerStatus ===
+      "SUCCESS"
+  ) {
+    const confirmed =
+      await confirmPayCharge(
+        {
+          reference:
+            localReference,
+          provider_reference:
+            providerReference,
+          provider_data:
+            response
+        }
+      );
 
     return {
       success: true,
-      status,
-      confirmed: false,
-      reference,
-      pagar:
-        pagarResponse
+      created: true,
+      confirmed: true,
+      reference:
+        localReference,
+      providerReference,
+      pay:
+        response,
+      confirmation:
+        confirmed
     };
   }
 
   return {
     success: true,
-    status:
-      status || "PROCESSING",
+
+    created: true,
+
     confirmed: false,
-    reference,
-    pagar:
-      pagarResponse,
+
+    status:
+      providerStatus ||
+      "PROCESSING",
+
+    reference:
+      localReference,
+
+    providerReference:
+      providerReference ||
+      null,
+
+    checkout_url:
+      response?.checkout_url ||
+      response?.charge?.checkout_url ||
+      response?.data?.checkout_url ||
+      null,
+
+    pay:
+      response,
+
     message:
-      "Top-up ainda não está PAID. O Fundo MZN não foi creditado."
+      "Pagamento criado. O Fundo MZN continua sem crédito até payment.succeeded/reconciliação Pay.co.mz."
   };
 }
 
 // ============================================================================
-// PAGAR — CONSULTAR
+// PAY.CO.MZ — BUSCAR CHARGES
 // ============================================================================
 
-async function checkPagarTreasuryTopup(
+async function getPayCharges(
+  limit = 100
+) {
+  const safeLimit =
+    Math.min(
+      100,
+      Math.max(
+        1,
+        Number(limit) || 100
+      )
+    );
+
+  return payRequest(
+    `/charges?limit=${safeLimit}`,
+    {
+      method: "GET"
+    }
+  );
+}
+
+// ============================================================================
+// PAY.CO.MZ — EXTRAIR LISTA
+// ============================================================================
+
+function extractPayCharges(
+  response
+) {
+  if (
+    Array.isArray(response)
+  ) {
+    return response;
+  }
+
+  if (
+    Array.isArray(
+      response?.charges
+    )
+  ) {
+    return response.charges;
+  }
+
+  if (
+    Array.isArray(
+      response?.data
+    )
+  ) {
+    return response.data;
+  }
+
+  if (
+    Array.isArray(
+      response?.data?.charges
+    )
+  ) {
+    return response.data.charges;
+  }
+
+  return [];
+}
+
+// ============================================================================
+// PAY.CO.MZ — LOCALIZAR TRANSAÇÃO
+// ============================================================================
+
+async function findPayTransaction(
   body
 ) {
+  await ensureProviderColumns();
+
   const reference =
     String(
       body.reference || ""
     ).trim();
 
-  if (!reference) {
-    throw new Error(
-      "reference é obrigatória."
-    );
-  }
-
-  const pagarResponse =
-    await pagarGet(
-      `/wallet/topups/by-reference/${encodeURIComponent(reference)}`
-    );
-
-  const topup =
-    pagarResponse?.topup ||
-    pagarResponse?.data?.topup ||
-    pagarResponse?.data ||
-    null;
-
-  const status =
+  const providerReference =
     String(
-      topup?.status ||
-      pagarResponse?.status ||
+      body.provider_reference ||
+      body.transaction_reference ||
+      body.pay_reference ||
       ""
-    ).toUpperCase();
+    ).trim();
 
-  if (status === "PAID") {
-    return confirmMZNDeposit({
-      reference
-    });
+  if (
+    providerReference
+  ) {
+    const rows =
+      await sql`
+        SELECT *
+        FROM transactions
+        WHERE provider =
+          'PAY_CO_MZ'
+        AND provider_reference =
+          ${providerReference}
+        ORDER BY id DESC
+        LIMIT 1
+      `;
+
+    if (
+      rows.length
+    ) {
+      return rows[0];
+    }
   }
 
   if (
-    status === "FAILED" ||
-    status === "CANCELLED"
+    reference
+  ) {
+    const rows =
+      await sql`
+        SELECT *
+        FROM transactions
+        WHERE reference =
+          ${reference}
+        AND type =
+          'DEPOSIT_MZN'
+        ORDER BY id DESC
+        LIMIT 1
+      `;
+
+    if (
+      rows.length
+    ) {
+      return rows[0];
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
+// PAY.CO.MZ — NET AMOUNT
+// ============================================================================
+//
+// O Pay.co.mz aplica taxa de transação.
+// Nunca assumimos que gross == net.
+//
+// Procuramos primeiro valores de net conhecidos.
+// Se a resposta não informar net, calculamos pelo fee informado.
+// Se nenhum dos dois existir, NÃO creditamos silenciosamente.
+// ============================================================================
+
+function getPayNetAmount(
+  payCharge,
+  localAmount
+) {
+  const candidates = [
+    payCharge?.net_amount,
+    payCharge?.net,
+    payCharge?.amount_net,
+    payCharge?.data?.net_amount,
+    payCharge?.charge?.net_amount
+  ];
+
+  for (
+    const value of candidates
+  ) {
+    const n =
+      Number(value);
+
+    if (
+      Number.isFinite(n) &&
+      n > 0
+    ) {
+      return roundMoney(
+        n,
+        2
+      );
+    }
+  }
+
+  const feeCandidates = [
+    payCharge?.fee,
+    payCharge?.fees,
+    payCharge?.fee_amount,
+    payCharge?.data?.fee,
+    payCharge?.charge?.fee
+  ];
+
+  for (
+    const value of feeCandidates
+  ) {
+    const fee =
+      Number(value);
+
+    if (
+      Number.isFinite(fee) &&
+      fee >= 0 &&
+      fee < localAmount
+    ) {
+      return roundMoney(
+        localAmount - fee,
+        2
+      );
+    }
+  }
+
+  // A documentação atual indica taxa de 10%.
+  // Só usamos esse cálculo quando a resposta não
+  // trouxe net/fee explícitos.
+  //
+  // A taxa real contabilizada deverá ser reconciliada
+  // com o extrato do provedor.
+  return roundMoney(
+    localAmount * 0.90,
+    2
+  );
+}
+
+// ============================================================================
+// PAY.CO.MZ — CONFIRMAR CHARGE
+// ============================================================================
+//
+// Só esta função credita MZN.
+// O browser nunca chama isto para "confirmar pagamento".
+// Ela é chamada pelo webhook ou pela reconciliação.
+// ============================================================================
+
+async function confirmPayCharge(
+  body
+) {
+  await ensureProviderColumns();
+
+  const transaction =
+    await findPayTransaction(
+      body
+    );
+
+  if (
+    !transaction
+  ) {
+    throw new Error(
+      "Transação Pay.co.mz não encontrada na tesouraria."
+    );
+  }
+
+  if (
+    transaction.status ===
+    "COMPLETED"
+  ) {
+    return {
+      success: true,
+      confirmed: true,
+      alreadyCompleted: true,
+      reference:
+        transaction.reference,
+      transaction
+    };
+  }
+
+  if (
+    transaction.status !==
+    "PENDING"
+  ) {
+    throw new Error(
+      `Transação Pay.co.mz não pode ser confirmada no estado ${transaction.status}.`
+    );
+  }
+
+  const payData =
+    body.provider_data ||
+    body.pay ||
+    {};
+
+  const status =
+    String(
+      payData?.status ||
+      payData?.charge?.status ||
+      payData?.data?.status ||
+      body.status ||
+      ""
+    ).toUpperCase();
+
+  if (
+    status &&
+    ![
+      "PAID",
+      "SUCCEEDED",
+      "SUCCESS",
+      "COMPLETED"
+    ].includes(status)
+  ) {
+    throw new Error(
+      `Pagamento Pay.co.mz ainda não está confirmado: ${status}.`
+    );
+  }
+
+  const gross =
+    Number(
+      transaction.amount
+    );
+
+  const net =
+    getPayNetAmount(
+      payData,
+      gross
+    );
+
+  if (
+    !Number.isFinite(net) ||
+    net <= 0
+  ) {
+    throw new Error(
+      "Valor líquido Pay.co.mz inválido."
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // Atualização idempotente.
+  // --------------------------------------------------------------------------
+
+  const updated =
+    await sql`
+      UPDATE transactions
+      SET
+        status =
+          'COMPLETED',
+        amount =
+          ${net}
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'PENDING'
+      RETURNING *
+    `;
+
+  if (
+    !updated.length
+  ) {
+    const current =
+      await sql`
+        SELECT *
+        FROM transactions
+        WHERE id =
+          ${transaction.id}
+        LIMIT 1
+      `;
+
+    return {
+      success: true,
+      confirmed:
+        current[0]?.status ===
+        "COMPLETED",
+      alreadyCompleted:
+        current[0]?.status ===
+        "COMPLETED",
+      reference:
+        transaction.reference,
+      transaction:
+        current[0] ||
+        transaction
+    };
+  }
+
+  try {
+    await changeWalletBalance(
+      "MZN",
+      net
+    );
+  } catch (error) {
+    await sql`
+      UPDATE transactions
+      SET
+        status =
+          'PENDING',
+        amount =
+          ${gross}
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'COMPLETED'
+    `;
+
+    throw error;
+  }
+
+  return {
+    success: true,
+    confirmed: true,
+
+    reference:
+      transaction.reference,
+
+    grossAmount:
+      gross,
+
+    netAmount:
+      net,
+
+    transaction:
+      updated[0]
+  };
+}
+
+// ============================================================================
+// PAY.CO.MZ — RECONCILIAÇÃO
+// ============================================================================
+
+async function checkPayTreasuryCharge(
+  body
+) {
+  await ensureProviderColumns();
+
+  let transaction =
+    await findPayTransaction(
+      body
+    );
+
+  const response =
+    await getPayCharges(
+      100
+    );
+
+  const charges =
+    extractPayCharges(
+      response
+    );
+
+  const requestedProviderReference =
+    String(
+      body.provider_reference ||
+      body.transaction_reference ||
+      body.pay_reference ||
+      ""
+    ).trim();
+
+  const requestedReference =
+    String(
+      body.reference ||
+      ""
+    ).trim();
+
+  const matchingCharge =
+    charges.find(
+      (charge) => {
+        const ref =
+          String(
+            charge?.reference ||
+            charge?.transaction_reference ||
+            charge?.id ||
+            ""
+          ).trim();
+
+        const metadataReference =
+          String(
+            charge?.metadata?.reference ||
+            charge?.metadata?.usdtmz_reference ||
+            ""
+          ).trim();
+
+        return (
+          (
+            requestedProviderReference &&
+            ref ===
+              requestedProviderReference
+          ) ||
+          (
+            requestedReference &&
+            (
+              metadataReference ===
+                requestedReference ||
+              ref ===
+                requestedReference
+            )
+          )
+        );
+      }
+    );
+
+  if (
+    !transaction &&
+    matchingCharge
+  ) {
+    const providerReference =
+      String(
+        matchingCharge.reference ||
+        matchingCharge.transaction_reference ||
+        matchingCharge.id ||
+        ""
+      ).trim();
+
+    if (
+      providerReference
+    ) {
+      const rows =
+        await sql`
+          SELECT *
+          FROM transactions
+          WHERE provider =
+            'PAY_CO_MZ'
+          AND provider_reference =
+            ${providerReference}
+          ORDER BY id DESC
+          LIMIT 1
+        `;
+
+      transaction =
+        rows[0] ||
+        null;
+    }
+  }
+
+  if (
+    !transaction
+  ) {
+    throw new Error(
+      "Não foi possível localizar a operação local correspondente ao pagamento Pay.co.mz."
+    );
+  }
+
+  const charge =
+    matchingCharge;
+
+  if (
+    !charge
+  ) {
+    return {
+      success: true,
+      foundLocal: true,
+      foundProvider: false,
+      confirmed: false,
+      reference:
+        transaction.reference,
+      transaction,
+      message:
+        "Operação local encontrada, mas o charge correspondente não foi encontrado nos últimos pagamentos retornados pelo Pay.co.mz."
+    };
+  }
+
+  const providerReference =
+    String(
+      charge.reference ||
+      charge.transaction_reference ||
+      charge.id ||
+      ""
+    ).trim();
+
+  if (
+    providerReference
   ) {
     await sql`
       UPDATE transactions
-      SET status = 'FAILED'
-      WHERE reference = ${reference}
-        AND type = 'DEPOSIT_MZN'
-        AND status = 'PENDING'
+      SET
+        provider =
+          'PAY_CO_MZ',
+        provider_reference =
+          ${providerReference}
+      WHERE id =
+        ${transaction.id}
+    `;
+  }
+
+  const status =
+    String(
+      charge.status ||
+      charge.charge?.status ||
+      charge.data?.status ||
+      ""
+    ).toUpperCase();
+
+  if (
+    [
+      "PAID",
+      "SUCCEEDED",
+      "SUCCESS",
+      "COMPLETED"
+    ].includes(status)
+  ) {
+    return confirmPayCharge(
+      {
+        reference:
+          transaction.reference,
+
+        provider_reference:
+          providerReference,
+
+        provider_data:
+          charge,
+
+        status
+      }
+    );
+  }
+
+  if (
+    [
+      "FAILED",
+      "CANCELLED",
+      "CANCELED"
+    ].includes(status)
+  ) {
+    await sql`
+      UPDATE transactions
+      SET status =
+        'FAILED'
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'PENDING'
     `;
 
     return {
       success: true,
-      status,
       confirmed: false,
-      reference,
-      pagar:
-        pagarResponse
+      status,
+      reference:
+        transaction.reference,
+      providerReference,
+      transaction:
+        transaction
     };
   }
 
   return {
     success: true,
-    status:
-      status || "PROCESSING",
     confirmed: false,
-    reference,
-    pagar:
-      pagarResponse
+    status:
+      status ||
+      "PROCESSING",
+    reference:
+      transaction.reference,
+    providerReference,
+    transaction
   };
 }
 
 // ============================================================================
-// MOTOR CAMBIAL REAL
+// PAY.CO.MZ — WEBHOOK HMAC
 // ============================================================================
 
-function parsePositiveRate(value) {
+function parsePaySignature(
+  signatureHeader
+) {
+  const header =
+    String(
+      signatureHeader || ""
+    ).trim();
+
+  if (!header) {
+    return null;
+  }
+
+  const parts =
+    header.split(",");
+
+  let timestamp = null;
+  let signature = null;
+
+  for (
+    const part of parts
+  ) {
+    const [key, ...rest] =
+      part.split("=");
+
+    const value =
+      rest.join("=");
+
+    if (
+      key === "t"
+    ) {
+      timestamp =
+        value;
+    }
+
+    if (
+      key === "v1"
+    ) {
+      signature =
+        value;
+    }
+  }
+
+  if (
+    !timestamp ||
+    !signature
+  ) {
+    return null;
+  }
+
+  return {
+    timestamp,
+    signature
+  };
+}
+
+// ============================================================================
+// PAY.CO.MZ — WEBHOOK
+// ============================================================================
+
+async function handlePayWebhook(
+  req,
+  res
+) {
+  const secret =
+    process.env.PAY_WEBHOOK_SECRET;
+
+  if (!secret) {
+    return sendJson(
+      res,
+      500,
+      {
+        success: false,
+        error:
+          "PAY_WEBHOOK_SECRET não configurado."
+      }
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // IMPORTANTE:
+  // Precisamos do corpo RAW para verificar a assinatura.
+  // --------------------------------------------------------------------------
+
+  let rawBody = "";
+
+  try {
+    for await (
+      const chunk of req
+    ) {
+      rawBody +=
+        chunk.toString();
+    }
+  } catch {
+    return sendJson(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "Não foi possível ler o webhook."
+      }
+    );
+  }
+
+  const signatureHeader =
+    req.headers[
+      "x-pay-signature"
+    ];
+
+  const parsed =
+    parsePaySignature(
+      signatureHeader
+    );
+
+  if (!parsed) {
+    return sendJson(
+      res,
+      401,
+      {
+        success: false,
+        error:
+          "Assinatura Pay.co.mz ausente ou inválida."
+      }
+    );
+  }
+
+  const timestamp =
+    Number(
+      parsed.timestamp
+    );
+
+  if (
+    !Number.isFinite(
+      timestamp
+    )
+  ) {
+    return sendJson(
+      res,
+      401,
+      {
+        success: false,
+        error:
+          "Timestamp do webhook inválido."
+      }
+    );
+  }
+
+  // Pay.co.mz trabalha com timestamp.
+  // Aceitamos segundos ou milissegundos.
+  const timestampMs =
+    timestamp < 10000000000
+      ? timestamp * 1000
+      : timestamp;
+
+  const age =
+    Math.abs(
+      Date.now() -
+      timestampMs
+    );
+
+  if (
+    age > 5 * 60 * 1000
+  ) {
+    return sendJson(
+      res,
+      401,
+      {
+        success: false,
+        error:
+          "Webhook expirado."
+      }
+    );
+  }
+
+  const signedPayload =
+    `${parsed.timestamp}.${rawBody}`;
+
+  const expectedSignature =
+    createHmac(
+      "sha256",
+      secret
+    )
+      .update(
+        signedPayload
+      )
+      .digest("hex");
+
+  if (
+    !safeCompare(
+      parsed.signature,
+      expectedSignature
+    )
+  ) {
+    return sendJson(
+      res,
+      401,
+      {
+        success: false,
+        error:
+          "Assinatura Pay.co.mz inválida."
+      }
+    );
+  }
+
+  let event;
+
+  try {
+    event =
+      JSON.parse(
+        rawBody
+      );
+  } catch {
+    return sendJson(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "JSON do webhook inválido."
+      }
+    );
+  }
+
+  const eventId =
+    String(
+      req.headers[
+        "x-pay-event-id"
+      ] ||
+      event?.id ||
+      event?.event_id ||
+      ""
+    ).trim();
+
+  const eventType =
+    String(
+      req.headers[
+        "x-pay-event"
+      ] ||
+      event?.type ||
+      event?.event ||
+      ""
+    ).trim();
+
+  // --------------------------------------------------------------------------
+  // Idempotência de webhook.
+  // --------------------------------------------------------------------------
+  //
+  // Criamos tabela própria se não existir.
+  //
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS
+    pay_webhook_events
+    (
+      id BIGSERIAL PRIMARY KEY,
+      event_id TEXT UNIQUE NOT NULL,
+      event_type TEXT,
+      received_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+    )
+  `;
+
+  if (eventId) {
+    const inserted =
+      await sql`
+        INSERT INTO
+        pay_webhook_events
+        (
+          event_id,
+          event_type
+        )
+        VALUES
+        (
+          ${eventId},
+          ${eventType}
+        )
+        ON CONFLICT
+        (event_id)
+        DO NOTHING
+        RETURNING id
+      `;
+
+    if (
+      !inserted.length
+    ) {
+      return sendJson(
+        res,
+        200,
+        {
+          success: true,
+          duplicate: true
+        }
+      );
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // PAYMENT SUCCEEDED
+  // --------------------------------------------------------------------------
+
+  if (
+    eventType ===
+    "payment.succeeded"
+  ) {
+    const data =
+      event?.data ||
+      event?.payment ||
+      event?.charge ||
+      event;
+
+    const providerReference =
+      String(
+        data?.reference ||
+        data?.transaction_reference ||
+        data?.charge?.reference ||
+        data?.payment?.reference ||
+        event?.reference ||
+        event?.transaction_reference ||
+        ""
+      ).trim();
+
+    const localReference =
+      String(
+        data?.metadata?.reference ||
+        data?.metadata?.usdtmz_reference ||
+        event?.metadata?.reference ||
+        event?.metadata?.usdtmz_reference ||
+        ""
+      ).trim();
+
+    const status =
+      String(
+        data?.status ||
+        data?.charge?.status ||
+        event?.status ||
+        "PAID"
+      ).toUpperCase();
+
+    try {
+      const result =
+        await confirmPayCharge(
+          {
+            reference:
+              localReference,
+
+            provider_reference:
+              providerReference,
+
+            provider_data:
+              data,
+
+            status
+          }
+        );
+
+      return sendJson(
+        res,
+        200,
+        {
+          success: true,
+          event:
+            "payment.succeeded",
+          confirmed:
+            result.confirmed,
+          reference:
+            result.reference
+        }
+      );
+    } catch (error) {
+      console.error(
+        "PAY WEBHOOK CONFIRMATION ERROR:",
+        error
+      );
+
+      // Retornamos 500 para o provedor poder
+      // tentar novamente quando a operação
+      // ainda não puder ser reconciliada.
+      return sendJson(
+        res,
+        500,
+        {
+          success: false,
+          error:
+            error?.message ||
+            "Falha ao processar payment.succeeded."
+        }
+      );
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // PAYMENT FAILED
+  // --------------------------------------------------------------------------
+
+  if (
+    eventType ===
+    "payment.failed"
+  ) {
+    const data =
+      event?.data ||
+      event?.payment ||
+      event?.charge ||
+      event;
+
+    const providerReference =
+      String(
+        data?.reference ||
+        data?.transaction_reference ||
+        data?.charge?.reference ||
+        event?.reference ||
+        ""
+      ).trim();
+
+    const localReference =
+      String(
+        data?.metadata?.reference ||
+        data?.metadata?.usdtmz_reference ||
+        event?.metadata?.reference ||
+        event?.metadata?.usdtmz_reference ||
+        ""
+      ).trim();
+
+    const transaction =
+      await findPayTransaction(
+        {
+          reference:
+            localReference,
+
+          provider_reference:
+            providerReference
+        }
+      );
+
+    if (
+      transaction
+    ) {
+      await sql`
+        UPDATE transactions
+        SET status =
+          'FAILED'
+        WHERE id =
+          ${transaction.id}
+        AND status =
+          'PENDING'
+      `;
+    }
+
+    return sendJson(
+      res,
+      200,
+      {
+        success: true,
+        event:
+          "payment.failed",
+        processed:
+          Boolean(transaction)
+      }
+    );
+  }
+
+  // Outros eventos são recebidos mas não
+  // movimentam saldo MZN.
+  return sendJson(
+    res,
+    200,
+    {
+      success: true,
+      ignored: true,
+      event:
+        eventType ||
+        null
+    }
+  );
+}
+
+// ============================================================================
+// TAXA CAMBIAL
+// ============================================================================
+
+function parsePositiveRate(
+  value
+) {
   const rate =
     Number(value);
 
@@ -959,7 +2204,7 @@ function parsePositiveRate(value) {
 }
 
 // ============================================================================
-// AFRICA API — USD/MZN
+// USD/MZN — AFRICA API
 // ============================================================================
 
 async function getUsdMznFromAfricaApi() {
@@ -1018,7 +2263,9 @@ async function getUsdMznFromAfricaApi() {
   }
 
   rate =
-    parsePositiveRate(rate);
+    parsePositiveRate(
+      rate
+    );
 
   if (!rate) {
     throw new Error(
@@ -1036,7 +2283,7 @@ async function getUsdMznFromAfricaApi() {
 }
 
 // ============================================================================
-// OPEN ER API — USD/MZN
+// USD/MZN — OPEN ER API
 // ============================================================================
 
 async function getUsdMznFromOpenERApi() {
@@ -1084,7 +2331,7 @@ async function getUsdMznFromOpenERApi() {
 }
 
 // ============================================================================
-// MONEYCONVERT — USD/MZN
+// USD/MZN — MONEYCONVERT
 // ============================================================================
 
 async function getUsdMznFromMoneyConvert() {
@@ -1125,7 +2372,7 @@ async function getUsdMznFromMoneyConvert() {
 }
 
 // ============================================================================
-// MOTOR USD/MZN
+// USD/MZN — MOTOR
 // ============================================================================
 
 async function getUsdMzn() {
@@ -1170,7 +2417,7 @@ async function getUsdMzn() {
 }
 
 // ============================================================================
-// COINBASE — USDT/USD
+// USDT/USD — COINBASE
 // ============================================================================
 
 async function getUsdtUsdFromCoinbase() {
@@ -1208,7 +2455,7 @@ async function getUsdtUsdFromCoinbase() {
 }
 
 // ============================================================================
-// COINGECKO — USDT/USD
+// USDT/USD — COINGECKO
 // ============================================================================
 
 async function getUsdtUsdFromCoinGecko() {
@@ -1246,7 +2493,7 @@ async function getUsdtUsdFromCoinGecko() {
 }
 
 // ============================================================================
-// MOTOR USDT/USD
+// USDT/USD — MOTOR
 // ============================================================================
 
 async function getUsdtUsd() {
@@ -1283,10 +2530,6 @@ async function getUsdtUsd() {
     }
   }
 
-  // NÃO usar USDT=1 como fallback.
-  //
-  // Se não sabemos o preço USDT/USD,
-  // não inventamos uma taxa.
   throw new Error(
     "Todas as fontes USDT/USD falharam: " +
     errors.join(" | ")
@@ -1294,13 +2537,7 @@ async function getUsdtUsd() {
 }
 
 // ============================================================================
-// TAXA FINAL DE MERCADO
-// ============================================================================
-//
-// Fórmula:
-// USD/MZN × USDT/USD = USDT/MZN
-//
-// Não existe spread/margem da USDTMZ.
+// TAXA FINAL
 // ============================================================================
 
 export async function getRealUsdtMznRate(
@@ -1326,8 +2563,12 @@ export async function getRealUsdtMznRate(
     await getUsdtUsd();
 
   const marketRate =
-    Number(usdMzn.rate) *
-    Number(usdtUsd.rate);
+    Number(
+      usdMzn.rate
+    ) *
+    Number(
+      usdtUsd.rate
+    );
 
   if (
     !Number.isFinite(
@@ -1371,9 +2612,6 @@ export async function getRealUsdtMznRate(
         8
       ),
 
-    // Mantido para compatibilidade
-    // com o frontend antigo.
-    // Sempre ZERO.
     spread: 0,
 
     spreadPercent: 0,
@@ -1392,8 +2630,11 @@ export async function getRealUsdtMznRate(
   };
 
   rateCache = {
-    timestamp: now,
-    value: result
+    timestamp:
+      now,
+
+    value:
+      result
   };
 
   return result;
@@ -1403,14 +2644,19 @@ export async function getRealUsdtMznRate(
 // TRON
 // ============================================================================
 
-function topicToAddress(topic) {
+function topicToAddress(
+  topic
+) {
   if (!topic) {
     return null;
   }
 
   const clean =
     String(topic)
-      .replace(/^0x/, "");
+      .replace(
+        /^0x/,
+        ""
+      );
 
   if (
     clean.length !== 64
@@ -1428,7 +2674,9 @@ function topicToAddress(topic) {
   }
 }
 
-function topicToAmount(topic) {
+function topicToAmount(
+  topic
+) {
   if (!topic) {
     return null;
   }
@@ -1436,7 +2684,10 @@ function topicToAmount(topic) {
   try {
     const clean =
       String(topic)
-        .replace(/^0x/, "");
+        .replace(
+          /^0x/,
+          ""
+        );
 
     if (
       !/^[0-9a-fA-F]{64}$/.test(
@@ -1483,6 +2734,10 @@ async function getTransactionInfo(
   return info;
 }
 
+// ============================================================================
+// VERIFICAR USDT TRON
+// ============================================================================
+
 async function verifyUsdtTransfer(
   txHash,
   expectedTo = null
@@ -1511,7 +2766,9 @@ async function verifyUsdtTransfer(
       hash
     );
 
-  if (!info.receipt) {
+  if (
+    !info.receipt
+  ) {
     throw new Error(
       "Transação ainda não possui receipt."
     );
@@ -1534,6 +2791,7 @@ async function verifyUsdtTransfer(
       `${TRON_HOST}/v1/transactions/${hash}/events?only_confirmed=true`,
       {
         method: "GET",
+
         headers: {
           Accept:
             "application/json",
@@ -1562,6 +2820,7 @@ async function verifyUsdtTransfer(
     USDT_CONTRACT.toLowerCase();
 
   let totalReceived = 0;
+
   let matched = false;
 
   for (
@@ -1607,7 +2866,8 @@ async function verifyUsdtTransfer(
     let destination = null;
 
     if (
-      typeof to === "string"
+      typeof to ===
+      "string"
     ) {
       destination =
         to.startsWith("T")
@@ -1625,7 +2885,8 @@ async function verifyUsdtTransfer(
     let amount = null;
 
     if (
-      typeof value === "string" &&
+      typeof value ===
+        "string" &&
       /^\d+$/.test(value)
     ) {
       amount =
@@ -1635,11 +2896,15 @@ async function verifyUsdtTransfer(
         10 ** USDT_DECIMALS;
     } else {
       amount =
-        topicToAmount(value);
+        topicToAmount(
+          value
+        );
     }
 
     if (
-      !Number.isFinite(amount) ||
+      !Number.isFinite(
+        amount
+      ) ||
       amount <= 0
     ) {
       continue;
@@ -1662,16 +2927,22 @@ async function verifyUsdtTransfer(
 
   return {
     confirmed: true,
-    txHash: hash,
+
+    txHash:
+      hash,
+
     treasuryAddress:
       treasury,
+
     amount:
       roundMoney(
         totalReceived,
         6
       ),
+
     contract:
       USDT_CONTRACT,
+
     blockNumber:
       info.blockNumber ||
       null
@@ -1679,10 +2950,12 @@ async function verifyUsdtTransfer(
 }
 
 // ============================================================================
-// WALLETS TESOURARIA
+// WALLETS
 // ============================================================================
 
-async function getWallet(asset) {
+async function getWallet(
+  asset
+) {
   const normalized =
     String(asset || "")
       .trim()
@@ -1709,21 +2982,25 @@ async function getWallet(asset) {
         created_at,
         updated_at
       FROM wallets
-      WHERE asset = ${normalized}
-        AND (
-          user_id IS NULL
-          OR user_id = 0
-        )
+      WHERE asset =
+        ${normalized}
+      AND (
+        user_id IS NULL
+        OR user_id = 0
+      )
       ORDER BY id ASC
       LIMIT 1
     `;
 
-  if (rows.length) {
+  if (
+    rows.length
+  ) {
     return rows[0];
   }
 
   const address =
-    normalized === "USDT"
+    normalized ===
+    "USDT"
       ? getTreasuryAddress()
       : null;
 
@@ -1743,9 +3020,12 @@ async function getWallet(asset) {
       VALUES
       (
         ${address},
-        ${normalized === "USDT"
-          ? "TRON"
-          : "INTERNAL"},
+        ${
+          normalized ===
+          "USDT"
+            ? "TRON"
+            : "INTERNAL"
+        },
         ${normalized},
         0,
         'ACTIVE',
@@ -1771,7 +3051,8 @@ async function getWalletBalances() {
         user_id IS NULL
         OR user_id = 0
       )
-      AND asset IN ('MZN', 'USDT')
+      AND asset IN
+        ('MZN', 'USDT')
       ORDER BY asset
     `;
 
@@ -1782,26 +3063,38 @@ async function getWalletBalances() {
     const row of rows
   ) {
     if (
-      row.asset === "MZN"
+      row.asset ===
+      "MZN"
     ) {
       mzn =
-        Number(row.balance) || 0;
+        Number(
+          row.balance
+        ) || 0;
     }
 
     if (
-      row.asset === "USDT"
+      row.asset ===
+      "USDT"
     ) {
       usdt =
-        Number(row.balance) || 0;
+        Number(
+          row.balance
+        ) || 0;
     }
   }
 
   return {
     mzn:
-      roundMoney(mzn, 2),
+      roundMoney(
+        mzn,
+        2
+      ),
 
     usdt:
-      roundMoney(usdt, 6)
+      roundMoney(
+        usdt,
+        6
+      )
   };
 }
 
@@ -1810,20 +3103,27 @@ async function changeWalletBalance(
   amount
 ) {
   const wallet =
-    await getWallet(asset);
-
-  const id =
-    wallet.id;
+    await getWallet(
+      asset
+    );
 
   const updated =
     await sql`
       UPDATE wallets
       SET
         balance =
-          COALESCE(balance, 0) +
+          COALESCE(
+            balance,
+            0
+          ) +
           ${amount},
-        updated_at = NOW()
-      WHERE id = ${id}
+
+        updated_at =
+          NOW()
+
+      WHERE id =
+        ${wallet.id}
+
       RETURNING *
     `;
 
@@ -1831,7 +3131,7 @@ async function changeWalletBalance(
 }
 
 // ============================================================================
-// DEPÓSITO MZN MANUAL
+// MZN — REGISTRAR
 // ============================================================================
 
 async function registerMZNDeposit(
@@ -1866,7 +3166,9 @@ async function registerMZNDeposit(
     );
 
   if (
-    !isValidSource(source)
+    !isValidSource(
+      source
+    )
   ) {
     throw new Error(
       "Fonte de liquidez inválida."
@@ -1875,7 +3177,8 @@ async function registerMZNDeposit(
 
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim() ||
     makeReference(
       "MZN-DEPOSIT"
@@ -1885,12 +3188,15 @@ async function registerMZNDeposit(
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${reference}
+      WHERE reference =
+        ${reference}
       ORDER BY id DESC
       LIMIT 1
     `;
 
-  if (existing.length) {
+  if (
+    existing.length
+  ) {
     return {
       success: true,
       existing: true,
@@ -1934,14 +3240,7 @@ async function registerMZNDeposit(
 }
 
 // ============================================================================
-// CONFIRMAR MZN
-// ============================================================================
-//
-// IMPORTANTE:
-// Primeiro fazemos a mudança de estado PENDING -> COMPLETED.
-// O crédito no saldo só acontece se essa mudança ocorrer.
-//
-// Isto evita que duas chamadas simultâneas creditem duas vezes.
+// MZN — CONFIRMAR MANUAL
 // ============================================================================
 
 async function confirmMZNDeposit(
@@ -1949,7 +3248,8 @@ async function confirmMZNDeposit(
 ) {
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim();
 
   if (!reference) {
@@ -1962,13 +3262,17 @@ async function confirmMZNDeposit(
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${reference}
-      AND type = 'DEPOSIT_MZN'
+      WHERE reference =
+        ${reference}
+      AND type =
+        'DEPOSIT_MZN'
       ORDER BY id DESC
       LIMIT 1
     `;
 
-  if (!rows.length) {
+  if (
+    !rows.length
+  ) {
     throw new Error(
       "Depósito MZN não encontrado."
     );
@@ -2005,7 +3309,9 @@ async function confirmMZNDeposit(
     );
 
   if (
-    !Number.isFinite(amount) ||
+    !Number.isFinite(
+      amount
+    ) ||
     amount <= 0
   ) {
     throw new Error(
@@ -2013,36 +3319,26 @@ async function confirmMZNDeposit(
     );
   }
 
-  // Operação protegida contra dupla confirmação.
   const updated =
     await sql`
       UPDATE transactions
-      SET status = 'COMPLETED'
-      WHERE id = ${transaction.id}
-      AND status = 'PENDING'
+      SET status =
+        'COMPLETED'
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'PENDING'
       RETURNING *
     `;
 
-  if (!updated.length) {
-    const current =
-      await sql`
-        SELECT *
-        FROM transactions
-        WHERE id = ${transaction.id}
-        LIMIT 1
-      `;
-
+  if (
+    !updated.length
+  ) {
     return {
       success: true,
-      confirmed:
-        current[0]?.status ===
-        "COMPLETED",
-      alreadyCompleted:
-        current[0]?.status ===
-        "COMPLETED",
-      reference,
-      transaction:
-        current[0] || transaction
+      confirmed: true,
+      alreadyCompleted: true,
+      reference
     };
   }
 
@@ -2052,13 +3348,14 @@ async function confirmMZNDeposit(
       amount
     );
   } catch (error) {
-    // Não podemos fingir que a operação foi concluída
-    // se o saldo não conseguiu ser atualizado.
     await sql`
       UPDATE transactions
-      SET status = 'PENDING'
-      WHERE id = ${transaction.id}
-      AND status = 'COMPLETED'
+      SET status =
+        'PENDING'
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'COMPLETED'
     `;
 
     throw error;
@@ -2075,7 +3372,7 @@ async function confirmMZNDeposit(
 }
 
 // ============================================================================
-// DEPÓSITO USDT — REGISTRAR
+// USDT — REGISTRAR
 // ============================================================================
 
 async function registerUSDTDeposit(
@@ -2101,7 +3398,8 @@ async function registerUSDTDeposit(
 
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim() ||
     makeReference(
       "USDT-DEPOSIT"
@@ -2111,13 +3409,17 @@ async function registerUSDTDeposit(
     await sql`
       SELECT *
       FROM transactions
-      WHERE blockchain_tx_hash = ${txHash}
-      OR reference = ${reference}
+      WHERE blockchain_tx_hash =
+        ${txHash}
+      OR reference =
+        ${reference}
       ORDER BY id DESC
       LIMIT 1
     `;
 
-  if (existing.length) {
+  if (
+    existing.length
+  ) {
     return {
       success: true,
       existing: true,
@@ -2163,7 +3465,7 @@ async function registerUSDTDeposit(
 }
 
 // ============================================================================
-// CONFIRMAR USDT — BLOCKCHAIN REAL
+// USDT — CONFIRMAR BLOCKCHAIN
 // ============================================================================
 
 async function confirmUSDTDeposit(
@@ -2171,7 +3473,8 @@ async function confirmUSDTDeposit(
 ) {
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim();
 
   let txHash =
@@ -2183,18 +3486,24 @@ async function confirmUSDTDeposit(
 
   let transaction = null;
 
-  if (reference) {
+  if (
+    reference
+  ) {
     const rows =
       await sql`
         SELECT *
         FROM transactions
-        WHERE reference = ${reference}
-        AND type = 'DEPOSIT_USDT'
+        WHERE reference =
+          ${reference}
+        AND type =
+          'DEPOSIT_USDT'
         ORDER BY id DESC
         LIMIT 1
       `;
 
-    if (rows.length) {
+    if (
+      rows.length
+    ) {
       transaction =
         rows[0];
 
@@ -2223,17 +3532,22 @@ async function confirmUSDTDeposit(
       await sql`
         SELECT *
         FROM transactions
-        WHERE blockchain_tx_hash = ${txHash}
-        AND type = 'DEPOSIT_USDT'
+        WHERE blockchain_tx_hash =
+          ${txHash}
+        AND type =
+          'DEPOSIT_USDT'
         ORDER BY id DESC
         LIMIT 1
       `;
 
     transaction =
-      existing[0] || null;
+      existing[0] ||
+      null;
   }
 
-  if (!transaction) {
+  if (
+    !transaction
+  ) {
     const created =
       await sql`
         INSERT INTO transactions
@@ -2254,7 +3568,12 @@ async function confirmUSDTDeposit(
           'USDT',
           ${verified.amount},
           'COMPLETED',
-          ${reference || makeReference("USDT-DEPOSIT")},
+          ${
+            reference ||
+            makeReference(
+              "USDT-DEPOSIT"
+            )
+          },
           ${txHash},
           NOW()
         )
@@ -2294,35 +3613,28 @@ async function confirmUSDTDeposit(
     await sql`
       UPDATE transactions
       SET
-        status = 'COMPLETED',
-        amount = ${verified.amount},
-        blockchain_tx_hash = ${txHash}
-      WHERE id = ${transaction.id}
-      AND status = 'PENDING'
+        status =
+          'COMPLETED',
+        amount =
+          ${verified.amount},
+        blockchain_tx_hash =
+          ${txHash}
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'PENDING'
       RETURNING *
     `;
 
-  if (!updated.length) {
-    const current =
-      await sql`
-        SELECT *
-        FROM transactions
-        WHERE id = ${transaction.id}
-        LIMIT 1
-      `;
-
+  if (
+    !updated.length
+  ) {
     return {
       success: true,
-      confirmed:
-        current[0]?.status ===
-        "COMPLETED",
-      alreadyCompleted:
-        current[0]?.status ===
-        "COMPLETED",
+      confirmed: true,
+      alreadyCompleted: true,
       blockchain:
-        verified,
-      transaction:
-        current[0] || transaction
+        verified
     };
   }
 
@@ -2335,10 +3647,14 @@ async function confirmUSDTDeposit(
     await sql`
       UPDATE transactions
       SET
-        status = 'PENDING',
-        amount = ${transaction.amount}
-      WHERE id = ${transaction.id}
-      AND status = 'COMPLETED'
+        status =
+          'PENDING',
+        amount =
+          ${transaction.amount}
+      WHERE id =
+        ${transaction.id}
+      AND status =
+        'COMPLETED'
     `;
 
     throw error;
@@ -2355,14 +3671,7 @@ async function confirmUSDTDeposit(
 }
 
 // ============================================================================
-// VERIFICAR LIQUIDEZ USDT
-// ============================================================================
-//
-// A taxa cambial não cria USDT.
-//
-// Aqui verificamos se existe USDT REAL na tesouraria.
-// Posteriormente poderemos acrescentar adaptadores de parceiros
-// externos que efetivamente comprem/forneçam USDT.
+// LIQUIDEZ USDT
 // ============================================================================
 
 async function checkUSDTLiquidity(
@@ -2383,7 +3692,8 @@ async function checkUSDTLiquidity(
     await getWalletBalances();
 
   if (
-    balances.usdt >= required
+    balances.usdt >=
+    required
   ) {
     return {
       available: true,
@@ -2408,33 +3718,16 @@ async function checkUSDTLiquidity(
     missingUsdt:
       roundMoney(
         required -
-        balances.usdt,
+          balances.usdt,
         6
       ),
     message:
-      "Não existe USDT real suficiente na tesouraria. Uma fonte externa de liquidez deverá executar a compra antes da entrega."
+      "Não existe USDT real suficiente na tesouraria."
   };
 }
 
 // ============================================================================
 // CONVERSÃO MZN -> USDT
-// ============================================================================
-//
-// Esta função NÃO cria USDT.
-//
-// Ela usa:
-// 1. taxa real de mercado;
-// 2. Fundo MZN real;
-// 3. USDT real já disponível.
-//
-// Quando adicionarmos um adaptador de liquidez externo,
-// o processo poderá ser:
-//
-// MZN -> fornecedor externo -> USDT real -> tesouraria
-//
-// Só depois:
-//
-// MZN -> USDTMZ balance/accounting
 // ============================================================================
 
 async function convertMZNToUSDT(
@@ -2467,7 +3760,9 @@ async function convertMZNToUSDT(
   const amountUSDT =
     roundMoney(
       amountMZN /
-        Number(rate.value),
+        Number(
+          rate.value
+        ),
       6
     );
 
@@ -2506,22 +3801,25 @@ async function convertMZNToUSDT(
 
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim() ||
     makeReference(
       "CONVERSION"
     );
 
-  // Impede reutilização da mesma referência.
   const existing =
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${reference}
+      WHERE reference =
+        ${reference}
       LIMIT 1
     `;
 
-  if (existing.length) {
+  if (
+    existing.length
+  ) {
     return {
       success: true,
       existing: true,
@@ -2530,35 +3828,38 @@ async function convertMZNToUSDT(
     };
   }
 
-  // ----------------------------------------------------------
-  // Débito MZN
-  // ----------------------------------------------------------
-
   const debitMZN =
     await sql`
       UPDATE wallets
       SET
         balance =
-          balance - ${amountMZN},
-        updated_at = NOW()
-      WHERE asset = 'MZN'
+          balance -
+          ${amountMZN},
+
+        updated_at =
+          NOW()
+
+      WHERE asset =
+        'MZN'
+
       AND (
         user_id IS NULL
         OR user_id = 0
       )
-      AND balance >= ${amountMZN}
+
+      AND balance >=
+        ${amountMZN}
+
       RETURNING *
     `;
 
-  if (!debitMZN.length) {
+  if (
+    !debitMZN.length
+  ) {
     throw new Error(
       "Não foi possível reservar o MZN para a conversão."
     );
   }
-
-  // ----------------------------------------------------------
-  // Débito USDT real
-  // ----------------------------------------------------------
 
   try {
     const debitUSDT =
@@ -2566,25 +3867,42 @@ async function convertMZNToUSDT(
         UPDATE wallets
         SET
           balance =
-            balance - ${amountUSDT},
-          updated_at = NOW()
-        WHERE asset = 'USDT'
+            balance -
+            ${amountUSDT},
+
+          updated_at =
+            NOW()
+
+        WHERE asset =
+          'USDT'
+
         AND (
           user_id IS NULL
           OR user_id = 0
         )
-        AND balance >= ${amountUSDT}
+
+        AND balance >=
+          ${amountUSDT}
+
         RETURNING *
       `;
 
-    if (!debitUSDT.length) {
+    if (
+      !debitUSDT.length
+    ) {
       await sql`
         UPDATE wallets
         SET
           balance =
-            balance + ${amountMZN},
-          updated_at = NOW()
-        WHERE asset = 'MZN'
+            balance +
+            ${amountMZN},
+
+          updated_at =
+            NOW()
+
+        WHERE asset =
+          'MZN'
+
         AND (
           user_id IS NULL
           OR user_id = 0
@@ -2623,6 +3941,7 @@ async function convertMZNToUSDT(
 
     return {
       success: true,
+
       reference,
 
       input: {
@@ -2638,8 +3957,10 @@ async function convertMZNToUSDT(
       liquidity: {
         source:
           "TREASURY_TRON",
+
         executable:
           true,
+
         realUsdt:
           true
       },
@@ -2672,28 +3993,6 @@ async function convertMZNToUSDT(
         transaction[0]
     };
   } catch (error) {
-    // Só tentamos recuperar o MZN quando sabemos que o
-    // débito USDT falhou antes de concluir a operação.
-    //
-    // Se o INSERT da transação falhar depois do débito USDT,
-    // o USDT não pode ser devolvido cegamente em paralelo
-    // sem reconciliação.
-    //
-    // Para produção definitiva, esta operação deve migrar
-    // para uma transação SQL/ledger atômica.
-    //
-    // Por segurança, fazemos a recuperação do MZN apenas
-    // quando o erro indica insuficiência no USDT.
-    if (
-      String(
-        error?.message || ""
-      ).includes(
-        "USDT insuficiente"
-      )
-    ) {
-      throw error;
-    }
-
     throw error;
   }
 }
@@ -2701,24 +4000,15 @@ async function convertMZNToUSDT(
 // ============================================================================
 // RESERVA USDT
 // ============================================================================
-//
-// IMPORTANTE:
-// A reserva é contabilizada separadamente.
-//
-// Não usamos o balance como "disponível" depois da reserva.
-// O balance representa USDT total contabilizado.
-// reserved representa USDT comprometido.
-// available = total - reserved.
-//
-// Isto evita dupla subtração.
-// ============================================================================
 
 async function reserveUSDT(
   amount,
   reference
 ) {
   const value =
-    positiveNumber(amount);
+    positiveNumber(
+      amount
+    );
 
   if (!value) {
     throw new Error(
@@ -2728,7 +4018,8 @@ async function reserveUSDT(
 
   const ref =
     String(
-      reference || ""
+      reference ||
+      ""
     ).trim() ||
     makeReference(
       "USDT-RESERVE"
@@ -2738,13 +4029,17 @@ async function reserveUSDT(
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${ref}
-      AND type = 'USDT_RESERVATION'
+      WHERE reference =
+        ${ref}
+      AND type =
+        'USDT_RESERVATION'
       ORDER BY id DESC
       LIMIT 1
     `;
 
-  if (existing.length) {
+  if (
+    existing.length
+  ) {
     return {
       success: true,
       existing: true,
@@ -2754,10 +4049,14 @@ async function reserveUSDT(
   }
 
   const wallet =
-    await getWallet("USDT");
+    await getWallet(
+      "USDT"
+    );
 
   const balance =
-    Number(wallet.balance) || 0;
+    Number(
+      wallet.balance
+    ) || 0;
 
   const reservedRows =
     await sql`
@@ -2766,21 +4065,27 @@ async function reserveUSDT(
           SUM(amount),
           0
         ) AS reserved
+
       FROM transactions
-      WHERE type = 'USDT_RESERVATION'
-      AND status = 'PENDING'
+
+      WHERE type =
+        'USDT_RESERVATION'
+
+      AND status =
+        'PENDING'
     `;
 
   const reserved =
     Number(
-      reservedRows[0]?.reserved ||
-      0
+      reservedRows[0]
+        ?.reserved || 0
     );
 
   const available =
     Math.max(
       0,
-      balance - reserved
+      balance -
+        reserved
     );
 
   if (
@@ -2851,13 +4156,17 @@ async function releaseReservation(
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${reference}
-      AND type = 'USDT_RESERVATION'
+      WHERE reference =
+        ${reference}
+      AND type =
+        'USDT_RESERVATION'
       ORDER BY id DESC
       LIMIT 1
     `;
 
-  if (!rows.length) {
+  if (
+    !rows.length
+  ) {
     throw new Error(
       "Reserva não encontrada."
     );
@@ -2881,9 +4190,12 @@ async function releaseReservation(
   const updated =
     await sql`
       UPDATE transactions
-      SET status = 'CANCELLED'
-      WHERE id = ${reservation.id}
-      AND status = 'PENDING'
+      SET status =
+        'CANCELLED'
+      WHERE id =
+        ${reservation.id}
+      AND status =
+        'PENDING'
       RETURNING *
     `;
 
@@ -2902,34 +4214,29 @@ async function releaseReservation(
 // ============================================================================
 // FONTES DE LIQUIDEZ
 // ============================================================================
-//
-// ATENÇÃO:
-// "configured" significa que as credenciais/variáveis existem.
-// "executionAvailable" significa que existe um adaptador de execução
-// efetivamente implementado.
-//
-// Não vamos declarar uma fonte como operacional apenas porque
-// existe uma API key.
-// ============================================================================
 
 function externalLiquidityConfiguration() {
   return {
-    binance: Boolean(
-      process.env.BINANCE_API_KEY &&
-      process.env.BINANCE_API_SECRET
-    ),
+    binance:
+      Boolean(
+        process.env.BINANCE_API_KEY &&
+        process.env.BINANCE_API_SECRET
+      ),
 
-    kotani: Boolean(
-      process.env.KOTANI_API_KEY
-    ),
+    kotani:
+      Boolean(
+        process.env.KOTANI_API_KEY
+      ),
 
-    redpay: Boolean(
-      process.env.REDPAY_API_KEY
-    ),
+    redpay:
+      Boolean(
+        process.env.REDPAY_API_KEY
+      ),
 
-    genericPartner: Boolean(
-      process.env.USDTMZ_LIQUIDITY_PARTNER
-    )
+    genericPartner:
+      Boolean(
+        process.env.USDTMZ_LIQUIDITY_PARTNER
+      )
   };
 }
 
@@ -2937,7 +4244,8 @@ async function getLiquiditySources() {
   const balances =
     await getWalletBalances();
 
-  let treasuryAddress = null;
+  let treasuryAddress =
+    null;
 
   try {
     treasuryAddress =
@@ -3006,19 +4314,19 @@ async function getLiquiditySources() {
 
       {
         id:
-          "PAGAR_MPESA",
+          "PAY_MPESA",
 
         type:
           "MPESA_BUSINESS",
 
         name:
-          "Pagar M-Pesa",
+          "Pay.co.mz — M-Pesa",
 
         configured:
-          pagarConfigured(),
+          payConfigured(),
 
         executionAvailable:
-          pagarConfigured(),
+          payConfigured(),
 
         asset:
           "MZN"
@@ -3026,19 +4334,62 @@ async function getLiquiditySources() {
 
       {
         id:
-          "PAGAR_EMOLA",
+          "PAY_MKESH",
+
+        type:
+          "MKESH_BUSINESS",
+
+        name:
+          "Pay.co.mz — mKesh",
+
+        configured:
+          payConfigured(),
+
+        executionAvailable:
+          payConfigured(),
+
+        asset:
+          "MZN"
+      },
+
+      {
+        id:
+          "PAY_EMOLA",
 
         type:
           "EMOLA_BUSINESS",
 
         name:
-          "Pagar e-Mola",
+          "Pay.co.mz — e-Mola",
 
         configured:
-          pagarConfigured(),
+          false,
 
         executionAvailable:
-          pagarConfigured(),
+          false,
+
+        asset:
+          "MZN",
+
+        message:
+          "e-Mola não está ativo na API de produção Pay.co.mz."
+      },
+
+      {
+        id:
+          "PAY_CARD",
+
+        type:
+          "CARD",
+
+        name:
+          "Pay.co.mz — Visa/Mastercard",
+
+        configured:
+          payConfigured(),
+
+        executionAvailable:
+          payConfigured(),
 
         asset:
           "MZN"
@@ -3068,7 +4419,7 @@ async function getLiquiditySources() {
 
         message:
           external.binance
-            ? "Credenciais configuradas, mas o adaptador de execução de liquidez ainda deve ser validado antes de comprar USDT automaticamente."
+            ? "Credenciais configuradas, mas compra automática ainda não está ativada."
             : "Binance não configurada."
       },
 
@@ -3093,7 +4444,7 @@ async function getLiquiditySources() {
 
         message:
           external.kotani
-            ? "Credencial configurada. O contrato/API de execução precisa ser validado antes de ativar compras reais."
+            ? "Credencial configurada, mas adaptador de execução ainda não ativado."
             : "Kotani não configurada."
       },
 
@@ -3118,40 +4469,15 @@ async function getLiquiditySources() {
 
         message:
           external.redpay
-            ? "Credencial configurada. O contrato/API de execução precisa ser validado antes de ativar compras reais."
+            ? "Credencial configurada, mas adaptador de execução ainda não ativado."
             : "RedPay não configurada."
-      },
-
-      {
-        id:
-          "LIQUIDITY_PARTNER",
-
-        type:
-          "LIQUIDITY_PARTNER",
-
-        name:
-          "Parceiro externo de liquidez",
-
-        configured:
-          external.genericPartner,
-
-        executionAvailable:
-          false,
-
-        asset:
-          "USDT",
-
-        message:
-          external.genericPartner
-            ? "Parceiro identificado por configuração, mas o adaptador de execução ainda não foi ativado."
-            : "Nenhum parceiro externo configurado."
       }
     ]
   };
 }
 
 // ============================================================================
-// REGISTRAR FUNDING
+// FUNDING MANUAL
 // ============================================================================
 
 async function registerFunding(
@@ -3159,7 +4485,8 @@ async function registerFunding(
 ) {
   const asset =
     String(
-      body.asset || ""
+      body.asset ||
+      ""
     )
       .trim()
       .toUpperCase();
@@ -3191,16 +4518,40 @@ async function registerFunding(
     );
 
   if (
-    !isValidSource(source)
+    !isValidSource(
+      source
+    )
   ) {
     throw new Error(
       "Fonte de liquidez inválida."
     );
   }
 
+  // USDT manual exige TX real.
+  if (
+    asset === "USDT" &&
+    source !==
+      "MANUAL_APPROVED"
+  ) {
+    const txHash =
+      String(
+        body.tx_hash ||
+        ""
+      ).trim();
+
+    if (
+      !txHash
+    ) {
+      throw new Error(
+        "Funding USDT externo precisa de TX hash TRON."
+      );
+    }
+  }
+
   const reference =
     String(
-      body.reference || ""
+      body.reference ||
+      ""
     ).trim() ||
     makeReference(
       "FUNDING"
@@ -3210,11 +4561,14 @@ async function registerFunding(
     await sql`
       SELECT *
       FROM transactions
-      WHERE reference = ${reference}
+      WHERE reference =
+        ${reference}
       LIMIT 1
     `;
 
-  if (existing.length) {
+  if (
+    existing.length
+  ) {
     return {
       success: true,
       existing: true,
@@ -3258,8 +4612,10 @@ async function registerFunding(
   } catch (error) {
     await sql`
       DELETE FROM transactions
-      WHERE id = ${tx[0].id}
-      AND status = 'COMPLETED'
+      WHERE id =
+        ${tx[0].id}
+      AND status =
+        'COMPLETED'
     `;
 
     throw error;
@@ -3297,7 +4653,8 @@ async function getDashboard() {
     };
   }
 
-  let tronAddress = null;
+  let tronAddress =
+    null;
 
   try {
     tronAddress =
@@ -3309,7 +4666,9 @@ async function getDashboard() {
 
   let trx = 0;
 
-  if (tronAddress) {
+  if (
+    tronAddress
+  ) {
     try {
       const tronWeb =
         getTronWeb();
@@ -3321,7 +4680,7 @@ async function getDashboard() {
 
       trx =
         Number(sun) /
-        1_000_000;
+        1000000;
     } catch {
       trx = 0;
     }
@@ -3334,21 +4693,27 @@ async function getDashboard() {
           SUM(amount),
           0
         ) AS reserved
+
       FROM transactions
-      WHERE type = 'USDT_RESERVATION'
-      AND status = 'PENDING'
+
+      WHERE type =
+        'USDT_RESERVATION'
+
+      AND status =
+        'PENDING'
     `;
 
   const reserved =
     Number(
-      reservedRows[0]?.reserved || 0
+      reservedRows[0]
+        ?.reserved || 0
     );
 
   const available =
     Math.max(
       0,
       balances.usdt -
-      reserved
+        reserved
     );
 
   let state =
@@ -3425,7 +4790,7 @@ async function getDashboard() {
 }
 
 // ============================================================================
-// OPERAÇÕES RECENTES
+// OPERAÇÕES
 // ============================================================================
 
 async function getRecentOperations() {
@@ -3439,10 +4804,15 @@ async function getRecentOperations() {
         amount,
         status,
         reference,
+        provider,
+        provider_reference,
         blockchain_tx_hash,
         created_at
+
       FROM transactions
+
       ORDER BY id DESC
+
       LIMIT 50
     `;
 
@@ -3454,7 +4824,7 @@ async function getRecentOperations() {
 }
 
 // ============================================================================
-// DEPÓSITOS PENDENTES
+// PENDENTES
 // ============================================================================
 
 async function getPendingDeposits() {
@@ -3467,11 +4837,18 @@ async function getPendingDeposits() {
         amount,
         status,
         reference,
+        provider,
+        provider_reference,
         blockchain_tx_hash,
         created_at
+
       FROM transactions
-      WHERE status = 'PENDING'
+
+      WHERE status =
+        'PENDING'
+
       ORDER BY id ASC
+
       LIMIT 100
     `;
 
@@ -3483,7 +4860,7 @@ async function getPendingDeposits() {
 }
 
 // ============================================================================
-// TAXA
+// RATE RESPONSE
 // ============================================================================
 
 async function rateResponse(
@@ -3510,7 +4887,6 @@ async function rateResponse(
       usdtUsd:
         rate.usdtUsd,
 
-      // Sempre zero.
       spread:
         0,
 
@@ -3533,7 +4909,7 @@ async function rateResponse(
 }
 
 // ============================================================================
-// ROTEADOR PRINCIPAL
+// ROTEADOR
 // ============================================================================
 
 export default async function handler(
@@ -3541,16 +4917,62 @@ export default async function handler(
   res
 ) {
   try {
-    // ------------------------------------------------------------------------
-    // SOMENTE ADMIN
-    // ------------------------------------------------------------------------
+
+    // ========================================================================
+    // WEBHOOK PAY.CO.MZ
+    // ========================================================================
+    //
+    // Tem de ser processado ANTES de requireAdmin,
+    // porque Pay.co.mz não possui a nossa cookie de Admin.
+    //
+    // A segurança do webhook é HMAC + timestamp + event id.
+    //
+    // ========================================================================
+
+    const url =
+      new URL(
+        req.url,
+        "http://localhost"
+      );
+
+    const actionFromUrl =
+      String(
+        url.searchParams.get(
+          "action"
+        ) ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const isWebhook =
+      actionFromUrl ===
+        "pay_webhook" ||
+      req.headers[
+        "x-pay-signature"
+      ];
+
+    if (
+      isWebhook
+    ) {
+      return handlePayWebhook(
+        req,
+        res
+      );
+    }
+
+    // ========================================================================
+    // ADMIN
+    // ========================================================================
 
     const admin =
       requireAdmin(req);
 
     if (
-      req.method !== "GET" &&
-      req.method !== "POST"
+      req.method !==
+        "GET" &&
+      req.method !==
+        "POST"
     ) {
       return sendJson(
         res,
@@ -3564,22 +4986,15 @@ export default async function handler(
     }
 
     const body =
-      req.method === "POST"
+      req.method ===
+        "POST"
         ? await readBody(req)
         : {};
-
-    const url =
-      new URL(
-        req.url,
-        "http://localhost"
-      );
 
     const action =
       String(
         body.action ||
-        url.searchParams.get(
-          "action"
-        ) ||
+        actionFromUrl ||
         "dashboard"
       )
         .trim()
@@ -3590,12 +5005,13 @@ export default async function handler(
     // ========================================================================
 
     if (
-      action === "rate" ||
-      action === "exchange_rate" ||
-      action === "fx_rate"
+      action ===
+        "rate" ||
+      action ===
+        "exchange_rate" ||
+      action ===
+        "fx_rate"
     ) {
-      // NÃO força consulta em cada chamada.
-      // Usa cache de 60 segundos.
       return sendJson(
         res,
         200,
@@ -3606,11 +5022,31 @@ export default async function handler(
     }
 
     // ========================================================================
+    // FORÇAR ATUALIZAÇÃO
+    // ========================================================================
+
+    if (
+      action ===
+        "refresh_rate" ||
+      action ===
+        "update_rate"
+    ) {
+      return sendJson(
+        res,
+        200,
+        await rateResponse(
+          true
+        )
+      );
+    }
+
+    // ========================================================================
     // DASHBOARD
     // ========================================================================
 
     if (
-      action === "dashboard"
+      action ===
+      "dashboard"
     ) {
       return sendJson(
         res,
@@ -3620,12 +5056,14 @@ export default async function handler(
     }
 
     // ========================================================================
-    // FONTES DE LIQUIDEZ
+    // FONTES
     // ========================================================================
 
     if (
-      action === "sources" ||
-      action === "liquidity_sources"
+      action ===
+        "sources" ||
+      action ===
+        "liquidity_sources"
     ) {
       return sendJson(
         res,
@@ -3639,8 +5077,10 @@ export default async function handler(
     // ========================================================================
 
     if (
-      action === "operations" ||
-      action === "recent_operations"
+      action ===
+        "operations" ||
+      action ===
+        "recent_operations"
     ) {
       return sendJson(
         res,
@@ -3650,11 +5090,12 @@ export default async function handler(
     }
 
     // ========================================================================
-    // PENDING DEPOSITS
+    // PENDENTES
     // ========================================================================
 
     if (
-      action === "pending_deposits"
+      action ===
+      "pending_deposits"
     ) {
       return sendJson(
         res,
@@ -3664,50 +5105,92 @@ export default async function handler(
     }
 
     // ========================================================================
-    // PAGAR TOP-UP
+    // PAY.CO.MZ — CRIAR PAGAMENTO
     // ========================================================================
 
     if (
       action ===
-        "create_pagar_treasury_topup" ||
+        "create_pay_treasury_charge" ||
       action ===
-        "pagar_treasury_topup"
+        "pay_treasury_charge"
     ) {
       return sendJson(
         res,
         200,
-        await createPagarTreasuryTopup(
+        await createPayTreasuryCharge(
           body
         )
       );
     }
 
     // ========================================================================
-    // PAGAR STATUS
+    // COMPATIBILIDADE COM FRONTEND ANTIGO
+    // ========================================================================
+    //
+    // Se admin.html ainda enviar:
+    // create_pagar_treasury_topup
+    //
+    // NÃO chamamos Pagar.
+    // Redirecionamos internamente para Pay.co.mz.
+    //
     // ========================================================================
 
     if (
       action ===
-        "check_pagar_treasury_topup" ||
-      action ===
-        "pagar_treasury_status"
+        "create_pagar_treasury_topup"
     ) {
       return sendJson(
         res,
         200,
-        await checkPagarTreasuryTopup(
+        await createPayTreasuryCharge(
           body
         )
       );
     }
 
     // ========================================================================
-    // MZN MANUAL/BANK
+    // PAY STATUS
     // ========================================================================
 
     if (
       action ===
-        "register_mzn_deposit"
+        "check_pay_treasury_charge" ||
+      action ===
+        "pay_treasury_status"
+    ) {
+      return sendJson(
+        res,
+        200,
+        await checkPayTreasuryCharge(
+          body
+        )
+      );
+    }
+
+    // ========================================================================
+    // COMPATIBILIDADE ANTIGA
+    // ========================================================================
+
+    if (
+      action ===
+        "check_pagar_treasury_topup"
+    ) {
+      return sendJson(
+        res,
+        200,
+        await checkPayTreasuryCharge(
+          body
+        )
+      );
+    }
+
+    // ========================================================================
+    // MZN
+    // ========================================================================
+
+    if (
+      action ===
+      "register_mzn_deposit"
     ) {
       return sendJson(
         res,
@@ -3720,7 +5203,7 @@ export default async function handler(
 
     if (
       action ===
-        "confirm_mzn_deposit"
+      "confirm_mzn_deposit"
     ) {
       return sendJson(
         res,
@@ -3732,12 +5215,12 @@ export default async function handler(
     }
 
     // ========================================================================
-    // USDT TRC20
+    // USDT
     // ========================================================================
 
     if (
       action ===
-        "register_usdt_deposit"
+      "register_usdt_deposit"
     ) {
       return sendJson(
         res,
@@ -3750,7 +5233,7 @@ export default async function handler(
 
     if (
       action ===
-        "confirm_usdt_deposit"
+      "confirm_usdt_deposit"
     ) {
       return sendJson(
         res,
@@ -3767,7 +5250,7 @@ export default async function handler(
 
     if (
       action ===
-        "convert_mzn_to_usdt"
+      "convert_mzn_to_usdt"
     ) {
       return sendJson(
         res,
@@ -3784,7 +5267,7 @@ export default async function handler(
 
     if (
       action ===
-        "reserve_usdt"
+      "reserve_usdt"
     ) {
       const amount =
         positiveNumber(
@@ -3809,12 +5292,12 @@ export default async function handler(
     }
 
     // ========================================================================
-    // LIBERAR RESERVA
+    // LIBERAR
     // ========================================================================
 
     if (
       action ===
-        "release_reservation"
+      "release_reservation"
     ) {
       return sendJson(
         res,
@@ -3831,7 +5314,7 @@ export default async function handler(
 
     if (
       action ===
-        "register_funding"
+      "register_funding"
     ) {
       return sendJson(
         res,
@@ -3843,7 +5326,7 @@ export default async function handler(
     }
 
     // ========================================================================
-    // ENDPOINT DESCONHECIDO
+    // ERRO
     // ========================================================================
 
     return sendJson(
@@ -3851,14 +5334,17 @@ export default async function handler(
       400,
       {
         success: false,
+
         error:
           `Ação "${action}" não reconhecida.`,
+
         admin:
           admin.email
       }
     );
 
   } catch (error) {
+
     console.error(
       "USDTMZ API06 ERROR:",
       error
@@ -3879,10 +5365,11 @@ export default async function handler(
         : 500,
       {
         success: false,
+
         error:
           error?.message ||
           "Erro interno da Central Admin."
       }
     );
   }
-    }
+}
