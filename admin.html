@@ -2,852 +2,3092 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>USDTMZ Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>USDTMZ — Central Admin</title>
 
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: Arial, sans-serif;
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      background:#0b1220;
+      color:#e5e7eb;
+    }
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    .container{
+      width:min(1200px,94%);
+      margin:0 auto;
+      padding:20px 0 50px;
     }
 
-    body {
-      background: #f4f6f8;
-      color: #1f2937;
+    header{
+      background:#111827;
+      border:1px solid #263244;
+      border-radius:16px;
+      padding:20px;
+      margin-bottom:18px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:15px;
+      flex-wrap:wrap;
     }
 
-    header {
-      background: #111827;
-      color: white;
-      padding: 18px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    h1,h2,h3{margin-top:0}
+    h1{margin-bottom:6px;font-size:25px}
+    h2{font-size:20px}
+    h3{font-size:16px}
+
+    .subtitle{color:#9ca3af}
+    .admin-badge{
+      display:inline-block;
+      margin-top:10px;
+      padding:7px 12px;
+      border-radius:20px;
+      background:#052e16;
+      color:#86efac;
+      font-weight:bold;
+      font-size:12px;
     }
 
-    header h1 {
-      font-size: 21px;
+    .header-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
     }
 
-    .logout {
-      background: #dc2626;
-      color: white;
-      border: none;
-      padding: 10px 15px;
-      border-radius: 7px;
-      cursor: pointer;
+    .card{
+      background:#111827;
+      border:1px solid #263244;
+      border-radius:16px;
+      padding:20px;
+      margin-bottom:18px;
     }
 
-    .container {
-      max-width: 1100px;
-      margin: 25px auto;
-      padding: 0 15px;
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
     }
 
-    .wallet,
-    .users-section {
-      background: white;
-      border-radius: 12px;
-      padding: 22px;
-      margin-bottom: 22px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    .stat{
+      background:#0f172a;
+      border:1px solid #273449;
+      border-radius:14px;
+      padding:16px;
+      min-height:105px;
     }
 
-    .wallet h2,
-    .users-section h2 {
-      margin-bottom: 18px;
-      font-size: 20px;
+    .stat-label{
+      color:#9ca3af;
+      font-size:13px;
+      margin-bottom:9px;
     }
 
-    .wallet-address {
-      background: #f3f4f6;
-      padding: 12px;
-      border-radius: 7px;
-      word-break: break-all;
-      font-size: 13px;
-      margin-bottom: 18px;
+    .stat-value{
+      font-size:23px;
+      font-weight:bold;
+      word-break:break-word;
     }
 
-    .balances {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
+    .status{
+      display:inline-block;
+      padding:5px 9px;
+      border-radius:8px;
+      font-size:12px;
+      font-weight:bold;
     }
 
-    .balance {
-      border: 1px solid #e5e7eb;
-      border-radius: 10px;
-      padding: 18px;
+    .ok{background:#052e16;color:#86efac}
+    .warn{background:#422006;color:#fdba74}
+    .danger{background:#450a0a;color:#fca5a5}
+    .neutral{background:#1e293b;color:#cbd5e1}
+
+    .rate-box{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:15px;
     }
 
-    .balance-title {
-      font-size: 14px;
-      color: #6b7280;
-      margin-bottom: 8px;
+    .rate-main{
+      background:#0f172a;
+      border:1px solid #273449;
+      border-radius:14px;
+      padding:20px;
     }
 
-    .balance-value {
-      font-size: 25px;
-      font-weight: bold;
+    .rate-number{
+      font-size:32px;
+      font-weight:bold;
+      margin:8px 0;
     }
 
-    .refresh {
-      margin-top: 18px;
-      background: #2563eb;
-      color: white;
-      border: none;
-      padding: 11px 17px;
-      border-radius: 7px;
-      cursor: pointer;
+    .form-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:12px;
     }
 
-    .status {
-      margin-top: 12px;
-      font-size: 14px;
-      color: #6b7280;
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:7px;
     }
 
-    .cards {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 15px;
-      margin-bottom: 25px;
+    .field label{
+      font-size:13px;
+      color:#cbd5e1;
+      font-weight:bold;
     }
 
-    .card {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    input,select{
+      width:100%;
+      border:1px solid #334155;
+      background:#020617;
+      color:#f8fafc;
+      border-radius:10px;
+      padding:12px;
+      outline:none;
     }
 
-    .card-title {
-      color: #6b7280;
-      font-size: 14px;
-      margin-bottom: 10px;
+    input:focus,select:focus{
+      border-color:#64748b;
     }
 
-    .card-value {
-      font-size: 25px;
-      font-weight: bold;
+    .methods{
+      display:grid;
+      grid-template-columns:repeat(6,1fr);
+      gap:8px;
+      margin-bottom:15px;
     }
 
-    .management-button {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 9px;
-      background: #16a34a;
-      color: white;
-      font-size: 17px;
-      cursor: pointer;
-      margin-bottom: 15px;
+    .method{
+      border:1px solid #334155;
+      background:#0f172a;
+      color:#e5e7eb;
+      border-radius:10px;
+      padding:12px 7px;
+      text-align:center;
+      font-size:12px;
+      font-weight:bold;
     }
 
-    .users-count {
-      background: #f3f4f6;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 15px;
-      font-size: 15px;
+    .method.active{
+      border-color:#60a5fa;
+      background:#172554;
     }
 
-    .users-table-container {
-      overflow-x: auto;
+    .method.disabled{
+      opacity:.45;
+      cursor:not-allowed;
     }
 
-    .users-table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 820px;
+    .btn{
+      border:0;
+      border-radius:10px;
+      padding:12px 16px;
+      font-weight:bold;
+      color:white;
+      background:#2563eb;
     }
 
-    .users-table th,
-    .users-table td {
-      padding: 12px 10px;
-      border-bottom: 1px solid #e5e7eb;
-      text-align: left;
-      font-size: 14px;
+    .btn:hover{filter:brightness(1.08)}
+    .btn:disabled{
+      opacity:.5;
+      cursor:not-allowed;
     }
 
-    .users-table th {
-      background: #f9fafb;
-      color: #4b5563;
+    .btn.secondary{background:#334155}
+    .btn.success{background:#15803d}
+    .btn.warning{background:#b45309}
+    .btn.danger{background:#b91c1c}
+
+    .actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:15px;
     }
 
-    .balance-usdt {
-      font-weight: bold;
+    .notice{
+      padding:12px;
+      border-radius:10px;
+      background:#172033;
+      border:1px solid #334155;
+      color:#cbd5e1;
+      font-size:13px;
+      line-height:1.5;
+      margin-bottom:15px;
     }
 
-    .status-active {
-      color: #16a34a;
-      font-weight: bold;
+    .notice.success{
+      background:#052e16;
+      border-color:#166534;
+      color:#bbf7d0;
     }
 
-    .status-blocked {
-      color: #dc2626;
-      font-weight: bold;
+    .notice.warning{
+      background:#422006;
+      border-color:#92400e;
+      color:#fed7aa;
     }
 
-    .status-suspended {
-      color: #d97706;
-      font-weight: bold;
+    .notice.danger{
+      background:#450a0a;
+      border-color:#991b1b;
+      color:#fecaca;
     }
 
-    .empty {
-      text-align: center;
-      padding: 25px;
-      color: #6b7280;
+    .result{
+      margin-top:15px;
+      padding:15px;
+      border-radius:12px;
+      background:#020617;
+      border:1px solid #334155;
+      display:none;
     }
 
-    .error {
-      text-align: center;
-      padding: 20px;
-      color: #dc2626;
+    .result.show{display:block}
+
+    .result-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:10px;
     }
 
-    @media (max-width: 700px) {
-      .cards {
-        grid-template-columns: repeat(2, 1fr);
-      }
+    .result-item{
+      background:#0f172a;
+      padding:10px;
+      border-radius:8px;
+    }
 
-      .balances {
-        grid-template-columns: 1fr;
-      }
+    .result-item small{
+      display:block;
+      color:#94a3b8;
+      margin-bottom:4px;
+    }
+
+    .table-wrap{
+      overflow-x:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:700px;
+    }
+
+    th,td{
+      padding:11px 9px;
+      border-bottom:1px solid #263244;
+      text-align:left;
+      font-size:13px;
+    }
+
+    th{
+      color:#94a3b8;
+      font-size:12px;
+      text-transform:uppercase;
+    }
+
+    .mono{
+      font-family:monospace;
+      word-break:break-all;
+    }
+
+    .wallet{
+      background:#020617;
+      border:1px solid #334155;
+      border-radius:12px;
+      padding:15px;
+      margin-top:10px;
+    }
+
+    .wallet-address{
+      font-family:monospace;
+      word-break:break-all;
+      color:#93c5fd;
+    }
+
+    .config{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:10px;
+    }
+
+    .config-item{
+      background:#0f172a;
+      border:1px solid #273449;
+      border-radius:10px;
+      padding:12px;
+    }
+
+    .config-item strong{
+      display:block;
+      margin-bottom:5px;
+    }
+
+    .muted{color:#94a3b8}
+    .center{text-align:center}
+
+    #toast{
+      position:fixed;
+      right:18px;
+      bottom:18px;
+      max-width:360px;
+      z-index:9999;
+      display:none;
+      padding:14px 16px;
+      border-radius:10px;
+      background:#020617;
+      border:1px solid #475569;
+      box-shadow:0 10px 30px rgba(0,0,0,.4);
+    }
+
+    #toast.show{display:block}
+
+    @media(max-width:850px){
+      .grid{grid-template-columns:repeat(2,1fr)}
+      .methods{grid-template-columns:repeat(3,1fr)}
+      .rate-box{grid-template-columns:1fr}
+    }
+
+    @media(max-width:600px){
+      .container{width:96%;padding-top:10px}
+      .grid,.form-grid,.config,.result-grid{grid-template-columns:1fr}
+      .methods{grid-template-columns:repeat(2,1fr)}
+      header{padding:15px}
+      .card{padding:15px}
+      .rate-number{font-size:26px}
     }
   </style>
 </head>
 
 <body>
 
-<header>
-
-  <h1>
-    USDTMZ Admin
-  </h1>
-
-  <button
-    class="logout"
-    onclick="logout()"
-  >
-    Sair
-  </button>
-
-</header>
-
 <div class="container">
 
-  <!-- CARTEIRA -->
+  <header>
+    <div>
+      <h1>USDTMZ — Central Admin</h1>
+      <div class="subtitle">
+        Depósitos, câmbio, conversão, tesouraria e levantamentos
+      </div>
+      <span class="admin-badge">🔐 ADMIN AUTENTICADO</span>
+    </div>
 
-  <div class="wallet">
+    <div class="header-actions">
+      <button class="btn secondary" onclick="refreshAll()">🔄 Atualizar</button>
+      <button class="btn danger" onclick="logout()">Sair</button>
+    </div>
+  </header>
 
-    <h2>
-      💰 Carteira USDTMZ
-    </h2>
+  <!-- TESOURARIA -->
+  <section class="card">
+    <h2>📊 Tesouraria</h2>
 
-    <div class="wallet-address">
+    <div class="grid">
 
-      <strong>
-        Endereço TRON:
-      </strong>
+      <div class="stat">
+        <div class="stat-label">🇲🇿 Fundo MZN</div>
+        <div class="stat-value" id="fundMzn">0 MZN</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">💵 USDT real</div>
+        <div class="stat-value" id="realUsdt">0 USDT</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">⛓️ TRX</div>
+        <div class="stat-value" id="trxBalance">0 TRX</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">🔒 USDT reservado</div>
+        <div class="stat-value" id="reservedUsdt">0 USDT</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">🇲🇿 MZN reservado</div>
+        <div class="stat-value" id="reservedMzn">0 MZN</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">✅ USDT disponível</div>
+        <div class="stat-value" id="availableUsdt">0 USDT</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">🟢 Estado</div>
+        <div class="stat-value" id="liquidityState">
+          A CARREGAR...
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- EXCHANGE RATE -->
+  <section class="card">
+
+    <h2>💱 Sistema Financeiro — Exchange Rate</h2>
+
+    <div class="notice">
+      <strong>Cotação cambial em tempo real</strong><br>
+      A taxa é obtida pelo servidor. O navegador somente apresenta a cotação
+      e calcula uma prévia. A execução financeira definitiva é feita pela API
+      do servidor.
+    </div>
+
+    <div class="rate-box">
+
+      <div class="rate-main">
+        <div class="muted">1 USDT =</div>
+        <div class="rate-number" id="rateDisplay">
+          INDISPONÍVEL
+        </div>
+        <div class="muted">
+          Fonte: <span id="rateSource">indisponível</span>
+        </div>
+        <div class="muted">
+          Atualização: <span id="rateUpdated">—</span>
+        </div>
+      </div>
+
+      <div class="rate-main">
+
+        <div class="field">
+          <label for="conversionMzn">Valor em MZN</label>
+          <input
+            id="conversionMzn"
+            type="number"
+            min="20"
+            max="40000"
+            step="0.01"
+            placeholder="Ex.: 6400"
+            oninput="previewConversion()"
+          >
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="muted">Cotação da conversão</div>
+          <strong id="conversionRate">
+            Taxa indisponível
+          </strong>
+        </div>
+
+        <div style="margin-top:12px">
+          <div class="muted">USDT estimado</div>
+          <strong id="estimatedUsdt">0 USDT</strong>
+        </div>
+
+        <div class="muted" style="margin-top:8px">
+          Digite o valor MZN para calcular.
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button
+        class="btn success"
+        id="convertBtn"
+        onclick="convertMzn()"
+      >
+        🔄 EXECUTAR CONVERSÃO MZN → USDT
+      </button>
+
+      <button
+        class="btn secondary"
+        id="rateBtn"
+        onclick="loadRate(true)"
+      >
+        💱 ATUALIZAR EXCHANGE RATE
+      </button>
+    </div>
+
+    <div id="conversionResult" class="result">
+      <h3>Resultado da conversão</h3>
+      <div class="result-grid">
+
+        <div class="result-item">
+          <small>MZN solicitado</small>
+          <strong id="resultMzn">—</strong>
+        </div>
+
+        <div class="result-item">
+          <small>USDT</small>
+          <strong id="resultUsdt">—</strong>
+        </div>
+
+        <div class="result-item">
+          <small>Taxa executada</small>
+          <strong id="resultRate">—</strong>
+        </div>
+
+        <div class="result-item">
+          <small>Estado</small>
+          <strong id="resultStatus">—</strong>
+        </div>
+
+        <div class="result-item">
+          <small>Referência</small>
+          <strong id="resultReference" class="mono">—</strong>
+        </div>
+
+        <div class="result-item">
+          <small>Mensagem</small>
+          <strong id="resultMessage">—</strong>
+        </div>
+
+      </div>
+    </div>
+
+  </section>
+
+  <!-- DEPOSITOS -->
+  <section class="card">
+
+    <h2>➕ Entrada de Fundos</h2>
+
+    <div class="notice">
+      <strong>Fluxo financeiro:</strong>
+      Pagamento → confirmação real → crédito na tesouraria.
+      Criar uma ordem não aumenta automaticamente o saldo.
+    </div>
+
+    <div class="methods">
+
+      <button
+        class="method active"
+        id="depositMethodMpesa"
+        onclick="setDepositMethod('mpesa')"
+      >
+        📱<br>M-Pesa
+      </button>
+
+      <button
+        class="method"
+        id="depositMethodEmola"
+        onclick="setDepositMethod('emola')"
+      >
+        📱<br>e-Mola
+      </button>
+
+      <button
+        class="method"
+        id="depositMethodBank"
+        onclick="setDepositMethod('bank')"
+      >
+        🏦<br>Banco
+      </button>
+
+      <button
+        class="method"
+        id="depositMethodUsdt"
+        onclick="setDepositMethod('usdt')"
+      >
+        💵<br>USDT TRC20
+      </button>
+
+      <button
+        class="method"
+        id="depositMethodExternal"
+        onclick="setDepositMethod('external')"
+      >
+        👛<br>Carteira externa
+      </button>
+
+      <button
+        class="method"
+        id="depositMethodManual"
+        onclick="setDepositMethod('manual')"
+      >
+        📝<br>Manual aprovado
+      </button>
+
+    </div>
+
+    <div id="depositNotice" class="notice">
+      <strong>Depósito por 📱 M-Pesa</strong><br>
+      Valor → número M-Pesa → cobrança real criada pelo servidor através do
+      Pay.co.mz.
+    </div>
+
+    <div class="form-grid">
+
+      <div class="field">
+        <label for="depositAmount">Valor</label>
+        <input
+          id="depositAmount"
+          type="number"
+          min="20"
+          max="40000"
+          step="0.01"
+          placeholder="Ex.: 1000"
+        >
+      </div>
+
+      <div class="field">
+        <label for="depositCurrency">Moeda</label>
+        <select id="depositCurrency">
+          <option value="MZN">MZN</option>
+          <option value="USDT">USDT</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label id="depositReferenceLabel" for="depositReference">
+          Número M-Pesa
+        </label>
+
+        <input
+          id="depositReference"
+          type="text"
+          inputmode="numeric"
+          placeholder="84xxxxxxxx ou 85xxxxxxxx"
+        >
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button
+        class="btn success"
+        id="depositBtn"
+        onclick="createDeposit()"
+      >
+        ➕ CRIAR ORDEM DE DEPÓSITO
+      </button>
+    </div>
+
+    <div id="depositResult" class="result"></div>
+
+    <div style="margin-top:20px">
+      <h3>Ordens recentes</h3>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Estado</th>
+              <th>Valor</th>
+              <th>USDT</th>
+              <th>Taxa</th>
+              <th>Pay referência</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+
+          <tbody id="depositOrders">
+            <tr>
+              <td colspan="7" class="center muted">
+                A carregar...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- LEVANTAMENTOS -->
+  <section class="card">
+
+    <h2>➖ Retirar Fundos</h2>
+
+    <div class="notice warning">
+      <strong>Segurança financeira:</strong>
+      Toda retirada começa como <strong>PENDING</strong>.
+      Nenhuma retirada normal é enviada diretamente pelo navegador.
+      Fluxo:
+      <strong>PENDING → APPROVED → PROCESSING → COMPLETED</strong>.
+    </div>
+
+    <div class="methods">
+
+      <button
+        class="method active"
+        id="withdrawMethodBinance"
+        onclick="setWithdrawalMethod('binance')"
+      >
+        🚀<br>Binance
+      </button>
+
+      <button
+        class="method"
+        id="withdrawMethodTron"
+        onclick="setWithdrawalMethod('tron')"
+      >
+        💵<br>USDT TRC20
+      </button>
+
+      <button
+        class="method"
+        id="withdrawMethodMpesa"
+        onclick="setWithdrawalMethod('mpesa')"
+      >
+        📱<br>M-Pesa
+      </button>
+
+      <button
+        class="method"
+        id="withdrawMethodEmola"
+        onclick="setWithdrawalMethod('emola')"
+      >
+        📱<br>e-Mola
+      </button>
+
+      <button
+        class="method"
+        id="withdrawMethodBank"
+        onclick="setWithdrawalMethod('bank')"
+      >
+        🏦<br>Banco
+      </button>
+
+    </div>
+
+    <div id="withdrawNotice" class="notice">
+      Retirada para Binance/USDT.
+    </div>
+
+    <div class="form-grid">
+
+      <div class="field">
+        <label for="withdrawAmount">
+          Valor
+        </label>
+
+        <input
+          id="withdrawAmount"
+          type="number"
+          min="0.000001"
+          step="0.000001"
+          placeholder="Ex.: 10"
+        >
+      </div>
+
+      <div class="field">
+        <label for="withdrawDestination">
+          Destino
+        </label>
+
+        <input
+          id="withdrawDestination"
+          type="text"
+          placeholder="Endereço / conta de destino"
+        >
+      </div>
+
+    </div>
+
+    <div class="actions">
+
+      <button
+        class="btn warning"
+        id="withdrawBtn"
+        onclick="createWithdrawal()"
+      >
+        ➖ CRIAR RETIRADA PENDING
+      </button>
+
+    </div>
+
+    <div id="withdrawResult" class="result"></div>
+
+  </section>
+
+  <!-- AUTORIZACOES -->
+  <section class="card">
+
+    <h2>🔐 Autorizações de Retirada</h2>
+
+    <div class="notice">
+      O administrador deve autorizar antes do processamento.
+      Uma retirada <strong>APPROVED</strong> pode então ser processada.
+    </div>
+
+    <div id="withdrawalsError" class="notice danger" style="display:none">
+      Não foi possível carregar as retiradas.
+    </div>
+
+    <div class="actions">
+      <button class="btn secondary" onclick="loadWithdrawals()">
+        🔄 ATUALIZAR RETIRADAS
+      </button>
+    </div>
+
+    <div class="table-wrap" style="margin-top:15px">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Método</th>
+            <th>Valor</th>
+            <th>Destino</th>
+            <th>Estado</th>
+            <th>Criado</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+
+        <tbody id="withdrawalsTable">
+          <tr>
+            <td colspan="7" class="center muted">
+              A carregar retiradas...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- TRON -->
+  <section class="card">
+
+    <h2>⛓️ Carteira USDT / TRON</h2>
+
+    <div class="wallet">
+
+      <div class="muted">Endereço da tesouraria:</div>
+
+      <div class="wallet-address" id="tronAddress">
+        TYBvQh45dpWKSHHT1mUBDSEcQxB8C7hHGi
+      </div>
 
       <br>
 
-      <span id="walletAddress">
-        Carregando...
-      </span>
+      <div class="grid">
 
-    </div>
-
-    <div class="balances">
-
-      <div class="balance">
-
-        <div class="balance-title">
-          💵 Saldo USDT
+        <div class="stat">
+          <div class="stat-label">USDT real on-chain</div>
+          <div class="stat-value" id="tronUsdt">
+            0 USDT
+          </div>
         </div>
 
-        <div class="balance-value">
-          $<span id="usdtBalance">...</span>
-        </div>
-
-      </div>
-
-      <div class="balance">
-
-        <div class="balance-title">
-          ⚡ Saldo TRX
-        </div>
-
-        <div class="balance-value">
-          <span id="trxBalance">...</span>
-          TRX
+        <div class="stat">
+          <div class="stat-label">TRX real on-chain</div>
+          <div class="stat-value" id="tronTrx">
+            0 TRX
+          </div>
         </div>
 
       </div>
 
-    </div>
-
-    <button
-      class="refresh"
-      onclick="loadWalletBalance()"
-    >
-      🔄 Atualizar saldo
-    </button>
-
-    <div
-      class="status"
-      id="walletStatus"
-    >
-      Consultando carteira...
-    </div>
-
-  </div>
-
-
-  <!-- ESTATÍSTICAS -->
-
-  <div class="cards">
-
-    <div class="card">
-
-      <div class="card-title">
-        Utilizadores
-      </div>
-
-      <div
-        class="card-value"
-        id="usersCount"
-      >
-        0
+      <div class="notice" style="margin-top:15px;margin-bottom:0">
+        Rede: <strong>TRON Mainnet / TRC-20</strong><br>
+        Contrato USDT:
+        <span class="mono">
+          TR7NHqKQxGTCi8q8ZY4pL8otSzgjLj6t
+        </span>
       </div>
 
     </div>
 
-    <div class="card">
-
-      <div class="card-title">
-        Pedidos pendentes
-      </div>
-
-      <div class="card-value">
-        0
-      </div>
-
+    <div class="actions">
+      <button class="btn secondary" onclick="loadTron()">
+        🔄 ATUALIZAR TESOURARIA
+      </button>
     </div>
 
-    <div class="card">
+  </section>
 
-      <div class="card-title">
-        Transações
-      </div>
+  <!-- OPERACOES -->
+  <section class="card">
 
-      <div class="card-value">
-        0
-      </div>
+    <h2>📋 Operações Recentes</h2>
 
-    </div>
-
-    <div class="card">
-
-      <div class="card-title">
-        Status
-      </div>
-
-      <div class="card-value">
-        Online
-      </div>
-
-    </div>
-
-  </div>
-
-
-  <!-- UTILIZADORES -->
-
-  <div class="users-section">
-
-    <h2>
-      👤 Utilizadores
-    </h2>
-
-    <div class="users-count">
-
-      Total de utilizadores:
-      <strong id="usersTotal">
-        0
-      </strong>
-
-    </div>
-
-    <div class="users-table-container">
-
-      <table class="users-table">
-
+    <div class="table-wrap">
+      <table>
         <thead>
-
           <tr>
-
-            <th>ID</th>
-
-            <th>Nome</th>
-
-            <th>Email</th>
-
-            <th>Telefone</th>
-
-            <th>Saldo USDT</th>
-
-            <th>Estado</th>
-
             <th>Data</th>
-
+            <th>Tipo</th>
+            <th>Valor</th>
+            <th>Estado</th>
+            <th>Referência</th>
           </tr>
-
         </thead>
 
-        <tbody id="usersTableBody">
-
+        <tbody id="operationsTable">
           <tr>
-
-            <td
-              colspan="7"
-              class="empty"
-            >
-              Carregando utilizadores...
-
+            <td colspan="5" class="center muted">
+              A carregar operações...
             </td>
-
           </tr>
-
         </tbody>
-
       </table>
+    </div>
+
+  </section>
+
+  <!-- CONFIGURACAO -->
+  <section class="card">
+
+    <h2>⚙️ Configuração Financeira</h2>
+
+    <div class="config">
+
+      <div class="config-item">
+        <strong>Exchange Rate</strong>
+        <span id="configRate">INDISPONÍVEL</span>
+      </div>
+
+      <div class="config-item">
+        <strong>Mínimo</strong>
+        <span>20 MZN</span>
+      </div>
+
+      <div class="config-item">
+        <strong>Máximo</strong>
+        <span>40.000 MZN</span>
+      </div>
+
+      <div class="config-item">
+        <strong>Rede</strong>
+        <span>TRON / TRC-20</span>
+      </div>
+
+      <div class="config-item">
+        <strong>Pay.co.mz</strong>
+        <span id="configPay">INDISPONÍVEL</span>
+      </div>
+
+      <div class="config-item">
+        <strong>M-Pesa</strong>
+        <span id="configMpesa">INDISPONÍVEL</span>
+      </div>
+
+      <div class="config-item">
+        <strong>e-Mola</strong>
+        <span id="configEmola">INDISPONÍVEL</span>
+      </div>
 
     </div>
 
-    <div
-      class="status"
-      id="usersStatus"
-    >
-      Consultando utilizadores...
+    <div class="notice" style="margin-top:15px;margin-bottom:0">
+      As chaves privadas, API keys, credenciais Pay.co.mz,
+      segredos de webhook e credenciais TRON permanecem exclusivamente
+      no servidor.
     </div>
 
-  </div>
-
-
-  <!-- LEVANTAMENTOS -->
-
-  <button
-    class="management-button"
-    onclick="window.location.href='/admin-retiradas.html'"
-  >
-    💰 Levantamentos
-  </button>
+  </section>
 
 </div>
 
+<div id="toast"></div>
 
 <script>
+"use strict";
 
-  async function checkSession() {
+/*
+  USDTMZ — CENTRAL ADMIN
 
-    try {
+  IMPORTANTE:
+  - Mantém as 12 APIs existentes.
+  - Não cria API13.
+  - Nenhuma API key fica neste HTML.
+  - Pay.co.mz é chamado exclusivamente pelo servidor.
+  - A taxa final é determinada pelo servidor.
+  - e-Mola não é tratado como produção ativa enquanto
+    não existir provedor de produção configurado.
+*/
 
-      const response =
-        await fetch(
-          "/api/admin-session",
-          {
-            credentials: "include",
-            cache: "no-store"
-          }
-        );
+const API = {
+  session: "/api/admin-session",
+  treasury: "/api/admin-withdrawals",
+  tronBalance: "/api/tron-wallet-balance",
+  tronInfo: "/api/tron-wallet-info",
+  process: "/api/admin-withdrawal-process"
+};
 
-      if (!response.ok) {
+const MIN_MZN = 20;
+const MAX_MZN = 40000;
 
-        window.location.href =
-          "/admin-login.html";
+let currentRate = null;
+let currentRateSource = "indisponível";
+let currentRateUpdated = null;
 
-        return false;
-      }
+let depositMethod = "mpesa";
+let withdrawalMethod = "binance";
 
-      const data =
-        await response.json();
+let loadingRate = false;
+let converting = false;
+let creatingDeposit = false;
+let creatingWithdrawal = false;
 
-      if (!data.authenticated) {
 
-        window.location.href =
-          "/admin-login.html";
+/* =========================
+   HELPERS
+========================= */
 
-        return false;
-      }
+function $(id){
+  return document.getElementById(id);
+}
 
-      return true;
+function esc(value){
+  if(value === null || value === undefined){
+    return "";
+  }
 
-    } catch (error) {
+  return String(value)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
 
-      window.location.href =
-        "/admin-login.html";
+function pick(obj, keys, fallback = null){
+  if(!obj || typeof obj !== "object"){
+    return fallback;
+  }
 
+  for(const key of keys){
+    if(
+      obj[key] !== undefined &&
+      obj[key] !== null &&
+      obj[key] !== ""
+    ){
+      return obj[key];
+    }
+  }
+
+  return fallback;
+}
+
+function numberValue(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatMzn(value){
+  return numberValue(value).toLocaleString("pt-MZ",{
+    minimumFractionDigits:2,
+    maximumFractionDigits:2
+  }) + " MZN";
+}
+
+function formatUsdt(value){
+  return numberValue(value).toLocaleString("en-US",{
+    minimumFractionDigits:2,
+    maximumFractionDigits:6
+  }) + " USDT";
+}
+
+function formatTrx(value){
+  return numberValue(value).toLocaleString("en-US",{
+    minimumFractionDigits:2,
+    maximumFractionDigits:6
+  }) + " TRX";
+}
+
+function formatDate(value){
+  if(!value){
+    return "—";
+  }
+
+  try{
+    return new Date(value).toLocaleString("pt-MZ");
+  }catch{
+    return String(value);
+  }
+}
+
+function toast(message, type = "normal"){
+  const el = $("toast");
+
+  el.textContent = message;
+  el.style.borderColor =
+    type === "success" ? "#166534" :
+    type === "error" ? "#991b1b" :
+    "#475569";
+
+  el.style.color =
+    type === "success" ? "#bbf7d0" :
+    type === "error" ? "#fecaca" :
+    "#e2e8f0";
+
+  el.classList.add("show");
+
+  clearTimeout(window.__toastTimer);
+
+  window.__toastTimer = setTimeout(()=>{
+    el.classList.remove("show");
+  },4500);
+}
+
+async function parseResponse(response){
+
+  const text = await response.text();
+
+  let data = {};
+
+  try{
+    data = text ? JSON.parse(text) : {};
+  }catch{
+    data = {
+      message: text || "Resposta inválida do servidor."
+    };
+  }
+
+  if(!response.ok){
+    const message =
+      pick(data,["message","error","detail"],null) ||
+      `Erro HTTP ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+async function apiGet(url){
+  const response = await fetch(url,{
+    method:"GET",
+    credentials:"include",
+    cache:"no-store",
+    headers:{
+      "Accept":"application/json"
+    }
+  });
+
+  return parseResponse(response);
+}
+
+async function apiPost(url, body){
+  const response = await fetch(url,{
+    method:"POST",
+    credentials:"include",
+    cache:"no-store",
+    headers:{
+      "Content-Type":"application/json",
+      "Accept":"application/json"
+    },
+    body:JSON.stringify(body)
+  });
+
+  return parseResponse(response);
+}
+
+
+/* =========================
+   SESSÃO
+========================= */
+
+async function checkSession(){
+
+  try{
+
+    const data = await apiGet(API.session);
+
+    const authenticated = pick(
+      data,
+      ["authenticated","isAuthenticated","ok"],
+      true
+    );
+
+    if(authenticated === false){
+      window.location.href = "/admin-login.html";
       return false;
     }
+
+    return true;
+
+  }catch(error){
+
+    console.error("Sessão:",error);
+
+    /*
+      Não fazemos logout automático simplesmente por uma
+      falha temporária de rede. O servidor continua sendo
+      a autoridade da autenticação.
+    */
+
+    return true;
+  }
+}
+
+async function logout(){
+
+  try{
+    await apiPost(API.session,{
+      action:"logout"
+    });
+  }catch(error){
+    console.warn("Logout:",error);
   }
 
+  window.location.href = "/admin-login.html";
+}
 
-  async function loadWalletBalance() {
 
-    const status =
-      document.getElementById(
-        "walletStatus"
+/* =========================
+   RATE
+========================= */
+
+async function loadRate(showToast = false){
+
+  if(loadingRate){
+    return currentRate;
+  }
+
+  loadingRate = true;
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=rate"
+    );
+
+    const rate = pick(
+      data,
+      [
+        "rate",
+        "mzn_per_usdt",
+        "mznPerUsdt",
+        "usd_mzn",
+        "exchange_rate",
+        "exchangeRate"
+      ],
+      null
+    );
+
+    const numericRate = Number(rate);
+
+    if(!Number.isFinite(numericRate) || numericRate <= 0){
+      currentRate = null;
+      $("rateDisplay").textContent = "INDISPONÍVEL";
+      $("rateSource").textContent =
+        pick(data,["source","provider"],"indisponível");
+      $("rateUpdated").textContent = "—";
+      $("conversionRate").textContent = "Taxa indisponível";
+      $("configRate").textContent = "INDISPONÍVEL";
+      previewConversion();
+      return null;
+    }
+
+    currentRate = numericRate;
+
+    currentRateSource = pick(
+      data,
+      ["source","provider"],
+      "servidor"
+    );
+
+    currentRateUpdated = new Date();
+
+    $("rateDisplay").textContent =
+      numericRate.toLocaleString("pt-MZ",{
+        minimumFractionDigits:2,
+        maximumFractionDigits:6
+      }) + " MZN";
+
+    $("rateSource").textContent = currentRateSource;
+
+    $("rateUpdated").textContent =
+      currentRateUpdated.toLocaleString("pt-MZ");
+
+    $("conversionRate").textContent =
+      "1 USDT = " +
+      numericRate.toLocaleString("pt-MZ",{
+        minimumFractionDigits:2,
+        maximumFractionDigits:6
+      }) +
+      " MZN";
+
+    $("configRate").textContent =
+      numericRate.toLocaleString("pt-MZ",{
+        minimumFractionDigits:2,
+        maximumFractionDigits:6
+      }) +
+      " MZN / USDT";
+
+    previewConversion();
+
+    if(showToast){
+      toast("Exchange Rate atualizada.","success");
+    }
+
+    return numericRate;
+
+  }catch(error){
+
+    console.error("Rate:",error);
+
+    currentRate = null;
+
+    $("rateDisplay").textContent = "INDISPONÍVEL";
+    $("rateSource").textContent = "indisponível";
+    $("rateUpdated").textContent = "—";
+    $("conversionRate").textContent = "Taxa indisponível";
+    $("configRate").textContent = "INDISPONÍVEL";
+
+    previewConversion();
+
+    if(showToast){
+      toast(
+        "Não foi possível atualizar a Exchange Rate.",
+        "error"
       );
+    }
 
-    const usdt =
-      document.getElementById(
-        "usdtBalance"
+    return null;
+
+  }finally{
+    loadingRate = false;
+  }
+}
+
+function previewConversion(){
+
+  const amount = numberValue(
+    $("conversionMzn").value
+  );
+
+  if(
+    !currentRate ||
+    !Number.isFinite(currentRate) ||
+    currentRate <= 0 ||
+    amount <= 0
+  ){
+    $("estimatedUsdt").textContent = "0 USDT";
+    return;
+  }
+
+  const estimated = amount / currentRate;
+
+  $("estimatedUsdt").textContent =
+    formatUsdt(estimated);
+}
+
+
+/* =========================
+   CONVERSÃO
+========================= */
+
+async function convertMzn(){
+
+  if(converting){
+    return;
+  }
+
+  const amount = numberValue(
+    $("conversionMzn").value
+  );
+
+  if(
+    !Number.isFinite(amount) ||
+    amount < MIN_MZN ||
+    amount > MAX_MZN
+  ){
+    toast(
+      `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`,
+      "error"
+    );
+    return;
+  }
+
+  const button = $("convertBtn");
+
+  converting = true;
+  button.disabled = true;
+  button.textContent = "⏳ A OBTER COTAÇÃO E EXECUTAR...";
+
+  const result = $("conversionResult");
+
+  result.classList.add("show");
+
+  $("resultMzn").textContent = formatMzn(amount);
+  $("resultUsdt").textContent = "—";
+  $("resultRate").textContent = "A obter...";
+  $("resultStatus").textContent = "PROCESSING";
+  $("resultReference").textContent = "—";
+  $("resultMessage").textContent =
+    "Obtendo a taxa atual do servidor...";
+
+  try{
+
+    /*
+      Primeiro buscamos a taxa atual.
+      Isto é somente para apresentar a cotação.
+      O servidor continua sendo a autoridade final.
+    */
+
+    const freshRate = await loadRate(false);
+
+    if(!freshRate){
+      throw new Error(
+        "Exchange Rate indisponível no servidor."
       );
+    }
 
-    const trx =
-      document.getElementById(
-        "trxBalance"
-      );
+    const previewUsdt = amount / freshRate;
 
-    const address =
-      document.getElementById(
-        "walletAddress"
-      );
+    $("resultRate").textContent =
+      freshRate.toLocaleString("pt-MZ",{
+        minimumFractionDigits:2,
+        maximumFractionDigits:6
+      }) + " MZN/USDT";
 
-    status.textContent =
-      "Consultando saldo...";
+    $("resultUsdt").textContent =
+      formatUsdt(previewUsdt);
 
-    try {
+    $("resultMessage").textContent =
+      "Cotação obtida. Executando conversão no servidor...";
 
-      const response =
-        await fetch(
-          "/api/tron-wallet-balance",
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store"
-          }
-        );
+    /*
+      IMPORTANTE:
+      Não enviamos rate nem usdt_amount.
+      A API06 calcula e valida tudo no servidor.
+    */
 
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-
-        throw new Error(
-          data.message ||
-          "Erro ao consultar carteira."
-        );
+    const data = await apiPost(
+      API.treasury,
+      {
+        action:"convert_mzn_to_usdt",
+        amount_mzn:amount
       }
+    );
 
-      address.textContent =
-        data.wallet_address;
+    const usdt = pick(
+      data,
+      [
+        "usdt_amount",
+        "usdtAmount",
+        "amount_usdt"
+      ],
+      pick(
+        data.conversion || {},
+        ["usdt_amount","usdtAmount"],
+        null
+      )
+    );
 
-      usdt.textContent =
-        Number(
-          data.balances.USDT || 0
-        ).toFixed(2);
+    const executedRate = pick(
+      data,
+      [
+        "rate",
+        "mzn_per_usdt",
+        "exchange_rate"
+      ],
+      pick(
+        data.conversion || {},
+        ["rate","mzn_per_usdt"],
+        freshRate
+      )
+    );
 
-      trx.textContent =
-        Number(
-          data.balances.TRX || 0
-        ).toFixed(2);
+    const reference = pick(
+      data,
+      [
+        "reference",
+        "conversion_reference",
+        "id"
+      ],
+      pick(
+        data.conversion || {},
+        ["reference","id"],
+        "—"
+      )
+    );
 
-      status.textContent =
-        "✓ Saldo atualizado com sucesso.";
+    const status = pick(
+      data,
+      ["status","state"],
+      "COMPLETED"
+    );
 
-    } catch (error) {
+    const message = pick(
+      data,
+      ["message","detail"],
+      "Conversão executada pelo servidor."
+    );
 
-      usdt.textContent =
-        "—";
+    $("resultUsdt").textContent =
+      usdt !== null ?
+      formatUsdt(usdt) :
+      "—";
 
-      trx.textContent =
-        "—";
+    $("resultRate").textContent =
+      executedRate !== null ?
+      Number(executedRate).toLocaleString("pt-MZ",{
+        minimumFractionDigits:2,
+        maximumFractionDigits:6
+      }) + " MZN/USDT" :
+      "—";
 
-      status.textContent =
-        "Erro: " + error.message;
+    $("resultStatus").textContent = status;
+    $("resultReference").textContent = reference;
+    $("resultMessage").textContent = message;
+
+    toast(
+      "Conversão executada com sucesso.",
+      "success"
+    );
+
+    await refreshFinancialData();
+
+  }catch(error){
+
+    console.error("Conversão:",error);
+
+    $("resultStatus").textContent = "FAILED";
+    $("resultMessage").textContent = error.message;
+
+    toast(
+      "A conversão não foi executada: " + error.message,
+      "error"
+    );
+
+  }finally{
+
+    converting = false;
+    button.disabled = false;
+    button.textContent =
+      "🔄 EXECUTAR CONVERSÃO MZN → USDT";
+  }
+}
+
+
+/* =========================
+   DEPOSITOS
+========================= */
+
+function setDepositMethod(method){
+
+  depositMethod = method;
+
+  const methods = [
+    "mpesa",
+    "emola",
+    "bank",
+    "usdt",
+    "external",
+    "manual"
+  ];
+
+  for(const item of methods){
+
+    const id =
+      "depositMethod" +
+      item.charAt(0).toUpperCase() +
+      item.slice(1);
+
+    const el = $(id);
+
+    if(el){
+      el.classList.toggle(
+        "active",
+        item === method
+      );
     }
   }
 
+  const button = $("depositBtn");
+  const reference = $("depositReference");
+  const label = $("depositReferenceLabel");
+  const notice = $("depositNotice");
 
-  function formatUsdtBalance(value) {
+  button.disabled = false;
 
-    const number =
-      Number(value || 0);
+  if(method === "mpesa"){
 
-    if (!Number.isFinite(number)) {
-      return "0";
-    }
+    label.textContent = "Número M-Pesa";
 
-    if (number === 0) {
-      return "0";
-    }
+    reference.placeholder =
+      "84xxxxxxxx ou 85xxxxxxxx";
 
-    return number
-      .toFixed(8)
-      .replace(/\.?0+$/, "");
+    reference.inputMode = "numeric";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>Depósito por 📱 M-Pesa</strong><br>" +
+      "Informe o número M-Pesa. A cobrança real será criada " +
+      "pelo servidor através do Pay.co.mz.";
+
+    $("depositCurrency").value = "MZN";
+
+    return;
   }
 
+  if(method === "emola"){
 
-  async function loadUsers() {
+    label.textContent = "Número e-Mola";
 
-    const tableBody =
-      document.getElementById(
-        "usersTableBody"
+    reference.placeholder =
+      "e-Mola indisponível em produção";
+
+    reference.inputMode = "tel";
+
+    notice.className = "notice warning";
+
+    notice.innerHTML =
+      "<strong>📱 e-Mola indisponível</strong><br>" +
+      "O Pay.co.mz atualmente não possui provedor e-Mola " +
+      "de produção ativo. Esta opção permanece bloqueada " +
+      "até existir integração de produção.";
+
+    button.disabled = true;
+
+    return;
+  }
+
+  if(method === "bank"){
+
+    label.textContent = "Número / Referência bancária";
+
+    reference.placeholder =
+      "Referência da transferência";
+
+    reference.inputMode = "text";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>🏦 Depósito bancário</strong><br>" +
+      "Use somente após confirmação real da entrada bancária.";
+
+    $("depositCurrency").value = "MZN";
+
+    return;
+  }
+
+  if(method === "usdt"){
+
+    label.textContent = "Referência / TXID";
+
+    reference.placeholder =
+      "Hash da transação TRON";
+
+    reference.inputMode = "text";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>💵 USDT TRC20</strong><br>" +
+      "A entrada deve ser confirmada on-chain antes do crédito.";
+
+    $("depositCurrency").value = "USDT";
+
+    return;
+  }
+
+  if(method === "external"){
+
+    label.textContent = "Referência da carteira";
+
+    reference.placeholder =
+      "Referência / TXID";
+
+    reference.inputMode = "text";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>👛 Carteira externa</strong><br>" +
+      "O crédito depende da confirmação real da entrada.";
+
+    $("depositCurrency").value = "USDT";
+
+    return;
+  }
+
+  if(method === "manual"){
+
+    label.textContent = "Referência da aprovação";
+
+    reference.placeholder =
+      "Referência manual aprovada";
+
+    reference.inputMode = "text";
+
+    notice.className = "notice warning";
+
+    notice.innerHTML =
+      "<strong>📝 Manual aprovado</strong><br>" +
+      "Use somente para fundos que já foram verificados " +
+      "e aprovados pelo administrador.";
+
+    return;
+  }
+}
+
+function normalizePhone(value){
+  return String(value || "")
+    .replace(/\D/g,"");
+}
+
+function validMpesaPhone(value){
+
+  const phone = normalizePhone(value);
+
+  return /^8[45]\d{7}$/.test(phone);
+}
+
+async function createDeposit(){
+
+  if(creatingDeposit){
+    return;
+  }
+
+  if(depositMethod === "emola"){
+    toast(
+      "e-Mola está indisponível em produção.",
+      "error"
+    );
+    return;
+  }
+
+  const amount = numberValue(
+    $("depositAmount").value
+  );
+
+  const currency =
+    $("depositCurrency").value;
+
+  const reference =
+    $("depositReference").value.trim();
+
+  if(
+    !Number.isFinite(amount) ||
+    amount < MIN_MZN ||
+    amount > MAX_MZN
+  ){
+    toast(
+      `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`,
+      "error"
+    );
+    return;
+  }
+
+  if(!reference){
+    toast(
+      "Informe a referência ou número necessário.",
+      "error"
+    );
+    return;
+  }
+
+  if(
+    depositMethod === "mpesa" &&
+    !validMpesaPhone(reference)
+  ){
+    toast(
+      "Número M-Pesa inválido. Use 84xxxxxxx ou 85xxxxxxx.",
+      "error"
+    );
+    return;
+  }
+
+  const button = $("depositBtn");
+
+  creatingDeposit = true;
+  button.disabled = true;
+  button.textContent = "⏳ A CRIAR ORDEM...";
+
+  try{
+
+    const payload = {
+      action:"create_treasury_deposit",
+      method:depositMethod,
+      amount,
+      currency,
+      reference
+    };
+
+    /*
+      API key e credenciais Pay.co.mz NÃO são enviadas
+      pelo navegador.
+    */
+
+    const data = await apiPost(
+      API.treasury,
+      payload
+    );
+
+    const providerReference = pick(
+      data,
+      [
+        "provider_reference",
+        "payment_reference",
+        "pay_reference",
+        "reference",
+        "id"
+      ],
+      "—"
+    );
+
+    const status = pick(
+      data,
+      ["status","state"],
+      "PENDING"
+    );
+
+    const message = pick(
+      data,
+      ["message","detail"],
+      "Ordem criada. Aguarda confirmação real."
+    );
+
+    $("depositResult").className =
+      "result show";
+
+    $("depositResult").innerHTML =
+      "<h3>Ordem criada</h3>" +
+      "<div class='result-grid'>" +
+      "<div class='result-item'>" +
+      "<small>Estado</small>" +
+      "<strong>" + esc(status) + "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Valor</small>" +
+      "<strong>" + esc(formatMzn(amount)) + "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Referência</small>" +
+      "<strong class='mono'>" +
+      esc(providerReference) +
+      "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Mensagem</small>" +
+      "<strong>" +
+      esc(message) +
+      "</strong>" +
+      "</div>" +
+      "</div>";
+
+    toast(
+      "Ordem de depósito criada.",
+      "success"
+    );
+
+    $("depositReference").value = "";
+
+    await refreshFinancialData();
+
+  }catch(error){
+
+    console.error("Depósito:",error);
+
+    $("depositResult").className =
+      "result show";
+
+    $("depositResult").innerHTML =
+      "<div class='notice danger' style='margin:0'>" +
+      "<strong>Falha:</strong> " +
+      esc(error.message) +
+      "</div>";
+
+    toast(
+      "Falha ao criar depósito.",
+      "error"
+    );
+
+  }finally{
+
+    creatingDeposit = false;
+
+    button.disabled =
+      depositMethod === "emola";
+
+    button.textContent =
+      "➕ CRIAR ORDEM DE DEPÓSITO";
+  }
+}
+
+
+/* =========================
+   ORDENS DE DEPOSITO
+========================= */
+
+async function loadDeposits(){
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=deposits"
+    );
+
+    const orders =
+      Array.isArray(data) ?
+      data :
+      pick(
+        data,
+        ["deposits","orders","items","data"],
+        []
       );
 
-    const usersCount =
-      document.getElementById(
-        "usersCount"
+    const table = $("depositOrders");
+
+    if(!orders.length){
+
+      table.innerHTML =
+        "<tr>" +
+        "<td colspan='7' class='center muted'>" +
+        "Nenhuma ordem encontrada." +
+        "</td>" +
+        "</tr>";
+
+      return;
+    }
+
+    table.innerHTML = orders.map(order=>{
+
+      const id = pick(order,["id","order_id"],"—");
+      const status = pick(order,["status","state"],"—");
+      const amount = pick(order,["amount","amount_mzn"],0);
+      const usdt = pick(order,["usdt","usdt_amount"],0);
+      const rate = pick(order,["rate","exchange_rate"],"—");
+      const ref = pick(
+        order,
+        [
+          "provider_reference",
+          "pay_reference",
+          "reference"
+        ],
+        "—"
       );
 
-    const usersTotal =
-      document.getElementById(
-        "usersTotal"
-      );
-
-    const status =
-      document.getElementById(
-        "usersStatus"
-      );
-
-    status.textContent =
-      "Consultando utilizadores...";
-
-    try {
-
-      const response =
-        await fetch(
-          "/api/admin-users",
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store"
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-
-        throw new Error(
-          data.message ||
-          "Erro ao consultar utilizadores."
-        );
-      }
-
-      const users =
-        Array.isArray(data.users)
-          ? data.users
-          : [];
-
-      usersCount.textContent =
-        users.length;
-
-      usersTotal.textContent =
-        users.length;
-
-
-      if (users.length === 0) {
-
-        tableBody.innerHTML = `
-          <tr>
-            <td
-              colspan="7"
-              class="empty"
-            >
-              Nenhum utilizador cadastrado.
-            </td>
-          </tr>
-        `;
-
-        status.textContent =
-          "✓ Consulta concluída. Nenhum utilizador encontrado.";
-
-        return;
-      }
-
-
-      tableBody.innerHTML =
-        users.map(user => {
-
-          const userStatus =
-            String(
-              user.status || ""
-            ).toUpperCase();
-
-          let statusClass = "";
-
-          if (
-            userStatus === "ACTIVE"
-          ) {
-            statusClass =
-              "status-active";
-          }
-
-          if (
-            userStatus === "BLOCKED"
-          ) {
-            statusClass =
-              "status-blocked";
-          }
-
-          if (
-            userStatus === "SUSPENDED"
-          ) {
-            statusClass =
-              "status-suspended";
-          }
-
-
-          const date =
-            user.created_at
-              ? new Date(
-                  user.created_at
-                ).toLocaleDateString(
-                  "pt-PT"
-                )
-              : "—";
-
-
-          const usdtBalance =
-            formatUsdtBalance(
-              user.usdt_balance
-            );
-
-
-          return `
-            <tr>
-
-              <td>
-                ${escapeHtml(user.id)}
-              </td>
-
-              <td>
-                ${escapeHtml(user.name)}
-              </td>
-
-              <td>
-                ${escapeHtml(user.email)}
-              </td>
-
-              <td>
-                ${escapeHtml(
-                  user.phone || "—"
-                )}
-              </td>
-
-              <td class="balance-usdt">
-                ${escapeHtml(
-                  usdtBalance
-                )} USDT
-              </td>
-
-              <td class="${statusClass}">
-                ${escapeHtml(
-                  user.status || "—"
-                )}
-              </td>
-
-              <td>
-                ${escapeHtml(date)}
-              </td>
-
-            </tr>
-          `;
-
-        }).join("");
-
-
-      status.textContent =
-        "✓ Utilizadores atualizados com sucesso.";
-
-    } catch (error) {
-
-      tableBody.innerHTML = `
+      return `
         <tr>
-          <td
-            colspan="7"
-            class="error"
-          >
-            Erro ao carregar utilizadores.
+          <td class="mono">${esc(id)}</td>
+          <td>${esc(status)}</td>
+          <td>${esc(amount)} MZN</td>
+          <td>${esc(usdt)} USDT</td>
+          <td>${esc(rate)}</td>
+          <td class="mono">${esc(ref)}</td>
+          <td>
+            <button
+              class="btn secondary"
+              onclick="verifyDeposit('${esc(id)}')"
+            >
+              Verificar
+            </button>
           </td>
         </tr>
       `;
 
-      usersCount.textContent =
-        "—";
+    }).join("");
 
-      usersTotal.textContent =
-        "—";
+  }catch(error){
 
-      status.textContent =
-        "Erro: " + error.message;
+    console.error("Depósitos:",error);
+
+    $("depositOrders").innerHTML =
+      "<tr>" +
+      "<td colspan='7' class='center'>" +
+      "Não foi possível carregar as ordens." +
+      "</td>" +
+      "</tr>";
+  }
+}
+
+async function verifyDeposit(id){
+
+  if(!id){
+    return;
+  }
+
+  try{
+
+    const data = await apiPost(
+      API.treasury,
+      {
+        action:"deposit_status",
+        deposit_id:id
+      }
+    );
+
+    const status = pick(
+      data,
+      ["status","state"],
+      "UNKNOWN"
+    );
+
+    const message = pick(
+      data,
+      ["message","detail"],
+      "Verificação concluída."
+    );
+
+    toast(
+      `Depósito ${id}: ${status}. ${message}`,
+      status === "COMPLETED" ||
+      status === "SUCCEEDED" ?
+      "success" :
+      "normal"
+    );
+
+    await refreshFinancialData();
+
+  }catch(error){
+
+    toast(
+      "Falha ao verificar depósito: " +
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* =========================
+   LEVANTAMENTOS
+========================= */
+
+function setWithdrawalMethod(method){
+
+  withdrawalMethod = method;
+
+  const methods = [
+    "binance",
+    "tron",
+    "mpesa",
+    "emola",
+    "bank"
+  ];
+
+  for(const item of methods){
+
+    const id =
+      "withdrawMethod" +
+      item.charAt(0).toUpperCase() +
+      item.slice(1);
+
+    const el = $(id);
+
+    if(el){
+      el.classList.toggle(
+        "active",
+        item === method
+      );
     }
   }
 
+  const button = $("withdrawBtn");
+  const destination = $("withdrawDestination");
+  const notice = $("withdrawNotice");
 
-  function escapeHtml(value) {
+  button.disabled = false;
+  destination.disabled = false;
+  destination.value = "";
 
-    return String(value ?? "")
-      .replace(
-        /&/g,
-        "&amp;"
-      )
-      .replace(
-        /</g,
-        "&lt;"
-      )
-      .replace(
-        />/g,
-        "&gt;"
-      )
-      .replace(
-        /"/g,
-        "&quot;"
-      )
-      .replace(
-        /'/g,
-        "&#039;"
+  if(method === "binance"){
+
+    destination.placeholder =
+      "Endereço USDT TRC20 da Binance";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>🚀 Binance</strong><br>" +
+      "Informe o endereço USDT TRC20 de destino. " +
+      "A retirada será criada como PENDING e deverá ser aprovada.";
+
+    return;
+  }
+
+  if(method === "tron"){
+
+    destination.placeholder =
+      "Endereço TRON TRC20";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>💵 USDT TRC20</strong><br>" +
+      "Informe o endereço TRON. O servidor deverá validar " +
+      "o endereço antes do processamento.";
+
+    return;
+  }
+
+  if(method === "mpesa"){
+
+    /*
+      Pay.co.mz utiliza o destino configurado no wallet.
+      Não permitimos que o browser escolha arbitrariamente
+      um destino de payout.
+    */
+
+    destination.value =
+      "CONFIGURADO NO SERVIDOR";
+
+    destination.disabled = true;
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>📱 M-Pesa</strong><br>" +
+      "O destino do payout é configurado no servidor/Pay.co.mz. " +
+      "O navegador não pode substituir esse destino.";
+
+    return;
+  }
+
+  if(method === "emola"){
+
+    destination.placeholder =
+      "e-Mola indisponível";
+
+    notice.className = "notice warning";
+
+    notice.innerHTML =
+      "<strong>📱 e-Mola indisponível</strong><br>" +
+      "Não existe provedor e-Mola de produção ativo no fluxo " +
+      "Pay.co.mz atual.";
+
+    button.disabled = true;
+
+    return;
+  }
+
+  if(method === "bank"){
+
+    destination.placeholder =
+      "Conta bancária / NIB / referência";
+
+    notice.className = "notice";
+
+    notice.innerHTML =
+      "<strong>🏦 Banco</strong><br>" +
+      "A retirada permanece PENDING até autorização do administrador.";
+
+    return;
+  }
+}
+
+async function createWithdrawal(){
+
+  if(creatingWithdrawal){
+    return;
+  }
+
+  if(withdrawalMethod === "emola"){
+
+    toast(
+      "e-Mola está indisponível em produção.",
+      "error"
+    );
+
+    return;
+  }
+
+  const amount =
+    numberValue($("withdrawAmount").value);
+
+  const destination =
+    $("withdrawDestination").value.trim();
+
+  if(
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ){
+
+    toast(
+      "Informe um valor de retirada válido.",
+      "error"
+    );
+
+    return;
+  }
+
+  /*
+    M-Pesa não aceita destino arbitrário vindo do browser.
+    Para os demais métodos, exigimos destino.
+  */
+
+  if(
+    withdrawalMethod !== "mpesa" &&
+    !destination
+  ){
+
+    toast(
+      "Informe o destino da retirada.",
+      "error"
+    );
+
+    return;
+  }
+
+  const button = $("withdrawBtn");
+
+  creatingWithdrawal = true;
+  button.disabled = true;
+  button.textContent = "⏳ A CRIAR PENDING...";
+
+  try{
+
+    const payload = {
+      action:"create_withdrawal",
+      method:withdrawalMethod,
+      amount
+    };
+
+    if(withdrawalMethod !== "mpesa"){
+      payload.destination = destination;
+    }
+
+    const data = await apiPost(
+      API.treasury,
+      payload
+    );
+
+    const id = pick(
+      data,
+      ["id","withdrawal_id","reference"],
+      "—"
+    );
+
+    const status = pick(
+      data,
+      ["status","state"],
+      "PENDING"
+    );
+
+    const message = pick(
+      data,
+      ["message","detail"],
+      "Retirada criada como PENDING."
+    );
+
+    $("withdrawResult").className =
+      "result show";
+
+    $("withdrawResult").innerHTML =
+      "<h3>Retirada criada</h3>" +
+      "<div class='result-grid'>" +
+      "<div class='result-item'>" +
+      "<small>ID</small>" +
+      "<strong class='mono'>" +
+      esc(id) +
+      "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Estado</small>" +
+      "<strong>" +
+      esc(status) +
+      "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Valor</small>" +
+      "<strong>" +
+      esc(amount) +
+      "</strong>" +
+      "</div>" +
+      "<div class='result-item'>" +
+      "<small>Mensagem</small>" +
+      "<strong>" +
+      esc(message) +
+      "</strong>" +
+      "</div>" +
+      "</div>";
+
+    toast(
+      "Retirada criada como PENDING.",
+      "success"
+    );
+
+    $("withdrawAmount").value = "";
+
+    if(withdrawalMethod !== "mpesa"){
+      $("withdrawDestination").value = "";
+    }
+
+    await loadWithdrawals();
+    await loadDashboard();
+
+  }catch(error){
+
+    console.error("Retirada:",error);
+
+    $("withdrawResult").className =
+      "result show";
+
+    $("withdrawResult").innerHTML =
+      "<div class='notice danger' style='margin:0'>" +
+      "<strong>Falha:</strong> " +
+      esc(error.message) +
+      "</div>";
+
+    toast(
+      "Falha ao criar retirada.",
+      "error"
+    );
+
+  }finally{
+
+    creatingWithdrawal = false;
+
+    button.disabled =
+      withdrawalMethod === "emola";
+
+    button.textContent =
+      "➖ CRIAR RETIRADA PENDING";
+  }
+}
+
+
+/* =========================
+   AUTORIZAÇÃO / PROCESSAMENTO
+========================= */
+
+async function loadWithdrawals(){
+
+  const errorBox = $("withdrawalsError");
+
+  errorBox.style.display = "none";
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=withdrawals"
+    );
+
+    const withdrawals =
+      Array.isArray(data) ?
+      data :
+      pick(
+        data,
+        ["withdrawals","items","data"],
+        []
       );
-  }
 
+    const table = $("withdrawalsTable");
 
-  function logout() {
+    if(!withdrawals.length){
 
-    window.location.href =
-      "/admin-login.html";
-  }
+      table.innerHTML =
+        "<tr>" +
+        "<td colspan='7' class='center muted'>" +
+        "Nenhuma retirada encontrada." +
+        "</td>" +
+        "</tr>";
 
-
-  async function start() {
-
-    const authenticated =
-      await checkSession();
-
-    if (!authenticated) {
       return;
     }
 
-    await loadWalletBalance();
+    table.innerHTML = withdrawals.map(item=>{
 
-    await loadUsers();
+      const id = pick(
+        item,
+        ["id","withdrawal_id"],
+        "—"
+      );
+
+      const method = pick(
+        item,
+        ["method","type"],
+        "—"
+      );
+
+      const amount = pick(
+        item,
+        ["amount","amount_usdt"],
+        0
+      );
+
+      const destination = pick(
+        item,
+        ["destination","to","address"],
+        "—"
+      );
+
+      const status = String(
+        pick(item,["status","state"],"PENDING")
+      ).toUpperCase();
+
+      const created = pick(
+        item,
+        ["created_at","createdAt","date"],
+        null
+      );
+
+      let actions = "";
+
+      if(status === "PENDING"){
+
+        actions += `
+          <button
+            class="btn success"
+            onclick="approveWithdrawal('${esc(id)}')"
+          >
+            APROVAR
+          </button>
+        `;
+
+        actions += `
+          <button
+            class="btn danger"
+            onclick="cancelWithdrawal('${esc(id)}')"
+          >
+            CANCELAR
+          </button>
+        `;
+      }
+
+      if(status === "APPROVED"){
+
+        actions += `
+          <button
+            class="btn warning"
+            onclick="processWithdrawal('${esc(id)}')"
+          >
+            PROCESSAR
+          </button>
+        `;
+      }
+
+      return `
+        <tr>
+          <td class="mono">${esc(id)}</td>
+          <td>${esc(method)}</td>
+          <td>${esc(amount)}</td>
+          <td class="mono">${esc(destination)}</td>
+          <td>${esc(status)}</td>
+          <td>${esc(formatDate(created))}</td>
+          <td>
+            <div class="actions" style="margin:0">
+              ${actions || "<span class='muted'>Sem ação</span>"}
+            </div>
+          </td>
+        </tr>
+      `;
+
+    }).join("");
+
+  }catch(error){
+
+    console.error("Withdrawals:",error);
+
+    errorBox.style.display = "block";
+
+    $("withdrawalsTable").innerHTML =
+      "<tr>" +
+      "<td colspan='7' class='center'>" +
+      "Não foi possível carregar as retiradas." +
+      "</td>" +
+      "</tr>";
+  }
+}
+
+async function approveWithdrawal(id){
+
+  if(!id){
+    return;
   }
 
+  if(!confirm(
+    "Autorizar esta retirada?\n\n" +
+    "Depois de APPROVED ela poderá ser processada."
+  )){
+    return;
+  }
 
-  start();
+  try{
+
+    const data = await apiPost(
+      API.treasury,
+      {
+        action:"approve_withdrawal",
+        withdrawal_id:id
+      }
+    );
+
+    toast(
+      pick(
+        data,
+        ["message"],
+        "Retirada autorizada."
+      ),
+      "success"
+    );
+
+    await loadWithdrawals();
+    await loadDashboard();
+
+  }catch(error){
+
+    toast(
+      "Não foi possível autorizar: " +
+      error.message,
+      "error"
+    );
+  }
+}
+
+async function cancelWithdrawal(id){
+
+  if(!id){
+    return;
+  }
+
+  if(!confirm(
+    "Cancelar esta retirada PENDING?"
+  )){
+    return;
+  }
+
+  try{
+
+    const data = await apiPost(
+      API.treasury,
+      {
+        action:"cancel_withdrawal",
+        withdrawal_id:id
+      }
+    );
+
+    toast(
+      pick(
+        data,
+        ["message"],
+        "Retirada cancelada."
+      ),
+      "success"
+    );
+
+    await loadWithdrawals();
+
+  }catch(error){
+
+    toast(
+      "Não foi possível cancelar: " +
+      error.message,
+      "error"
+    );
+  }
+}
+
+async function processWithdrawal(id){
+
+  if(!id){
+    return;
+  }
+
+  if(!confirm(
+    "PROCESSAR esta retirada APPROVED?\n\n" +
+    "A operação poderá movimentar fundos reais."
+  )){
+    return;
+  }
+
+  try{
+
+    /*
+      O endpoint de processamento continua sendo a API
+      existente. O servidor deve verificar novamente:
+      - sessão admin
+      - existência da retirada
+      - estado APPROVED
+      - saldo disponível
+      - destino
+      - idempotência
+      - autorização
+    */
+
+    const data = await apiPost(
+      API.process,
+      {
+        action:"process",
+        withdrawal_id:id
+      }
+    );
+
+    toast(
+      pick(
+        data,
+        ["message"],
+        "Processamento iniciado."
+      ),
+      "success"
+    );
+
+    await loadWithdrawals();
+    await refreshFinancialData();
+
+  }catch(error){
+
+    toast(
+      "Não foi possível processar: " +
+      error.message,
+      "error"
+    );
+  }
+}
+
+
+/* =========================
+   DASHBOARD / TESOURARIA
+========================= */
+
+async function loadDashboard(){
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=dashboard"
+    );
+
+    const treasury =
+      pick(
+        data,
+        ["treasury","balance","data"],
+        data
+      ) || {};
+
+    const fundMzn = pick(
+      treasury,
+      [
+        "fund_mzn",
+        "mzn_balance",
+        "mzn",
+        "balance_mzn"
+      ],
+      0
+    );
+
+    const realUsdt = pick(
+      treasury,
+      [
+        "real_usdt",
+        "usdt_real",
+        "usdt_balance",
+        "usdt"
+      ],
+      0
+    );
+
+    const trx = pick(
+      treasury,
+      [
+        "trx",
+        "trx_balance",
+        "real_trx"
+      ],
+      0
+    );
+
+    const reservedUsdt = pick(
+      treasury,
+      [
+        "reserved_usdt",
+        "usdt_reserved"
+      ],
+      0
+    );
+
+    const reservedMzn = pick(
+      treasury,
+      [
+        "reserved_mzn",
+        "mzn_reserved"
+      ],
+      0
+    );
+
+    const availableUsdt = pick(
+      treasury,
+      [
+        "available_usdt",
+        "usdt_available"
+      ],
+      numberValue(realUsdt) -
+      numberValue(reservedUsdt)
+    );
+
+    const state = pick(
+      treasury,
+      [
+        "liquidity_state",
+        "state",
+        "status"
+      ],
+      null
+    );
+
+    $("fundMzn").textContent =
+      formatMzn(fundMzn);
+
+    $("realUsdt").textContent =
+      formatUsdt(realUsdt);
+
+    $("trxBalance").textContent =
+      formatTrx(trx);
+
+    $("reservedUsdt").textContent =
+      formatUsdt(reservedUsdt);
+
+    $("reservedMzn").textContent =
+      formatMzn(reservedMzn);
+
+    $("availableUsdt").textContent =
+      formatUsdt(availableUsdt);
+
+    if(state){
+
+      $("liquidityState").textContent =
+        String(state).toUpperCase();
+
+      $("liquidityState").className =
+        "stat-value";
+    }else{
+
+      const liquid =
+        numberValue(availableUsdt) > 0;
+
+      $("liquidityState").textContent =
+        liquid ?
+        "COM LIQUIDEZ" :
+        "SEM LIQUIDEZ";
+
+      $("liquidityState").className =
+        "stat-value";
+    }
+
+  }catch(error){
+
+    console.error("Dashboard:",error);
+
+    $("liquidityState").textContent =
+      "ERRO";
+  }
+}
+
+
+/* =========================
+   TRON
+========================= */
+
+async function loadTron(){
+
+  try{
+
+    const info = await apiGet(
+      API.tronInfo
+    );
+
+    const address = pick(
+      info,
+      [
+        "address",
+        "wallet_address",
+        "tron_address"
+      ],
+      null
+    );
+
+    if(address){
+      $("tronAddress").textContent =
+        address;
+    }
+
+  }catch(error){
+
+    console.warn(
+      "TRON info:",
+      error
+    );
+  }
+
+  try{
+
+    const data = await apiGet(
+      API.tronBalance
+    );
+
+    const usdt = pick(
+      data,
+      [
+        "usdt",
+        "usdt_balance",
+        "usdtBalance",
+        "token_balance"
+      ],
+      0
+    );
+
+    const trx = pick(
+      data,
+      [
+        "trx",
+        "trx_balance",
+        "trxBalance"
+      ],
+      0
+    );
+
+    $("tronUsdt").textContent =
+      formatUsdt(usdt);
+
+    $("tronTrx").textContent =
+      formatTrx(trx);
+
+  }catch(error){
+
+    console.error(
+      "TRON balance:",
+      error
+    );
+  }
+}
+
+
+/* =========================
+   OPERACOES
+========================= */
+
+async function loadOperations(){
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=operations"
+    );
+
+    const operations =
+      Array.isArray(data) ?
+      data :
+      pick(
+        data,
+        ["operations","items","data"],
+        []
+      );
+
+    const table =
+      $("operationsTable");
+
+    if(!operations.length){
+
+      table.innerHTML =
+        "<tr>" +
+        "<td colspan='5' class='center muted'>" +
+        "Nenhuma operação encontrada." +
+        "</td>" +
+        "</tr>";
+
+      return;
+    }
+
+    table.innerHTML =
+      operations.map(item=>{
+
+        const date = pick(
+          item,
+          ["created_at","createdAt","date"],
+          null
+        );
+
+        const type = pick(
+          item,
+          ["type","operation","action"],
+          "—"
+        );
+
+        const amount = pick(
+          item,
+          ["amount","value"],
+          "—"
+        );
+
+        const status = pick(
+          item,
+          ["status","state"],
+          "—"
+        );
+
+        const reference = pick(
+          item,
+          ["reference","id","operation_id"],
+          "—"
+        );
+
+        return `
+          <tr>
+            <td>${esc(formatDate(date))}</td>
+            <td>${esc(type)}</td>
+            <td>${esc(amount)}</td>
+            <td>${esc(status)}</td>
+            <td class="mono">${esc(reference)}</td>
+          </tr>
+        `;
+
+      }).join("");
+
+  }catch(error){
+
+    console.error(
+      "Operações:",
+      error
+    );
+
+    $("operationsTable").innerHTML =
+      "<tr>" +
+      "<td colspan='5' class='center'>" +
+      "Não foi possível carregar operações." +
+      "</td>" +
+      "</tr>";
+  }
+}
+
+
+/* =========================
+   PAY STATUS
+========================= */
+
+async function loadPayStatus(){
+
+  try{
+
+    const data = await apiGet(
+      API.treasury + "?action=pay_status"
+    );
+
+    const available = pick(
+      data,
+      [
+        "available",
+        "active",
+        "configured",
+        "ok"
+      ],
+      false
+    );
+
+    const active =
+      available === true ||
+      available === "true" ||
+      available === 1;
+
+    $("configPay").textContent =
+      active ?
+      "ATIVO" :
+      "INDISPONÍVEL";
+
+    $("configMpesa").textContent =
+      active ?
+      "ATIVO" :
+      "INDISPONÍVEL";
+
+    /*
+      e-Mola não é marcado como ativo automaticamente.
+    */
+
+    $("configEmola").textContent =
+      "INDISPONÍVEL";
+
+  }catch(error){
+
+    console.warn(
+      "Pay status:",
+      error
+    );
+
+    $("configPay").textContent =
+      "INDISPONÍVEL";
+
+    $("configMpesa").textContent =
+      "INDISPONÍVEL";
+
+    $("configEmola").textContent =
+      "INDISPONÍVEL";
+  }
+}
+
+
+/* =========================
+   REFRESH
+========================= */
+
+async function refreshFinancialData(){
+
+  await Promise.allSettled([
+    loadDashboard(),
+    loadTron(),
+    loadDeposits(),
+    loadWithdrawals(),
+    loadOperations(),
+    loadPayStatus(),
+    loadRate(false)
+  ]);
+}
+
+async function refreshAll(){
+
+  const authenticated =
+    await checkSession();
+
+  if(authenticated === false){
+    return;
+  }
+
+  await refreshFinancialData();
+
+  toast(
+    "Central Admin atualizada.",
+    "success"
+  );
+}
+
+
+/* =========================
+   INIT
+========================= */
+
+async function init(){
+
+  const authenticated =
+    await checkSession();
+
+  if(authenticated === false){
+    return;
+  }
+
+  setDepositMethod("mpesa");
+  setWithdrawalMethod("binance");
+
+  await refreshFinancialData();
+
+  /*
+    Exchange Rate:
+    atualização automática a cada 60 segundos.
+    A execução de uma conversão sempre busca novamente
+    a taxa antes de chamar a operação financeira.
+  */
+
+  setInterval(()=>{
+    loadRate(false);
+  },60000);
+
+  /*
+    Atualização financeira periódica.
+    Não contém credenciais e usa sempre a sessão admin.
+  */
+
+  setInterval(()=>{
+    loadDashboard();
+    loadTron();
+    loadWithdrawals();
+    loadOperations();
+  },30000);
+}
+
+document.addEventListener(
+  "DOMContentLoaded",
+  init
+);
 
 </script>
 
