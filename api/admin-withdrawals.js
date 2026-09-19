@@ -448,6 +448,7 @@ async function fetchJson(
 
 /* =========================================================
    DATABASE
+   Compatibilidade com bases antigas
 ========================================================= */
 
 async function ensureTables() {
@@ -461,6 +462,10 @@ async function ensureTables() {
 
   tablesPromise =
     (async () => {
+
+      /* -----------------------------------------------------
+         TREASURY WALLET
+      ----------------------------------------------------- */
 
       await sql`
         CREATE TABLE IF NOT EXISTS treasury_wallet (
@@ -477,8 +482,43 @@ async function ensureTables() {
       await sql`
         ALTER TABLE treasury_wallet
         ADD COLUMN IF NOT EXISTS
+        mzn NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
+        usdt NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
+        trx NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
+        reserved_usdt NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
         reserved_mzn NUMERIC(30,8)
         NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
+        updated_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
       `;
 
       await sql`
@@ -487,6 +527,10 @@ async function ensureTables() {
         ON CONFLICT(id)
         DO NOTHING
       `;
+
+      /* -----------------------------------------------------
+         TREASURY DEPOSITS
+      ----------------------------------------------------- */
 
       await sql`
         CREATE TABLE IF NOT EXISTS treasury_deposits (
@@ -513,6 +557,43 @@ async function ensureTables() {
       await sql`
         ALTER TABLE treasury_deposits
         ADD COLUMN IF NOT EXISTS
+        reference TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        payment_phone TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        tx_hash TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        status TEXT
+        NOT NULL DEFAULT 'PENDING'
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        rate NUMERIC(30,10)
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        usdt_amount NUMERIC(30,8)
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
         fee NUMERIC(30,8)
         NOT NULL DEFAULT 0
       `;
@@ -530,6 +611,30 @@ async function ensureTables() {
       `;
 
       await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        message TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        created_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+      `;
+
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        updated_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+      `;
+
+      /* -----------------------------------------------------
+         CONVERSIONS
+      ----------------------------------------------------- */
+
+      await sql`
         CREATE TABLE IF NOT EXISTS treasury_conversions (
           id BIGSERIAL PRIMARY KEY,
           reference TEXT UNIQUE NOT NULL,
@@ -543,6 +648,16 @@ async function ensureTables() {
       `;
 
       await sql`
+        ALTER TABLE treasury_conversions
+        ADD COLUMN IF NOT EXISTS
+        deposit_id BIGINT
+      `;
+
+      /* -----------------------------------------------------
+         RESERVATIONS
+      ----------------------------------------------------- */
+
+      await sql`
         CREATE TABLE IF NOT EXISTS treasury_reservations (
           id BIGSERIAL PRIMARY KEY,
           reference TEXT UNIQUE NOT NULL,
@@ -552,6 +667,10 @@ async function ensureTables() {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `;
+
+      /* -----------------------------------------------------
+         BLOCKCHAIN
+      ----------------------------------------------------- */
 
       await sql`
         CREATE TABLE IF NOT EXISTS blockchain_transactions (
@@ -568,6 +687,43 @@ async function ensureTables() {
       `;
 
       await sql`
+        ALTER TABLE blockchain_transactions
+        ADD COLUMN IF NOT EXISTS
+        amount NUMERIC(30,8)
+      `;
+
+      await sql`
+        ALTER TABLE blockchain_transactions
+        ADD COLUMN IF NOT EXISTS
+        direction TEXT
+      `;
+
+      await sql`
+        ALTER TABLE blockchain_transactions
+        ADD COLUMN IF NOT EXISTS
+        address TEXT
+      `;
+
+      await sql`
+        ALTER TABLE blockchain_transactions
+        ADD COLUMN IF NOT EXISTS
+        confirmations INTEGER DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE blockchain_transactions
+        ADD COLUMN IF NOT EXISTS
+        status TEXT
+        NOT NULL DEFAULT 'CONFIRMED'
+      `;
+
+      /* -----------------------------------------------------
+         TRANSACTIONS
+         CORREÇÃO DO ERRO:
+         column "provider" does not exist
+      ----------------------------------------------------- */
+
+      await sql`
         CREATE TABLE IF NOT EXISTS transactions (
           id BIGSERIAL PRIMARY KEY,
           user_id TEXT,
@@ -582,6 +738,77 @@ async function ensureTables() {
           created_at TIMESTAMPTZ DEFAULT NOW()
         )
       `;
+
+      /*
+       * IMPORTANTE:
+       * IF NOT EXISTS aqui é o que corrige bases
+       * antigas que já tinham a tabela transactions.
+       */
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        user_id TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        type TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        asset TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        amount NUMERIC(30,8)
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        status TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        reference TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        provider TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        provider_reference TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        tx_hash TEXT
+      `;
+
+      await sql`
+        ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS
+        created_at TIMESTAMPTZ
+        DEFAULT NOW()
+      `;
+
+      /* -----------------------------------------------------
+         WITHDRAWALS
+      ----------------------------------------------------- */
 
       await sql`
         CREATE TABLE IF NOT EXISTS treasury_withdrawals (
@@ -605,6 +832,81 @@ async function ensureTables() {
       `;
 
       await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        destination TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        status TEXT
+        NOT NULL DEFAULT 'PENDING'
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        approval_status TEXT
+        NOT NULL DEFAULT 'PENDING'
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        provider TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        provider_reference TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        provider_id TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        fee NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        net_amount NUMERIC(30,8)
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        message TEXT
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        created_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+      `;
+
+      await sql`
+        ALTER TABLE treasury_withdrawals
+        ADD COLUMN IF NOT EXISTS
+        updated_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+      `;
+
+      /* -----------------------------------------------------
+         PAY WEBHOOKS
+      ----------------------------------------------------- */
+
+      await sql`
         CREATE TABLE IF NOT EXISTS pay_webhook_events (
           id BIGSERIAL PRIMARY KEY,
           event_id TEXT UNIQUE NOT NULL,
@@ -614,9 +916,29 @@ async function ensureTables() {
       `;
 
       await sql`
+        ALTER TABLE pay_webhook_events
+        ADD COLUMN IF NOT EXISTS
+        event_name TEXT
+      `;
+
+      await sql`
+        ALTER TABLE pay_webhook_events
+        ADD COLUMN IF NOT EXISTS
+        created_at TIMESTAMPTZ
+        NOT NULL DEFAULT NOW()
+      `;
+
+      /* -----------------------------------------------------
+         INDEXES
+      ----------------------------------------------------- */
+
+      await sql`
         CREATE INDEX IF NOT EXISTS
         transactions_provider_reference_idx
-        ON transactions(provider, provider_reference)
+        ON transactions(
+          provider,
+          provider_reference
+        )
       `;
 
       await sql`
@@ -629,10 +951,24 @@ async function ensureTables() {
       `;
 
       await sql`
+        CREATE INDEX IF NOT EXISTS
+        treasury_withdrawals_provider_id_idx
+        ON treasury_withdrawals(
+          provider_id
+        )
+      `;
+
+      await sql`
         CREATE UNIQUE INDEX IF NOT EXISTS
         treasury_deposits_reference_unique_idx
         ON treasury_deposits(reference)
         WHERE reference IS NOT NULL
+      `;
+
+      await sql`
+        CREATE INDEX IF NOT EXISTS
+        treasury_deposits_provider_id_idx
+        ON treasury_deposits(provider_id)
       `;
 
       tablesReady = true;
@@ -779,14 +1115,25 @@ async function marketFX() {
     };
   }
 
+  const headers = {
+    Accept:
+      "application/json"
+  };
+
+  if (
+    process.env.COINGECKO_API_KEY
+  ) {
+    headers[
+      "x-cg-demo-api-key"
+    ] =
+      process.env.COINGECKO_API_KEY;
+  }
+
   const data =
     await fetchJson(
       FX_MARKET_URL,
       {
-        headers: {
-          Accept:
-            "application/json"
-        }
+        headers
       },
       10000
     );
@@ -816,8 +1163,10 @@ async function marketFX() {
     rate,
     source:
       "COINGECKO_MARKET",
+
     timestamp:
       new Date(now).toISOString(),
+
     cached: false
   };
 }
@@ -1149,7 +1498,8 @@ function extractPayReference(data) {
   return clean(
     data?.reference ||
     data?.transaction_reference ||
-    data?.payment_reference
+    data?.payment_reference ||
+    data?.payout_reference
   );
 }
 
@@ -1370,6 +1720,12 @@ async function createDeposit(body) {
       )
       RETURNING *
     `;
+
+  /*
+   * CORREÇÃO:
+   * A tabela transactions pode ser antiga.
+   * ensureTables() agora garante provider.
+   */
 
   await sql`
     INSERT INTO transactions(
@@ -1658,16 +2014,19 @@ async function confirmUSDTDeposit(
     );
 
   /*
-   * PRIMEIRO alteramos a wallet.
+   * Tudo é executado dentro de uma única
+   * transação PostgreSQL.
    *
-   * A condição PENDING pertence ao
-   * mesmo depósito e impede crédito
-   * duplicado.
+   * A wallet só recebe crédito enquanto
+   * o depósito ainda está PENDING.
    */
+
   const [
-    walletResult
+    walletResult,
+    depositResult
   ] =
     await sql.transaction([
+
       sql`
         UPDATE treasury_wallet
         SET
@@ -1737,17 +2096,15 @@ async function confirmUSDTDeposit(
     );
   }
 
-  const [
-    updated
-  ] =
-    await sql`
-      SELECT *
-      FROM treasury_deposits
-      WHERE id=${order.id}
-      LIMIT 1
-    `;
+  if (
+    !depositResult.length
+  ) {
+    throw new Error(
+      "Falha ao concluir o depósito USDT."
+    );
+  }
 
-  return updated || order;
+  return depositResult[0];
 }
 
 /* =========================================================
@@ -1860,6 +2217,17 @@ async function createPayDeposit(
       data?.id
     ) || null;
 
+  /*
+   * Mantemos order_id como identificador
+   * interno permanente.
+   *
+   * A referência PAY fica em provider_id/
+   * referência externa quando disponível.
+   *
+   * Para compatibilidade com o webhook atual,
+   * reference continua recebendo a referência PAY.
+   */
+
   const [
     updated
   ] =
@@ -1878,17 +2246,22 @@ async function createPayDeposit(
   return {
     success: true,
     provider: true,
+
     provider_reference:
       providerReference,
+
     provider_id:
       providerId,
+
     status:
       data?.status ||
       data?.state ||
       "PENDING",
+
     checkout_url:
       data?.checkout_url ||
       null,
+
     order:
       updated || order
   };
@@ -2037,26 +2410,24 @@ async function convertMZN(
         "INDISPONIVEL",
       reason:
         "LIQUIDEZ_USDT_INSUFICIENTE",
+
       requested_usdt:
         usdt,
+
       available_usdt:
         liquidity.real_available_usdt,
+
       rate:
         market.rate,
+
       rate_source:
         market.source,
+
       rate_timestamp:
         market.timestamp
     };
   }
 
-  /*
-   * Uma única transação.
-   *
-   * O UPDATE da wallet é o primeiro passo.
-   * Os restantes só existem se a condição
-   * da wallet tiver sido satisfeita.
-   */
   const ref =
     reference("CONV");
 
@@ -2152,17 +2523,24 @@ async function convertMZN(
     success: true,
     status:
       "COMPLETED",
+
     reference:
       ref,
+
     mzn:
       amount,
+
     usdt,
+
     rate:
       market.rate,
+
     rate_source:
       market.source,
+
     rate_timestamp:
       market.timestamp,
+
     note:
       "USDT proveniente de liquidez real da tesouraria."
   };
@@ -2197,7 +2575,8 @@ async function reserveUSDT(
     reference("RES");
 
   const [
-    walletResult
+    walletResult,
+    reservationResult
   ] =
     await sql.transaction([
 
@@ -2233,7 +2612,8 @@ async function reserveUSDT(
     ]);
 
   if (
-    !walletResult.length
+    !walletResult.length ||
+    !reservationResult.length
   ) {
     throw new Error(
       "USDT disponível insuficiente."
@@ -2270,11 +2650,6 @@ async function releaseReservation(
     );
   }
 
-  /*
-   * Primeiro capturamos a reserva.
-   * Depois alteramos wallet dentro da
-   * mesma transação.
-   */
   const [
     reservation
   ] =
@@ -2407,6 +2782,12 @@ async function createWithdrawal(
       process.env.PAY_PAYOUT_DESTINATION
     ) || null;
 
+  if (!destination) {
+    throw new Error(
+      "PAY_PAYOUT_DESTINATION não está configurado."
+    );
+  }
+
   const ref =
     reference("WD");
 
@@ -2470,18 +2851,25 @@ async function createWithdrawal(
     success: true,
     status:
       "PENDING",
+
     approval_status:
       "PENDING",
+
     reference:
       ref,
+
     amount_mzn:
       amount,
+
     method:
       "MPESA",
+
     provider:
       "PAY",
+
     message:
       "Retirada criada. Nenhum payout foi enviado.",
+
     withdrawal:
       withdrawalResult[0]
   };
@@ -2555,12 +2943,16 @@ async function approveWithdrawal(
     success: true,
     status:
       row.status,
+
     approval_status:
       row.approval_status,
+
     reference:
       ref,
+
     message:
       "Retirada APPROVED. Ainda não foi enviada à PAY.",
+
     withdrawal:
       row
   };
@@ -2684,7 +3076,8 @@ async function processWithdrawal(
     const providerReference =
       clean(
         data?.reference ||
-        data?.transaction_reference
+        data?.transaction_reference ||
+        data?.payout_reference
       ) || null;
 
     const providerStatus =
@@ -2695,17 +3088,17 @@ async function processWithdrawal(
       );
 
     const providerFee =
-      positive(
+      number(
         data?.fee
-      ) || 0;
+      ) ?? 0;
 
     const providerNet =
-      positive(
+      number(
         data?.net
-      ) ||
-      positive(
+      ) ??
+      number(
         data?.net_amount
-      ) ||
+      ) ??
       amount;
 
     const completed =
@@ -2735,7 +3128,9 @@ async function processWithdrawal(
     if (completed) {
 
       const [
-        walletResult
+        walletResult,
+        withdrawalResult,
+        transactionResult
       ] =
         await sql.transaction([
 
@@ -2816,34 +3211,36 @@ async function processWithdrawal(
         );
       }
 
-      const [
-        updated
-      ] =
-        await sql`
-          SELECT *
-          FROM treasury_withdrawals
-          WHERE id=${withdrawal.id}
-        `;
+      const updated =
+        withdrawalResult?.[0] ||
+        withdrawal;
 
       return {
         success: true,
+
         status:
           "COMPLETED",
+
         approval_status:
           "APPROVED",
+
         reference:
           ref,
+
         provider:
           "PAY",
+
         provider_reference:
           storedReference,
+
         provider_id:
           providerId,
+
         payout:
           result,
+
         withdrawal:
-          updated?.[0] ||
-          withdrawal
+          updated
       };
     }
 
@@ -2869,20 +3266,28 @@ async function processWithdrawal(
 
     return {
       success: true,
+
       status:
         "PROCESSING",
+
       approval_status:
         "APPROVED",
+
       reference:
         ref,
+
       provider:
         "PAY",
+
       provider_reference:
         storedReference,
+
       provider_id:
         providerId,
+
       payout:
         result,
+
       withdrawal:
         updated?.[0] ||
         withdrawal
@@ -2897,6 +3302,7 @@ async function processWithdrawal(
      * NÃO liberamos a reserva.
      * NÃO reenviamos automaticamente.
      */
+
     if (
       e?.code ===
       "UPSTREAM_TIMEOUT" ||
@@ -2916,12 +3322,16 @@ async function processWithdrawal(
 
       return {
         success: true,
+
         status:
           "PROCESSING",
+
         uncertain:
           true,
+
         reference:
           ref,
+
         message:
           "A resposta da PAY não pôde ser confirmada. Nenhum novo payout será enviado automaticamente."
       };
@@ -2965,17 +3375,13 @@ async function cancelWithdrawal(
     row
   ] =
     await sql`
-      UPDATE treasury_withdrawals
-      SET
-        status='CANCELLED',
-        approval_status='REJECTED',
-        message='Retirada cancelada pelo administrador.',
-        updated_at=NOW()
+      SELECT *
+      FROM treasury_withdrawals
       WHERE
         reference=${ref}
         AND status='PENDING'
         AND approval_status='PENDING'
-      RETURNING *
+      LIMIT 1
     `;
 
   if (!row) {
@@ -2990,24 +3396,45 @@ async function cancelWithdrawal(
     );
 
   const [
-    wallet
+    walletResult,
+    withdrawalResult
   ] =
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        reserved_mzn=
-          GREATEST(
-            0,
-            reserved_mzn-${amount}
-          ),
-        updated_at=NOW()
-      WHERE
-        id=1
-        AND reserved_mzn>=${amount}
-      RETURNING *
-    `;
+    await sql.transaction([
 
-  if (!wallet) {
+      sql`
+        UPDATE treasury_wallet
+        SET
+          reserved_mzn=
+            GREATEST(
+              0,
+              reserved_mzn-${amount}
+            ),
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND reserved_mzn>=${amount}
+        RETURNING *
+      `,
+
+      sql`
+        UPDATE treasury_withdrawals
+        SET
+          status='CANCELLED',
+          approval_status='REJECTED',
+          message='Retirada cancelada pelo administrador.',
+          updated_at=NOW()
+        WHERE
+          reference=${ref}
+          AND status='PENDING'
+          AND approval_status='PENDING'
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !walletResult.length ||
+    !withdrawalResult.length
+  ) {
     throw new Error(
       "Não foi possível liberar a reserva MZN."
     );
@@ -3085,7 +3512,8 @@ async function releaseFailedWithdrawal(
     );
 
   const [
-    row
+    walletResult,
+    withdrawalResult
   ] =
     await sql.transaction([
 
@@ -3118,7 +3546,8 @@ async function releaseFailedWithdrawal(
     ]);
 
   if (
-    !row?.length
+    !walletResult.length ||
+    !withdrawalResult.length
   ) {
     throw new Error(
       "Não foi possível liberar a reserva da retirada."
@@ -3294,8 +3723,11 @@ async function operations() {
 
   return {
     success: true,
+
     deposits,
+
     conversions,
+
     withdrawals:
       withdrawalRows
   };
@@ -3494,9 +3926,6 @@ function parsePaySignature(
   return null;
 }
 
-/*
- * Verifica se o evento já foi processado.
- */
 async function webhookAlreadyProcessed(
   eventId
 ) {
@@ -3513,15 +3942,6 @@ async function webhookAlreadyProcessed(
   return Boolean(row);
 }
 
-/*
- * Registra somente depois de o evento
- * ter sido processado com sucesso ou
- * considerado definitivamente ignorado.
- *
- * Se ocorrer erro temporário antes disso,
- * não gravamos o event_id, permitindo
- * que a PAY faça retry.
- */
 async function markWebhookProcessed(
   eventId,
   eventName
@@ -3686,10 +4106,6 @@ async function payWebhook(
     );
   }
 
-  /*
-   * Se já foi concluído, não processamos
-   * novamente.
-   */
   if (
     await webhookAlreadyProcessed(
       eventId
@@ -3753,7 +4169,10 @@ async function payWebhook(
       await sql`
         SELECT *
         FROM treasury_deposits
-        WHERE reference=${providerReference}
+        WHERE
+          reference=${providerReference}
+          OR provider_id=${providerReference}
+        ORDER BY id DESC
         LIMIT 1
       `;
 
@@ -3775,10 +4194,6 @@ async function payWebhook(
       );
     }
 
-    /*
-     * Se já estiver concluído, apenas
-     * marcamos o webhook como processado.
-     */
     if (
       order.status ===
       "COMPLETED"
@@ -3821,11 +4236,6 @@ async function payWebhook(
           orderAmount
       ) > 0.01
     ) {
-      /*
-       * Não marcamos como processado.
-       * É uma inconsistência que precisa
-       * ser tratada/reconciliada.
-       */
       return json(
         res,
         400,
@@ -3859,9 +4269,6 @@ async function payWebhook(
       );
     }
 
-    /*
-     * Reconciliação com GET /charges.
-     */
     let charge;
 
     try {
@@ -3869,11 +4276,7 @@ async function payWebhook(
         await findPayCharge(
           providerReference
         );
-    } catch (e) {
-      /*
-       * NÃO marcamos event_id.
-       * A PAY poderá reenviar.
-       */
+    } catch {
       return json(
         res,
         503,
@@ -4019,22 +4422,9 @@ async function payWebhook(
         data?.id
       ) || null;
 
-    /*
-     * CRÍTICO:
-     *
-     * A wallet é atualizada ANTES do
-     * depósito mudar de PENDING.
-     *
-     * Assim a condição PENDING continua
-     * válida durante a transação.
-     *
-     * Se qualquer query falhar,
-     * toda a transação sofre rollback.
-     */
     const [
       walletResult,
-      changedResult,
-      transactionResult
+      changedResult
     ] =
       await sql.transaction([
 
@@ -4083,10 +4473,6 @@ async function payWebhook(
         `
       ]);
 
-    /*
-     * Se outra tentativa já tiver concluído
-     * o depósito, não creditamos novamente.
-     */
     if (
       !walletResult.length
     ) {
@@ -4135,13 +4521,6 @@ async function payWebhook(
       );
     }
 
-    /*
-     * transactions pode não existir em bases
-     * antigas para esta referência.
-     * O depósito e a wallet são a fonte
-     * financeira principal.
-     */
-
     await markWebhookProcessed(
       eventId,
       eventName
@@ -4152,14 +4531,20 @@ async function payWebhook(
       200,
       {
         success: true,
+
         event:
           eventName,
+
         order_id:
           order.order_id,
+
         gross:
           chargeAmount,
+
         fee,
+
         net,
+
         status:
           "COMPLETED"
       }
@@ -4189,7 +4574,10 @@ async function payWebhook(
           message='Pagamento recusado/cancelado/expirado pela PAY.',
           updated_at=NOW()
         WHERE
-          reference=${providerReference}
+          (
+            reference=${providerReference}
+            OR provider_id=${providerReference}
+          )
           AND status='PENDING'
       `;
 
@@ -4203,7 +4591,10 @@ async function payWebhook(
           reference=(
             SELECT order_id
             FROM treasury_deposits
-            WHERE reference=${providerReference}
+            WHERE
+              reference=${providerReference}
+              OR provider_id=${providerReference}
+            ORDER BY id DESC
             LIMIT 1
           )
           AND status='PENDING'
@@ -4284,10 +4675,6 @@ async function payWebhook(
       );
     }
 
-    /*
-     * Já COMPLETED:
-     * nunca descontar novamente.
-     */
     if (
       withdrawal.status ===
       "COMPLETED"
@@ -4325,15 +4712,9 @@ async function payWebhook(
         amount
       );
 
-    /*
-     * PRIMEIRO reduzimos a reserva.
-     * A condição PROCESSING/FAILED impede
-     * dupla liquidação.
-     */
     const [
       walletResult,
-      changedResult,
-      transactionResult
+      changedResult
     ] =
       await sql.transaction([
 
@@ -4416,6 +4797,14 @@ async function payWebhook(
     ) {
       throw new Error(
         "Reserva MZN insuficiente para liquidar payout confirmado."
+      );
+    }
+
+    if (
+      !changedResult.length
+    ) {
+      throw new Error(
+        "Payout não pôde ser marcado como COMPLETED."
       );
     }
 
@@ -4536,6 +4925,7 @@ async function payWebhook(
     /*
      * NÃO liberamos a reserva automaticamente.
      */
+
     await markWebhookProcessed(
       eventId,
       eventName
@@ -4604,6 +4994,7 @@ export default async function handler(
     /*
      * WEBHOOK NÃO PRECISA DE SESSÃO.
      */
+
     if (
       action === "pay_webhook" ||
       req.headers[
@@ -4620,6 +5011,7 @@ export default async function handler(
      * Todas as outras operações
      * exigem ADMIN.
      */
+
     requireAdmin(req);
 
     let body = {};
@@ -4779,10 +5171,13 @@ export default async function handler(
           200,
           {
             success: true,
+
             address:
               treasuryAddress(),
+
             contract:
               CONTRACT,
+
             usdt:
               await tronUSDTBalance()
           }
@@ -4795,8 +5190,10 @@ export default async function handler(
           200,
           {
             success: true,
+
             address:
               treasuryAddress(),
+
             trx:
               await tronTRXBalance()
           }
