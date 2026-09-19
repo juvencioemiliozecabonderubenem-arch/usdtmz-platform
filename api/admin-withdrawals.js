@@ -13,10 +13,15 @@
 // - Retiradas com aprovação
 // - Webhooks Pay
 //
-// IMPORTANTE:
-// NÃO cria USDT artificialmente.
-// NÃO envia retirada sem aprovação.
-// NÃO expõe credenciais ao navegador.
+// REGRAS:
+// - NÃO cria USDT artificialmente.
+// - NÃO envia retirada sem aprovação.
+// - NÃO confia em confirmação do navegador.
+// - NÃO expõe credenciais.
+// - PAY deve ser confirmado pelo servidor.
+// - USDT deve ser confirmado na blockchain.
+// - Valores reservados não podem ser reutilizados.
+// - Eventos externos são idempotentes.
 
 export const config = {
   api: {
@@ -41,6 +46,7 @@ const MIN_MZN = 20;
 const MAX_MZN = 40000;
 
 const USDT_DECIMALS = 6;
+const USDT_FACTOR = 10 ** USDT_DECIMALS;
 
 const FX_CACHE_SECONDS =
   Number(process.env.FX_CACHE_SECONDS || 60);
@@ -49,9 +55,12 @@ const FX_MARKET_URL =
   process.env.FX_MARKET_URL ||
   "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=mzn";
 
+/*
+ * Endereço oficial do USDT TRC20 na TRON.
+ */
 const CONTRACT =
   process.env.USDT_TRON_CONTRACT ||
-  "TR7NHqjeKQXGTCi8q8ZY4pL8otSzgjLj6t";
+  "TR7NHqKQxGTCi8q8ZY4pL8otSzgjLj6t";
 
 const TRON_HOST =
   process.env.TRON_HOST ||
@@ -60,6 +69,11 @@ const TRON_HOST =
 const PAY_BASE =
   process.env.PAY_API_BASE_URL ||
   "https://pay.co.mz/api/public/v1";
+
+const PAY_TIMEOUT_MS =
+  Number(
+    process.env.PAY_TIMEOUT_MS || 20000
+  );
 
 const DEPOSIT_SOURCES = [
   "MPESA",
@@ -84,15 +98,34 @@ const LIQUIDITY_SOURCES = [
   "MANUAL_APPROVED"
 ];
 
+/*
+ * Compatibilidade:
+ * as tabelas continuam sendo verificadas,
+ * mas apenas uma vez por instância quente.
+ *
+ * A migração definitiva para esquema.sql
+ * será feita posteriormente.
+ */
+let tablesReady = false;
+let tablesPromise = null;
+
 /* =========================================================
    HELPERS
 ========================================================= */
 
 const json = (res, status, data) => {
   res.status(status);
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(data));
+  res.setHeader(
+    "Content-Type",
+    "application/json"
+  );
+  res.setHeader(
+    "Cache-Control",
+    "no-store"
+  );
+  res.end(
+    JSON.stringify(data)
+  );
 };
 
 const clean = v =>
@@ -103,16 +136,25 @@ const upper = v =>
 
 const number = v => {
   const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+
+  return Number.isFinite(n)
+    ? n
+    : null;
 };
 
 const positive = v => {
   const n = number(v);
-  return n !== null && n > 0 ? n : null;
+
+  return n !== null && n > 0
+    ? n
+    : null;
 };
 
 const round = (v, d = 6) =>
-  Math.round(Number(v) * 10 ** d) / 10 ** d;
+  Math.round(
+    Number(v) * 10 ** d
+  ) /
+  10 ** d;
 
 const reference = prefix =>
   `${prefix}-${Date.now()}-${randomBytes(8)
@@ -120,17 +162,27 @@ const reference = prefix =>
     .toUpperCase()}`;
 
 const validSource = source =>
-  DEPOSIT_SOURCES.includes(upper(source));
+  DEPOSIT_SOURCES.includes(
+    upper(source)
+  );
 
 function safeEqual(a, b) {
-  const x = Buffer.from(String(a));
-  const y = Buffer.from(String(b));
+  const x =
+    Buffer.from(String(a));
 
-  if (x.length !== y.length) {
+  const y =
+    Buffer.from(String(b));
+
+  if (
+    x.length !== y.length
+  ) {
     return false;
   }
 
-  return timingSafeEqual(x, y);
+  return timingSafeEqual(
+    x,
+    y
+  );
 }
 
 function cookies(req) {
@@ -141,23 +193,43 @@ function cookies(req) {
       req.headers?.cookie || ""
     ).split(";")
   ) {
-    const i = item.indexOf("=");
+    const i =
+      item.indexOf("=");
 
     if (i < 0) continue;
 
-    const key = item.slice(0, i).trim();
+    const key =
+      item.slice(0, i).trim();
 
     try {
-      out[key] = decodeURIComponent(
-        item.slice(i + 1).trim()
-      );
+      out[key] =
+        decodeURIComponent(
+          item
+            .slice(i + 1)
+            .trim()
+        );
     } catch {
       out[key] =
-        item.slice(i + 1).trim();
+        item
+          .slice(i + 1)
+          .trim();
     }
   }
 
   return out;
+}
+
+function errorWithStatus(
+  message,
+  statusCode = 400
+) {
+  const e =
+    new Error(message);
+
+  e.statusCode =
+    statusCode;
+
+  return e;
 }
 
 /* =========================================================
@@ -171,14 +243,19 @@ function admin(req) {
   const secret =
     process.env.ADMIN_SESSION_SECRET;
 
-  if (!token || !secret) {
+  if (
+    !token ||
+    !secret
+  ) {
     return null;
   }
 
   const parts =
     token.split(".");
 
-  if (parts.length !== 2) {
+  if (
+    parts.length !== 2
+  ) {
     return null;
   }
 
@@ -233,14 +310,10 @@ function requireAdmin(req) {
     admin(req);
 
   if (!session) {
-    const e =
-      new Error(
-        "Acesso permitido somente ao administrador."
-      );
-
-    e.statusCode = 401;
-
-    throw e;
+    throw errorWithStatus(
+      "Acesso permitido somente ao administrador.",
+      401
+    );
   }
 
   return session;
@@ -273,14 +346,10 @@ async function requestBody(req) {
   try {
     return JSON.parse(raw);
   } catch {
-    const e =
-      new Error(
-        "JSON inválido."
-      );
-
-    e.statusCode = 400;
-
-    throw e;
+    throw errorWithStatus(
+      "JSON inválido.",
+      400
+    );
   }
 }
 
@@ -310,7 +379,8 @@ async function fetchJson(
 
   const timer =
     setTimeout(
-      () => controller.abort(),
+      () =>
+        controller.abort(),
       timeout
     );
 
@@ -341,7 +411,9 @@ async function fetchJson(
       };
     }
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       const e =
         new Error(
           data?.message ||
@@ -359,6 +431,26 @@ async function fetchJson(
     }
 
     return data;
+  } catch (e) {
+    if (
+      e?.name ===
+      "AbortError"
+    ) {
+      const err =
+        new Error(
+          "Tempo limite atingido ao comunicar com o provedor."
+        );
+
+      err.code =
+        "UPSTREAM_TIMEOUT";
+
+      err.statusCode =
+        504;
+
+      throw err;
+    }
+
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -369,149 +461,198 @@ async function fetchJson(
 ========================================================= */
 
 async function ensureTables() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS treasury_wallet (
-      id INTEGER PRIMARY KEY,
-      mzn NUMERIC(30,8) NOT NULL DEFAULT 0,
-      usdt NUMERIC(30,8) NOT NULL DEFAULT 0,
-      trx NUMERIC(30,8) NOT NULL DEFAULT 0,
-      reserved_usdt NUMERIC(30,8) NOT NULL DEFAULT 0,
-      reserved_mzn NUMERIC(30,8) NOT NULL DEFAULT 0,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+  if (tablesReady) {
+    return;
+  }
 
-  await sql`
-    ALTER TABLE treasury_wallet
-    ADD COLUMN IF NOT EXISTS
-    reserved_mzn NUMERIC(30,8)
-    NOT NULL DEFAULT 0
-  `;
+  if (tablesPromise) {
+    return tablesPromise;
+  }
 
-  await sql`
-    INSERT INTO treasury_wallet(id)
-    VALUES(1)
-    ON CONFLICT(id)
-    DO NOTHING
-  `;
+  tablesPromise =
+    (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS treasury_wallet (
+          id INTEGER PRIMARY KEY,
+          mzn NUMERIC(30,8) NOT NULL DEFAULT 0,
+          usdt NUMERIC(30,8) NOT NULL DEFAULT 0,
+          trx NUMERIC(30,8) NOT NULL DEFAULT 0,
+          reserved_usdt NUMERIC(30,8) NOT NULL DEFAULT 0,
+          reserved_mzn NUMERIC(30,8) NOT NULL DEFAULT 0,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS treasury_deposits (
-      id BIGSERIAL PRIMARY KEY,
-      order_id TEXT UNIQUE NOT NULL,
-      source TEXT NOT NULL,
-      amount NUMERIC(30,8) NOT NULL,
-      currency TEXT NOT NULL,
-      reference TEXT,
-      payment_phone TEXT,
-      tx_hash TEXT,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      rate NUMERIC(30,10),
-      usdt_amount NUMERIC(30,8),
-      message TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        ALTER TABLE treasury_wallet
+        ADD COLUMN IF NOT EXISTS
+        reserved_mzn NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS treasury_conversions (
-      id BIGSERIAL PRIMARY KEY,
-      reference TEXT UNIQUE NOT NULL,
-      deposit_id BIGINT,
-      mzn_amount NUMERIC(30,8) NOT NULL,
-      usdt_amount NUMERIC(30,8) NOT NULL,
-      rate NUMERIC(30,10) NOT NULL,
-      status TEXT NOT NULL DEFAULT 'COMPLETED',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        INSERT INTO treasury_wallet(id)
+        VALUES(1)
+        ON CONFLICT(id)
+        DO NOTHING
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS treasury_reservations (
-      id BIGSERIAL PRIMARY KEY,
-      reference TEXT UNIQUE NOT NULL,
-      usdt_amount NUMERIC(30,8) NOT NULL,
-      status TEXT NOT NULL DEFAULT 'RESERVED',
-      reason TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS treasury_deposits (
+          id BIGSERIAL PRIMARY KEY,
+          order_id TEXT UNIQUE NOT NULL,
+          source TEXT NOT NULL,
+          amount NUMERIC(30,8) NOT NULL,
+          currency TEXT NOT NULL,
+          reference TEXT,
+          payment_phone TEXT,
+          tx_hash TEXT,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          rate NUMERIC(30,10),
+          usdt_amount NUMERIC(30,8),
+          fee NUMERIC(30,8) NOT NULL DEFAULT 0,
+          net_amount NUMERIC(30,8),
+          provider_id TEXT,
+          message TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS blockchain_transactions (
-      id BIGSERIAL PRIMARY KEY,
-      tx_hash TEXT UNIQUE NOT NULL,
-      asset TEXT NOT NULL,
-      amount NUMERIC(30,8),
-      direction TEXT,
-      address TEXT,
-      confirmations INTEGER DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'CONFIRMED',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        fee NUMERIC(30,8)
+        NOT NULL DEFAULT 0
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id BIGSERIAL PRIMARY KEY,
-      user_id TEXT,
-      type TEXT,
-      asset TEXT,
-      amount NUMERIC(30,8),
-      status TEXT,
-      reference TEXT UNIQUE,
-      provider TEXT,
-      provider_reference TEXT,
-      tx_hash TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        net_amount NUMERIC(30,8)
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS treasury_withdrawals (
-      id BIGSERIAL PRIMARY KEY,
-      reference TEXT UNIQUE NOT NULL,
-      method TEXT NOT NULL,
-      amount NUMERIC(30,8) NOT NULL,
-      currency TEXT NOT NULL DEFAULT 'MZN',
-      destination TEXT,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      approval_status TEXT NOT NULL DEFAULT 'PENDING',
-      provider TEXT,
-      provider_reference TEXT,
-      provider_id TEXT,
-      fee NUMERIC(30,8) NOT NULL DEFAULT 0,
-      net_amount NUMERIC(30,8),
-      message TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        ALTER TABLE treasury_deposits
+        ADD COLUMN IF NOT EXISTS
+        provider_id TEXT
+      `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS pay_webhook_events (
-      id BIGSERIAL PRIMARY KEY,
-      event_id TEXT UNIQUE NOT NULL,
-      event_name TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS treasury_conversions (
+          id BIGSERIAL PRIMARY KEY,
+          reference TEXT UNIQUE NOT NULL,
+          deposit_id BIGINT,
+          mzn_amount NUMERIC(30,8) NOT NULL,
+          usdt_amount NUMERIC(30,8) NOT NULL,
+          rate NUMERIC(30,10) NOT NULL,
+          status TEXT NOT NULL DEFAULT 'COMPLETED',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
 
-  await sql`
-    CREATE INDEX IF NOT EXISTS
-    transactions_provider_reference_idx
-    ON transactions(provider, provider_reference)
-  `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS treasury_reservations (
+          id BIGSERIAL PRIMARY KEY,
+          reference TEXT UNIQUE NOT NULL,
+          usdt_amount NUMERIC(30,8) NOT NULL,
+          status TEXT NOT NULL DEFAULT 'RESERVED',
+          reason TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
 
-  await sql`
-    CREATE INDEX IF NOT EXISTS
-    treasury_withdrawals_provider_reference_idx
-    ON treasury_withdrawals(
-      provider,
-      provider_reference
-    )
-  `;
+      await sql`
+        CREATE TABLE IF NOT EXISTS blockchain_transactions (
+          id BIGSERIAL PRIMARY KEY,
+          tx_hash TEXT UNIQUE NOT NULL,
+          asset TEXT NOT NULL,
+          amount NUMERIC(30,8),
+          direction TEXT,
+          address TEXT,
+          confirmations INTEGER DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'CONFIRMED',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS transactions (
+          id BIGSERIAL PRIMARY KEY,
+          user_id TEXT,
+          type TEXT,
+          asset TEXT,
+          amount NUMERIC(30,8),
+          status TEXT,
+          reference TEXT UNIQUE,
+          provider TEXT,
+          provider_reference TEXT,
+          tx_hash TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS treasury_withdrawals (
+          id BIGSERIAL PRIMARY KEY,
+          reference TEXT UNIQUE NOT NULL,
+          method TEXT NOT NULL,
+          amount NUMERIC(30,8) NOT NULL,
+          currency TEXT NOT NULL DEFAULT 'MZN',
+          destination TEXT,
+          status TEXT NOT NULL DEFAULT 'PENDING',
+          approval_status TEXT NOT NULL DEFAULT 'PENDING',
+          provider TEXT,
+          provider_reference TEXT,
+          provider_id TEXT,
+          fee NUMERIC(30,8) NOT NULL DEFAULT 0,
+          net_amount NUMERIC(30,8),
+          message TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS pay_webhook_events (
+          id BIGSERIAL PRIMARY KEY,
+          event_id TEXT UNIQUE NOT NULL,
+          event_name TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE INDEX IF NOT EXISTS
+        transactions_provider_reference_idx
+        ON transactions(provider, provider_reference)
+      `;
+
+      await sql`
+        CREATE INDEX IF NOT EXISTS
+        treasury_withdrawals_provider_reference_idx
+        ON treasury_withdrawals(
+          provider,
+          provider_reference
+        )
+      `;
+
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS
+        treasury_deposits_reference_unique_idx
+        ON treasury_deposits(reference)
+        WHERE reference IS NOT NULL
+      `;
+
+      tablesReady = true;
+    })();
+
+  try {
+    await tablesPromise;
+  } catch (e) {
+    tablesPromise = null;
+    throw e;
+  }
 }
 
 /* =========================================================
@@ -761,7 +902,21 @@ function treasuryAddress() {
   return address;
 }
 
+function validateUSDTContract() {
+  if (
+    !tronAddress(
+      CONTRACT
+    )
+  ) {
+    throw new Error(
+      "Contrato USDT TRON inválido."
+    );
+  }
+}
+
 async function tronUSDTBalance() {
+  validateUSDTContract();
+
   const address =
     treasuryAddress();
 
@@ -782,8 +937,15 @@ async function tronUSDTBalance() {
     balance?.toString?.() ||
     String(balance);
 
-  return Number(raw) /
-    10 ** USDT_DECIMALS;
+  const integer =
+    BigInt(
+      String(raw)
+    );
+
+  return (
+    Number(integer) /
+    USDT_FACTOR
+  );
 }
 
 async function tronTRXBalance() {
@@ -906,18 +1068,12 @@ async function pay(
     );
   }
 
-  /*
-   * Nunca permitimos que um caller
-   * substitua Authorization,
-   * Wallet ID ou Merchant ID.
-   *
-   * Só aceitamos headers seguros
-   * adicionais.
-   */
   const safeHeaders = {};
 
   if (
-    options.headers?.["Idempotency-Key"]
+    options.headers?.[
+      "Idempotency-Key"
+    ]
   ) {
     safeHeaders[
       "Idempotency-Key"
@@ -964,7 +1120,8 @@ async function pay(
 
         ...safeHeaders
       }
-    }
+    },
+    PAY_TIMEOUT_MS
   );
 }
 
@@ -985,6 +1142,64 @@ function payMethod(method) {
 
   throw new Error(
     "Método Pay inválido."
+  );
+}
+
+function payData(result) {
+  return (
+    result?.data &&
+    typeof result.data === "object"
+      ? result.data
+      : result
+  );
+}
+
+function extractPayReference(data) {
+  return clean(
+    data?.reference ||
+    data?.transaction_reference ||
+    data?.payment_reference
+  );
+}
+
+/*
+ * A PAY recomenda confiar no webhook
+ * e usar GET /charges para reconciliação.
+ */
+async function findPayCharge(
+  providerReference
+) {
+  const ref =
+    clean(providerReference);
+
+  if (!ref) {
+    return null;
+  }
+
+  const result =
+    await pay(
+      "/charges?limit=100",
+      {
+        method: "GET"
+      }
+    );
+
+  const rows =
+    Array.isArray(
+      result?.data
+    )
+      ? result.data
+      : Array.isArray(result)
+        ? result
+        : [];
+
+  return (
+    rows.find(
+      item =>
+        extractPayReference(
+          item
+        ) === ref
+    ) || null
   );
 }
 
@@ -1022,11 +1237,21 @@ async function createDeposit(body) {
     upper(
       body.currency ||
       (
-        source === "USDT_TRON"
+        source ===
+        "USDT_TRON"
           ? "USDT"
           : "MZN"
       )
     );
+
+  if (
+    source === "USDT_TRON" &&
+    currency !== "USDT"
+  ) {
+    throw new Error(
+      "Depósito USDT_TRON deve usar moeda USDT."
+    );
+  }
 
   const orderId =
     clean(
@@ -1084,7 +1309,9 @@ async function createDeposit(body) {
     };
   }
 
-  const [row] =
+  const [
+    row
+  ] =
     await sql`
       INSERT INTO treasury_deposits(
         order_id,
@@ -1143,29 +1370,44 @@ async function createDeposit(body) {
    TRON DEPOSIT
 ========================================================= */
 
+function decodeTronAddress(
+  value
+) {
+  const text =
+    String(value || "");
+
+  if (
+    tronAddress(text)
+  ) {
+    return text;
+  }
+
+  if (
+    /^[0-9a-fA-F]{40}$/.test(
+      text
+    )
+  ) {
+    try {
+      return TronWeb.address.fromHex(
+        "41" + text
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
 async function verifyUSDTDeposit(
   order
 ) {
+  validateUSDTContract();
+
   if (!order.tx_hash) {
     throw new Error(
       "TX Hash não informado."
     );
-  }
-
-  const existing =
-    await sql`
-      SELECT *
-      FROM blockchain_transactions
-      WHERE tx_hash=${order.tx_hash}
-      LIMIT 1
-    `;
-
-  if (
-    existing.length &&
-    existing[0].status ===
-      "CONFIRMED"
-  ) {
-    return existing[0];
   }
 
   const data =
@@ -1179,7 +1421,8 @@ async function verifyUSDTDeposit(
                   process.env.TRON_PRO_API_KEY
               }
             : {}
-      }
+      },
+      15000
     );
 
   const tx =
@@ -1195,7 +1438,6 @@ async function verifyUSDTDeposit(
     tx?.ret?.[0]?.contractRet;
 
   if (
-    contractRet &&
     contractRet !== "SUCCESS"
   ) {
     throw new Error(
@@ -1214,11 +1456,14 @@ async function verifyUSDTDeposit(
                   process.env.TRON_PRO_API_KEY
               }
             : {}
-      }
+      },
+      15000
     );
 
   const transfers =
-    Array.isArray(event?.data)
+    Array.isArray(
+      event?.data
+    )
       ? event.data
       : [];
 
@@ -1249,28 +1494,12 @@ async function verifyUSDTDeposit(
     matchingTransfers.find(
       x => {
         const to =
-          String(
-            x?.result?.to || ""
+          decodeTronAddress(
+            x?.result?.to
           );
 
-        let decoded =
-          to;
-
-        try {
-          if (
-            /^[0-9a-fA-F]{40}$/.test(
-              to
-            )
-          ) {
-            decoded =
-              TronWeb.address.fromHex(
-                "41" + to
-              );
-          }
-        } catch {}
-
         return (
-          String(decoded).toLowerCase() ===
+          String(to).toLowerCase() ===
           String(expected).toLowerCase()
         );
       }
@@ -1282,14 +1511,34 @@ async function verifyUSDTDeposit(
     );
   }
 
-  const raw =
-    Number(
-      transfer?.result?.value || 0
+  const rawText =
+    String(
+      transfer?.result?.value ??
+      "0"
     );
 
+  if (
+    !/^\d+$/.test(
+      rawText
+    )
+  ) {
+    throw new Error(
+      "Valor USDT on-chain inválido."
+    );
+  }
+
+  const raw =
+    BigInt(rawText);
+
+  if (raw <= 0n) {
+    throw new Error(
+      "Valor USDT on-chain inválido."
+    );
+  }
+
   const amount =
-    raw /
-    10 ** USDT_DECIMALS;
+    Number(raw) /
+    USDT_FACTOR;
 
   if (
     !Number.isFinite(amount) ||
@@ -1301,10 +1550,38 @@ async function verifyUSDTDeposit(
   }
 
   const from =
-    transfer?.result?.from ||
-    null;
+    decodeTronAddress(
+      transfer?.result?.from
+    ) || null;
 
-  const [saved] =
+  /*
+   * A ordem especifica o valor esperado.
+   * Não aceitamos automaticamente
+   * qualquer quantidade enviada.
+   */
+  const expectedAmount =
+    Number(
+      order.amount
+    );
+
+  if (
+    Number.isFinite(
+      expectedAmount
+    ) &&
+    expectedAmount > 0 &&
+    Math.abs(
+      amount -
+        expectedAmount
+    ) > 0.000001
+  ) {
+    throw new Error(
+      "Quantidade USDT recebida diferente da quantidade esperada."
+    );
+  }
+
+  const [
+    saved
+  ] =
     await sql`
       INSERT INTO blockchain_transactions(
         tx_hash,
@@ -1351,28 +1628,63 @@ async function confirmUSDTDeposit(
     );
 
   /*
-   * A transição é atómica.
-   * Apenas uma chamada pode
-   * PENDING -> COMPLETED.
+   * Todas as alterações internas
+   * desta confirmação são atómicas.
    */
-  const [updated] =
-    await sql`
-      UPDATE treasury_deposits
-      SET
-        amount=${amount},
-        currency='USDT',
-        usdt_amount=${amount},
-        status='COMPLETED',
-        message='USDT confirmado na blockchain.',
-        updated_at=NOW()
-      WHERE
-        id=${order.id}
-        AND status='PENDING'
-      RETURNING *
-    `;
+  const [
+    depositResult,
+    walletResult,
+    transactionResult
+  ] =
+    await sql.transaction([
+      sql`
+        UPDATE treasury_deposits
+        SET
+          amount=${amount},
+          currency='USDT',
+          usdt_amount=${amount},
+          status='COMPLETED',
+          message='USDT confirmado na blockchain.',
+          updated_at=NOW()
+        WHERE
+          id=${order.id}
+          AND status='PENDING'
+        RETURNING *
+      `,
 
-  if (!updated) {
-    const [current] =
+      sql`
+        UPDATE treasury_wallet
+        SET
+          usdt=usdt+${amount},
+          updated_at=NOW()
+        WHERE id=1
+        AND EXISTS (
+          SELECT 1
+          FROM treasury_deposits
+          WHERE id=${order.id}
+          AND status='PENDING'
+        )
+        RETURNING *
+      `,
+
+      sql`
+        UPDATE transactions
+        SET
+          status='COMPLETED',
+          tx_hash=${order.tx_hash}
+        WHERE
+          reference=${order.order_id}
+          AND status='PENDING'
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !depositResult.length
+  ) {
+    const [
+      current
+    ] =
       await sql`
         SELECT *
         FROM treasury_deposits
@@ -1384,25 +1696,20 @@ async function confirmUSDTDeposit(
   }
 
   /*
-   * Só a primeira confirmação
-   * aumenta o ledger interno.
+   * Segurança adicional:
+   * se a atualização da wallet não ocorreu,
+   * a transação inteira deve ser considerada
+   * inconsistente e não deve prosseguir.
    */
-  await changeWallet(
-    "USDT",
-    amount
-  );
+  if (
+    !walletResult.length
+  ) {
+    throw new Error(
+      "Falha ao creditar a tesouraria."
+    );
+  }
 
-  await sql`
-    UPDATE transactions
-    SET
-      status='COMPLETED',
-      tx_hash=${order.tx_hash}
-    WHERE
-      reference=${order.order_id}
-      AND status='PENDING'
-  `;
-
-  return updated;
+  return depositResult[0];
 }
 
 /* =========================================================
@@ -1448,12 +1755,12 @@ async function createPayDeposit(
   }
 
   if (
-    !/^258\d{9}$/.test(
+    !/^258(84|85)\d{7}$/.test(
       contact
     )
   ) {
     throw new Error(
-      "Número M-Pesa inválido. Use 258XXXXXXXXX."
+      "Número M-Pesa inválido. Use 84XXXXXXXX ou 85XXXXXXXX."
     );
   }
 
@@ -1472,7 +1779,9 @@ async function createPayDeposit(
           JSON.stringify({
             amount:
               round(
-                Number(order.amount),
+                Number(
+                  order.amount
+                ),
                 2
               ),
 
@@ -1492,25 +1801,35 @@ async function createPayDeposit(
       }
     );
 
+  const data =
+    payData(result);
+
   const providerReference =
-    clean(
-      result?.reference ||
-      result?.data?.reference ||
-      result?.transaction_reference ||
-      result?.data?.transaction_reference
+    extractPayReference(
+      data
     );
 
-  if (!providerReference) {
+  if (
+    !providerReference
+  ) {
     throw new Error(
       "PAY não devolveu a referência da cobrança."
     );
   }
 
-  const [updated] =
+  const providerId =
+    clean(
+      data?.id
+    ) || null;
+
+  const [
+    updated
+  ] =
     await sql`
       UPDATE treasury_deposits
       SET
         reference=${providerReference},
+        provider_id=${providerId},
         message='Pagamento criado na PAY. Aguardando confirmação.',
         updated_at=NOW()
       WHERE
@@ -1523,13 +1842,14 @@ async function createPayDeposit(
     provider: true,
     provider_reference:
       providerReference,
+    provider_id:
+      providerId,
     status:
-      result?.status ||
-      result?.data?.state ||
+      data?.status ||
+      data?.state ||
       "PENDING",
     checkout_url:
-      result?.checkout_url ||
-      result?.data?.checkout_url ||
+      data?.checkout_url ||
       null,
     order:
       updated || order
@@ -1549,7 +1869,9 @@ async function depositStatus(
     );
   }
 
-  const [order] =
+  const [
+    order
+  ] =
     await sql`
       SELECT *
       FROM treasury_deposits
@@ -1564,7 +1886,8 @@ async function depositStatus(
   }
 
   if (
-    order.status === "COMPLETED"
+    order.status ===
+    "COMPLETED"
   ) {
     return {
       success: true,
@@ -1601,6 +1924,10 @@ async function depositStatus(
     }
   }
 
+  /*
+   * Para PAY, o estado oficial vem
+   * pelo webhook/reconciliação.
+   */
   return {
     success: true,
     confirmed: false,
@@ -1672,7 +1999,8 @@ async function convertMZN(
   ) {
     return {
       success: false,
-      status: "INDISPONIVEL",
+      status:
+        "INDISPONIVEL",
       reason:
         "LIQUIDEZ_USDT_INSUFICIENTE",
       requested_usdt:
@@ -1688,90 +2016,114 @@ async function convertMZN(
     };
   }
 
-  /*
-   * A operação é feita numa única
-   * atualização condicional.
-   *
-   * Não cria USDT.
-   */
-  const [debited] =
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        mzn=mzn-${amount},
-        reserved_usdt=
-          reserved_usdt+${usdt},
-        updated_at=NOW()
-      WHERE
-        id=1
-        AND mzn>=${amount}
-        AND (
-          usdt-reserved_usdt
-        )>=${usdt}
-      RETURNING *
-    `;
-
-  if (!debited) {
-    return {
-      success: false,
-      status:
-        "INDISPONIVEL",
-      reason:
-        "SALDO_OU_LIQUIDEZ_ALTERADO"
-    };
-  }
-
   const ref =
     reference("CONV");
 
-  await sql`
-    INSERT INTO treasury_conversions(
-      reference,
-      mzn_amount,
-      usdt_amount,
-      rate,
-      status
-    )
-    VALUES(
-      ${ref},
-      ${amount},
-      ${usdt},
-      ${market.rate},
-      'COMPLETED'
-    )
-  `;
+  /*
+   * A conversão, reserva e registo
+   * contabilístico são feitos juntos.
+   */
+  const [
+    debitedResult,
+    conversionResult,
+    reservationResult,
+    transactionResult
+  ] =
+    await sql.transaction([
+      sql`
+        UPDATE treasury_wallet
+        SET
+          mzn=mzn-${amount},
+          reserved_usdt=
+            reserved_usdt+${usdt},
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND mzn>=${amount}
+          AND (
+            usdt-reserved_usdt
+          )>=${usdt}
+        RETURNING *
+      `,
 
-  await sql`
-    INSERT INTO treasury_reservations(
-      reference,
-      usdt_amount,
-      status,
-      reason
-    )
-    VALUES(
-      ${ref},
-      ${usdt},
-      'RESERVED',
-      'Conversão MZN -> USDT'
-    )
-  `;
+      sql`
+        INSERT INTO treasury_conversions(
+          reference,
+          mzn_amount,
+          usdt_amount,
+          rate,
+          status
+        )
+        SELECT
+          ${ref},
+          ${amount},
+          ${usdt},
+          ${market.rate},
+          'COMPLETED'
+        WHERE EXISTS (
+          SELECT 1
+          FROM treasury_wallet
+          WHERE id=1
+          AND reserved_usdt>=${usdt}
+        )
+        RETURNING *
+      `,
 
-  await sql`
-    INSERT INTO transactions(
-      type,
-      asset,
-      amount,
-      status,
-      reference
-    )
-    VALUES(
-      'CONVERSION_MZN_USDT',
-      'USDT',
-      ${usdt},
-      'COMPLETED',
-      ${ref}
-    )
-  `;
+      sql`
+        INSERT INTO treasury_reservations(
+          reference,
+          usdt_amount,
+          status,
+          reason
+        )
+        SELECT
+          ${ref},
+          ${usdt},
+          'RESERVED',
+          'Conversão MZN -> USDT'
+        WHERE EXISTS (
+          SELECT 1
+          FROM treasury_wallet
+          WHERE id=1
+          AND reserved_usdt>=${usdt}
+        )
+        RETURNING *
+      `,
+
+      sql`
+        INSERT INTO transactions(
+          type,
+          asset,
+          amount,
+          status,
+          reference
+        )
+        SELECT
+          'CONVERSION_MZN_USDT',
+          'USDT',
+          ${usdt},
+          'COMPLETED',
+          ${ref}
+        WHERE EXISTS (
+          SELECT 1
+          FROM treasury_wallet
+          WHERE id=1
+          AND reserved_usdt>=${usdt}
+        )
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !debitedResult.length ||
+    !conversionResult.length ||
+    !reservationResult.length ||
+    !transactionResult.length
+  ) {
+    throw new Error(
+      "Não foi possível concluir a conversão de forma atómica."
+    );
+  }
 
   return {
     success: true,
@@ -1821,54 +2173,49 @@ async function reserveUSDT(
   const ref =
     reference("RES");
 
-  const [row] =
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        reserved_usdt=
-          reserved_usdt+${amount},
-        updated_at=NOW()
-      WHERE
-        id=1
-        AND (
-          usdt-reserved_usdt
-        )>=${amount}
-      RETURNING *
-    `;
+  const [
+    walletResult,
+    reservationResult
+  ] =
+    await sql.transaction([
+      sql`
+        UPDATE treasury_wallet
+        SET
+          reserved_usdt=
+            reserved_usdt+${amount},
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND (
+            usdt-reserved_usdt
+          )>=${amount}
+        RETURNING *
+      `,
 
-  if (!row) {
+      sql`
+        INSERT INTO treasury_reservations(
+          reference,
+          usdt_amount,
+          status,
+          reason
+        )
+        VALUES(
+          ${ref},
+          ${amount},
+          'RESERVED',
+          ${reason}
+        )
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !walletResult.length ||
+    !reservationResult.length
+  ) {
     throw new Error(
       "USDT disponível insuficiente."
     );
-  }
-
-  try {
-    await sql`
-      INSERT INTO treasury_reservations(
-        reference,
-        usdt_amount,
-        reason
-      )
-      VALUES(
-        ${ref},
-        ${amount},
-        ${reason}
-      )
-    `;
-  } catch (e) {
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        reserved_usdt=
-          GREATEST(
-            0,
-            reserved_usdt-${amount}
-          ),
-        updated_at=NOW()
-      WHERE id=1
-    `;
-
-    throw e;
   }
 
   return {
@@ -1901,18 +2248,46 @@ async function releaseReservation(
     );
   }
 
-  const [changed] =
-    await sql`
-      UPDATE treasury_reservations
-      SET
-        status='RELEASED'
-      WHERE
-        reference=${ref}
-        AND status='RESERVED'
-      RETURNING *
-    `;
+  const [
+    changedResult,
+    walletResult
+  ] =
+    await sql.transaction([
+      sql`
+        UPDATE treasury_reservations
+        SET
+          status='RELEASED'
+        WHERE
+          reference=${ref}
+          AND status='RESERVED'
+        RETURNING *
+      `,
 
-  if (!changed) {
+      sql`
+        UPDATE treasury_wallet
+        SET
+          reserved_usdt=
+            GREATEST(
+              0,
+              reserved_usdt-COALESCE(
+                (
+                  SELECT usdt_amount
+                  FROM treasury_reservations
+                  WHERE reference=${ref}
+                  AND status='RESERVED'
+                ),
+                0
+              )
+            ),
+          updated_at=NOW()
+        WHERE id=1
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !changedResult.length
+  ) {
     return {
       success: true,
       already_processed: true
@@ -1921,9 +2296,20 @@ async function releaseReservation(
 
   const amount =
     Number(
-      changed.usdt_amount
+      changedResult[0]
+        .usdt_amount
     );
 
+  /*
+   * Correção:
+   * a atualização acima não consegue
+   * mais enxergar a reserva como RESERVED
+   * depois da primeira query.
+   *
+   * Fazemos a compensação segura abaixo
+   * somente sobre a alteração realmente
+   * efetuada.
+   */
   await sql`
     UPDATE treasury_wallet
     SET
@@ -1986,33 +2372,39 @@ async function createWithdrawal(
     );
   }
 
-  const [reserved] =
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        reserved_mzn=
-          reserved_mzn+${amount},
-        updated_at=NOW()
-      WHERE
-        id=1
-        AND (
-          mzn-reserved_mzn
-        )>=${amount}
-      RETURNING *
-    `;
-
-  if (!reserved) {
-    throw new Error(
-      "Saldo MZN disponível insuficiente."
-    );
-  }
+  /*
+   * A PAY usa a carteira/destino configurado
+   * para o payout. Nunca aceitamos um destino
+   * arbitrário vindo do navegador.
+   */
+  const destination =
+    clean(
+      process.env.PAY_PAYOUT_DESTINATION
+    ) || null;
 
   const ref =
     reference("WD");
 
-  try {
-    const [row] =
-      await sql`
+  const [
+    reservedResult,
+    withdrawalResult
+  ] =
+    await sql.transaction([
+      sql`
+        UPDATE treasury_wallet
+        SET
+          reserved_mzn=
+            reserved_mzn+${amount},
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND (
+            mzn-reserved_mzn
+          )>=${amount}
+        RETURNING *
+      `,
+
+      sql`
         INSERT INTO treasury_withdrawals(
           reference,
           method,
@@ -2029,53 +2421,48 @@ async function createWithdrawal(
           'MPESA',
           ${amount},
           'MZN',
-          NULL,
+          ${destination},
           'PENDING',
           'PENDING',
           'PAY',
           'Retirada criada e aguardando aprovação administrativa.'
         )
         RETURNING *
-      `;
+      `
+    ]);
 
-    return {
-      success: true,
-      status:
-        "PENDING",
-      approval_status:
-        "PENDING",
-      reference:
-        ref,
-      amount_mzn:
-        amount,
-      method:
-        "MPESA",
-      provider:
-        "PAY",
-      message:
-        "Retirada criada. Nenhum payout foi enviado."
-    };
-  } catch (e) {
-    await sql`
-      UPDATE treasury_wallet
-      SET
-        reserved_mzn=
-          GREATEST(
-            0,
-            reserved_mzn-${amount}
-          ),
-        updated_at=NOW()
-      WHERE id=1
-    `;
-
-    throw e;
+  if (
+    !reservedResult.length ||
+    !withdrawalResult.length
+  ) {
+    throw new Error(
+      "Saldo MZN disponível insuficiente."
+    );
   }
+
+  return {
+    success: true,
+    status:
+      "PENDING",
+    approval_status:
+      "PENDING",
+    reference:
+      ref,
+    amount_mzn:
+      amount,
+    method:
+      "MPESA",
+    provider:
+      "PAY",
+    message:
+      "Retirada criada. Nenhum payout foi enviado.",
+    withdrawal:
+      withdrawalResult[0]
+  };
 }
 
 /* =========================================================
    APROVAR RETIRADA
-   SOMENTE APROVA.
-   NÃO ENVIA PAYOUT.
 ========================================================= */
 
 async function approveWithdrawal(
@@ -2093,7 +2480,9 @@ async function approveWithdrawal(
     );
   }
 
-  const [row] =
+  const [
+    row
+  ] =
     await sql`
       UPDATE treasury_withdrawals
       SET
@@ -2108,7 +2497,9 @@ async function approveWithdrawal(
     `;
 
   if (!row) {
-    const [current] =
+    const [
+      current
+    ] =
       await sql`
         SELECT *
         FROM treasury_withdrawals
@@ -2122,7 +2513,8 @@ async function approveWithdrawal(
     ) {
       return {
         success: true,
-        already_approved: true,
+        already_approved:
+          true,
         withdrawal:
           current
       };
@@ -2150,7 +2542,6 @@ async function approveWithdrawal(
 
 /* =========================================================
    PROCESSAR RETIRADA
-   SOMENTE APPROVED
 ========================================================= */
 
 async function processWithdrawal(
@@ -2168,12 +2559,9 @@ async function processWithdrawal(
     );
   }
 
-  /*
-   * CLAIM ATÓMICO:
-   * apenas uma execução consegue
-   * mudar APPROVED -> PROCESSING.
-   */
-  const [withdrawal] =
+  const [
+    withdrawal
+  ] =
     await sql`
       UPDATE treasury_withdrawals
       SET
@@ -2188,7 +2576,9 @@ async function processWithdrawal(
     `;
 
   if (!withdrawal) {
-    const [current] =
+    const [
+      current
+    ] =
       await sql`
         SELECT *
         FROM treasury_withdrawals
@@ -2208,7 +2598,8 @@ async function processWithdrawal(
     ) {
       return {
         success: true,
-        already_completed: true,
+        already_completed:
+          true,
         withdrawal:
           current
       };
@@ -2220,7 +2611,8 @@ async function processWithdrawal(
     ) {
       return {
         success: true,
-        already_processing: true,
+        already_processing:
+          true,
         withdrawal:
           current
       };
@@ -2255,123 +2647,198 @@ async function processWithdrawal(
         }
       );
 
+    const data =
+      payData(result);
+
     const providerId =
       clean(
-        result?.id ||
-        result?.data?.id
+        data?.id
       ) || null;
 
     const providerReference =
       clean(
-        result?.reference ||
-        result?.data?.reference ||
-        result?.transaction_reference ||
-        result?.data?.transaction_reference
+        data?.reference ||
+        data?.transaction_reference
       ) || null;
 
     const providerStatus =
       upper(
-        result?.status ||
-        result?.data?.status ||
-        result?.state ||
-        result?.data?.state ||
+        data?.status ||
+        data?.state ||
         "PROCESSING"
       );
+
+    const providerFee =
+      positive(
+        data?.fee
+      ) || 0;
+
+    const providerNet =
+      positive(
+        data?.net
+      ) ||
+      positive(
+        data?.net_amount
+      ) ||
+      amount;
 
     const completed =
       [
         "PAID",
         "SUCCESS",
         "SUCCEEDED",
-        "COMPLETED"
+        "COMPLETED",
+        "SUCCESSFUL"
       ].includes(
         providerStatus
       );
 
-    /*
-     * Quando existe referência da PAY,
-     * guardamos a referência real.
-     */
     const storedReference =
       providerReference ||
       providerId ||
       null;
 
-    const [updated] =
+    if (
+      !storedReference
+    ) {
+      /*
+       * Não aceitamos payout sem
+       * identificador externo.
+       */
+      throw new Error(
+        "PAY não devolveu identificador do payout."
+      );
+    }
+
+    if (completed) {
+      const [
+        updatedResult,
+        walletResult,
+        transactionResult
+      ] =
+        await sql.transaction([
+          sql`
+            UPDATE treasury_withdrawals
+            SET
+              provider='PAY',
+              provider_reference=${storedReference},
+              provider_id=${providerId},
+              fee=${providerFee},
+              net_amount=${providerNet},
+              status='COMPLETED',
+              message='Payout confirmado pela PAY.',
+              updated_at=NOW()
+            WHERE
+              id=${withdrawal.id}
+              AND status='PROCESSING'
+            RETURNING *
+          `,
+
+          sql`
+            UPDATE treasury_wallet
+            SET
+              reserved_mzn=
+                GREATEST(
+                  0,
+                  reserved_mzn-${amount}
+                ),
+              mzn=
+                GREATEST(
+                  0,
+                  mzn-${amount}
+                ),
+              updated_at=NOW()
+            WHERE
+              id=1
+              AND reserved_mzn>=${amount}
+            RETURNING *
+          `,
+
+          sql`
+            INSERT INTO transactions(
+              type,
+              asset,
+              amount,
+              status,
+              reference,
+              provider,
+              provider_reference
+            )
+            VALUES(
+              'WITHDRAWAL_MZN_MPESA',
+              'MZN',
+              ${amount},
+              'COMPLETED',
+              ${ref},
+              'PAY',
+              ${storedReference}
+            )
+            ON CONFLICT(reference)
+            DO NOTHING
+            RETURNING *
+          `
+        ]);
+
+      if (
+        !updatedResult.length ||
+        !walletResult.length
+      ) {
+        throw new Error(
+          "Não foi possível finalizar contabilmente o payout."
+        );
+      }
+
+      return {
+        success: true,
+        status:
+          "COMPLETED",
+        approval_status:
+          "APPROVED",
+        reference:
+          ref,
+        provider:
+          "PAY",
+        provider_reference:
+          storedReference,
+        provider_id:
+          providerId,
+        payout:
+          result,
+        withdrawal:
+          updatedResult[0]
+      };
+    }
+
+    /*
+     * PENDING / PROCESSING:
+     * mantemos o dinheiro reservado.
+     */
+    const [
+      updated
+    ] =
       await sql`
         UPDATE treasury_withdrawals
         SET
           provider='PAY',
           provider_reference=${storedReference},
           provider_id=${providerId},
-          status=${
-            completed
-              ? "COMPLETED"
-              : "PROCESSING"
-          },
-          message=${
-            completed
-              ? "Payout confirmado pela PAY."
-              : "Payout submetido à PAY; aguardando confirmação."
-          },
+          fee=${providerFee},
+          net_amount=${providerNet},
+          status='PROCESSING',
+          message='Payout submetido à PAY; aguardando confirmação.',
           updated_at=NOW()
         WHERE
           id=${withdrawal.id}
+          AND status='PROCESSING'
         RETURNING *
       `;
-
-    if (completed) {
-      /*
-       * Retirada concluída:
-       * removemos a reserva MZN.
-       */
-      await sql`
-        UPDATE treasury_wallet
-        SET
-          reserved_mzn=
-            GREATEST(
-              0,
-              reserved_mzn-${amount}
-            ),
-          mzn=
-            GREATEST(
-              0,
-              mzn-${amount}
-            ),
-          updated_at=NOW()
-        WHERE id=1
-      `;
-
-      await sql`
-        INSERT INTO transactions(
-          type,
-          asset,
-          amount,
-          status,
-          reference,
-          provider,
-          provider_reference
-        )
-        VALUES(
-          'WITHDRAWAL_MZN_MPESA',
-          'MZN',
-          ${amount},
-          'COMPLETED',
-          ${ref},
-          'PAY',
-          ${storedReference}
-        )
-        ON CONFLICT(reference)
-        DO NOTHING
-      `;
-    }
 
     return {
       success: true,
       status:
-        updated.status,
+        "PROCESSING",
       approval_status:
-        updated.approval_status,
+        "APPROVED",
       reference:
         ref,
       provider:
@@ -2383,18 +2850,55 @@ async function processWithdrawal(
       payout:
         result,
       withdrawal:
-        updated
+        updated?.[0] ||
+        withdrawal
     };
   } catch (e) {
     /*
-     * O dinheiro ainda estava reservado.
-     * Não removemos a reserva.
+     * MUITO IMPORTANTE:
      *
-     * Marcamos FAILED apenas quando
-     * sabemos que o pedido externo falhou.
+     * Timeout, erro de rede ou resposta
+     * desconhecida NÃO significa que o
+     * payout não aconteceu.
      *
-     * A reserva pode ser liberada
-     * pelo administrador.
+     * Por isso mantemos PROCESSING.
+     */
+    if (
+      e?.code ===
+      "UPSTREAM_TIMEOUT" ||
+      e?.statusCode >= 500
+    ) {
+      await sql`
+        UPDATE treasury_withdrawals
+        SET
+          status='PROCESSING',
+          message='Estado do payout desconhecido. Aguardando reconciliação PAY.',
+          updated_at=NOW()
+        WHERE
+          id=${withdrawal.id}
+          AND status='PROCESSING'
+      `;
+
+      return {
+        success: true,
+        status:
+          "PROCESSING",
+        uncertain:
+          true,
+        reference:
+          ref,
+        message:
+          "A resposta da PAY não pôde ser confirmada. Nenhum novo payout será enviado automaticamente."
+      };
+    }
+
+    /*
+     * Para rejeições HTTP definitivas
+     * da PAY, ainda não liberamos
+     * automaticamente a reserva.
+     *
+     * O administrador deve reconciliar
+     * e liberar a reserva.
      */
     await sql`
       UPDATE treasury_withdrawals
@@ -2430,7 +2934,9 @@ async function cancelWithdrawal(
     );
   }
 
-  const [row] =
+  const [
+    row
+  ] =
     await sql`
       UPDATE treasury_withdrawals
       SET
@@ -2496,12 +3002,21 @@ async function releaseFailedWithdrawal(
     );
   }
 
-  const [row] =
+  /*
+   * Só FAILED pode ser liberado
+   * manualmente.
+   *
+   * PROCESSING nunca deve ser
+   * liberado sem reconciliação.
+   */
+  const [
+    row
+  ] =
     await sql`
       UPDATE treasury_withdrawals
       SET
         status='CANCELLED',
-        message='Reserva liberada após falha do payout.',
+        message='Reserva liberada após falha confirmada do payout.',
         updated_at=NOW()
       WHERE
         reference=${ref}
@@ -2516,7 +3031,9 @@ async function releaseFailedWithdrawal(
   }
 
   const amount =
-    Number(row.amount);
+    Number(
+      row.amount
+    );
 
   await sql`
     UPDATE treasury_wallet
@@ -2527,7 +3044,9 @@ async function releaseFailedWithdrawal(
           reserved_mzn-${amount}
         ),
       updated_at=NOW()
-    WHERE id=1
+    WHERE
+      id=1
+      AND reserved_mzn>=${amount}
   `;
 
   return {
@@ -2584,14 +3103,18 @@ async function dashboard() {
     };
   }
 
-  const [pending] =
+  const [
+    pending
+  ] =
     await sql`
       SELECT COUNT(*)::int AS count
       FROM treasury_deposits
       WHERE status='PENDING'
     `;
 
-  const [pendingWithdrawals] =
+  const [
+    pendingWithdrawals
+  ] =
     await sql`
       SELECT COUNT(*)::int AS count
       FROM treasury_withdrawals
@@ -2725,7 +3248,12 @@ async function sources() {
           ? String(
               process.env.PAY_WALLET_ID
             )
-          : null
+          : null,
+
+      payout_destination_configured:
+        Boolean(
+          process.env.PAY_PAYOUT_DESTINATION
+        )
     },
 
     fx: {
@@ -2743,6 +3271,9 @@ async function sources() {
         Boolean(
           process.env.TRON_PRO_API_KEY
         ),
+
+      contract:
+        CONTRACT,
 
       treasury:
         (() => {
@@ -2808,6 +3339,11 @@ async function configStatus() {
     pay_configured:
       payConfigured(),
 
+    pay_payout_destination_configured:
+      Boolean(
+        process.env.PAY_PAYOUT_DESTINATION
+      ),
+
     deposit_methods:
       DEPOSIT_SOURCES,
 
@@ -2839,7 +3375,9 @@ function parsePaySignature(
       part.split("=");
 
     if (key) {
-      out[key.trim()] =
+      out[
+        key.trim()
+      ] =
         rest
           .join("=")
           .trim();
@@ -2853,6 +3391,7 @@ function parsePaySignature(
     return {
       timestamp:
         out.t,
+
       signature:
         out.v1
     };
@@ -2980,10 +3519,10 @@ async function payWebhook(
 
   const eventName =
     clean(
-      event?.event ||
       req.headers[
         "x-pay-event"
-      ]
+      ] ||
+      event?.event
     );
 
   const eventId =
@@ -2996,28 +3535,60 @@ async function payWebhook(
     );
 
   /*
-   * Idempotência de webhook.
+   * Event ID é obrigatório para
+   * processamento seguro.
    */
-  if (eventId) {
-    try {
-      await sql`
-        INSERT INTO pay_webhook_events(
-          event_id,
-          event_name
-        )
-        VALUES(
-          ${eventId},
-          ${eventName}
-        )
-        ON CONFLICT(event_id)
-        DO NOTHING
-      `;
-    } catch (e) {
-      console.error(
-        "PAY webhook event:",
-        e.message
-      );
-    }
+  if (!eventId) {
+    return json(
+      res,
+      400,
+      {
+        success: false,
+        error:
+          "X-Pay-Event-Id ausente."
+      }
+    );
+  }
+
+  /*
+   * Inserimos e verificamos se foi
+   * realmente uma nova ocorrência.
+   */
+  const [
+    insertedEvent
+  ] =
+    await sql`
+      INSERT INTO pay_webhook_events(
+        event_id,
+        event_name
+      )
+      VALUES(
+        ${eventId},
+        ${eventName}
+      )
+      ON CONFLICT(event_id)
+      DO NOTHING
+      RETURNING event_id
+    `;
+
+  /*
+   * Webhook repetido:
+   * respondemos 200 e NÃO processamos
+   * novamente.
+   */
+  if (
+    !insertedEvent
+  ) {
+    return json(
+      res,
+      200,
+      {
+        success: true,
+        duplicate: true,
+        event:
+          eventName
+      }
+    );
   }
 
   const data =
@@ -3036,13 +3607,13 @@ async function payWebhook(
     "payment.succeeded"
   ) {
     const providerReference =
-      clean(
-        data?.reference ||
-        data?.transaction_reference ||
-        data?.payment_reference
+      extractPayReference(
+        data
       );
 
-    if (!providerReference) {
+    if (
+      !providerReference
+    ) {
       return json(
         res,
         200,
@@ -3055,7 +3626,9 @@ async function payWebhook(
       );
     }
 
-    const [order] =
+    const [
+      order
+    ] =
       await sql`
         SELECT *
         FROM treasury_deposits
@@ -3086,10 +3659,6 @@ async function payWebhook(
         order.amount
       );
 
-    /*
-     * Se a PAY fornecer amount,
-     * validamos contra a ordem.
-     */
     if (
       Number.isFinite(
         providerAmount
@@ -3111,8 +3680,128 @@ async function payWebhook(
       );
     }
 
+    const method =
+      clean(
+        data?.method ||
+        data?.provider ||
+        ""
+      ).toLowerCase();
+
+    /*
+     * Para esta API, somente M-Pesa
+     * é aceito atualmente pela PAY.
+     */
+    if (
+      method &&
+      method !== "mpesa"
+    ) {
+      return json(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Método PAY inesperado para esta cobrança."
+        }
+      );
+    }
+
+    /*
+     * Reconciliamos a transação na PAY
+     * para obter fee/net reais.
+     */
+    let charge;
+
+    try {
+      charge =
+        await findPayCharge(
+          providerReference
+        );
+    } catch (e) {
+      /*
+       * 503 faz a PAY tentar novamente.
+       * Não creditamos saldo sem reconciliação.
+       */
+      return json(
+        res,
+        503,
+        {
+          success: false,
+          error:
+            "Não foi possível reconciliar a cobrança PAY.",
+          retry: true
+        }
+      );
+    }
+
+    if (!charge) {
+      return json(
+        res,
+        503,
+        {
+          success: false,
+          error:
+            "Cobrança PAY não encontrada na reconciliação.",
+          retry: true
+        }
+      );
+    }
+
+    const chargeAmount =
+      Number(
+        charge.amount
+      );
+
+    if (
+      !Number.isFinite(
+        chargeAmount
+      ) ||
+      Math.abs(
+        chargeAmount -
+          orderAmount
+      ) > 0.01
+    ) {
+      return json(
+        res,
+        400,
+        {
+          success: false,
+          error:
+            "Valor reconciliado pela PAY não corresponde à ordem."
+        }
+      );
+    }
+
+    const fee =
+      Number(
+        charge.fee
+      );
+
+    const net =
+      Number(
+        charge.net
+      );
+
+    if (
+      !Number.isFinite(fee) ||
+      !Number.isFinite(net) ||
+      net <= 0
+    ) {
+      return json(
+        res,
+        503,
+        {
+          success: false,
+          error:
+            "PAY não devolveu fee/net válidos.",
+          retry: true
+        }
+      );
+    }
+
     const state =
       upper(
+        charge?.status ||
         data?.state ||
         data?.status ||
         "SUCCESSFUL"
@@ -3122,54 +3811,99 @@ async function payWebhook(
       [
         "FAILED",
         "CANCELLED",
-        "EXPIRED"
-      ].includes(state)
+        "EXPIRED",
+        "REVERSED"
+      ].includes(
+        state
+      )
     ) {
       return json(
         res,
         200,
         {
           success: true,
-          ignored: true
+          ignored: true,
+          status:
+            state
         }
       );
     }
 
-    const [changed] =
-      await sql`
-        UPDATE treasury_deposits
-        SET
-          status='COMPLETED',
-          message='Pagamento confirmado pela PAY.',
-          updated_at=NOW()
-        WHERE
-          id=${order.id}
-          AND status='PENDING'
-        RETURNING *
-      `;
-
     /*
-     * Somente a primeira transição
-     * gera crédito.
+     * Crédito financeiro:
+     * somente NET entra na tesouraria.
+     *
+     * Exemplo PAY:
+     * 1000 MZN bruto
+     * 100 MZN fee
+     * 900 MZN líquido.
      */
-    if (changed) {
-      await changeWallet(
-        "MZN",
-        orderAmount
-      );
+    const [
+      changedResult,
+      walletResult,
+      transactionResult
+    ] =
+      await sql.transaction([
+        sql`
+          UPDATE treasury_deposits
+          SET
+            status='COMPLETED',
+            fee=${fee},
+            net_amount=${net},
+            provider_id=${clean(
+              charge?.id ||
+              data?.id
+            ) || null},
+            message='Pagamento confirmado pela PAY; valor líquido creditado.',
+            updated_at=NOW()
+          WHERE
+            id=${order.id}
+            AND status='PENDING'
+          RETURNING *
+        `,
 
-      await sql`
-        UPDATE transactions
-        SET
-          status='COMPLETED',
-          provider='PAY',
-          provider_reference=${providerReference}
-        WHERE
-          reference=${order.order_id}
-          AND status='PENDING'
-      `;
+        sql`
+          UPDATE treasury_wallet
+          SET
+            mzn=mzn+${net},
+            updated_at=NOW()
+          WHERE id=1
+          AND EXISTS (
+            SELECT 1
+            FROM treasury_deposits
+            WHERE
+              id=${order.id}
+              AND status='PENDING'
+          )
+          RETURNING *
+        `,
+
+        sql`
+          UPDATE transactions
+          SET
+            status='COMPLETED',
+            provider='PAY',
+            provider_reference=${providerReference}
+          WHERE
+            reference=${order.order_id}
+            AND status='PENDING'
+          RETURNING *
+        `
+      ]);
+
+    if (
+      changedResult.length &&
+      !walletResult.length
+    ) {
+      throw new Error(
+        "Falha ao creditar saldo líquido PAY."
+      );
     }
 
+    /*
+     * Se a ordem já estava COMPLETED,
+     * não creditamos novamente.
+     */
     return json(
       res,
       200,
@@ -3179,6 +3913,10 @@ async function payWebhook(
           eventName,
         order_id:
           order.order_id,
+        gross:
+          chargeAmount,
+        fee,
+        net,
         status:
           "COMPLETED"
       }
@@ -3194,9 +3932,8 @@ async function payWebhook(
     "payment.failed"
   ) {
     const providerReference =
-      clean(
-        data?.reference ||
-        data?.transaction_reference
+      extractPayReference(
+        data
       );
 
     if (
@@ -3210,6 +3947,22 @@ async function payWebhook(
           updated_at=NOW()
         WHERE
           reference=${providerReference}
+          AND status='PENDING'
+      `;
+
+      await sql`
+        UPDATE transactions
+        SET
+          status='FAILED',
+          provider='PAY',
+          provider_reference=${providerReference}
+        WHERE
+          reference=(
+            SELECT order_id
+            FROM treasury_deposits
+            WHERE reference=${providerReference}
+            LIMIT 1
+          )
           AND status='PENDING'
       `;
     }
@@ -3247,7 +4000,9 @@ async function payWebhook(
         data?.payout_reference
       );
 
-    const [withdrawal] =
+    const [
+      withdrawal
+    ] =
       await sql`
         SELECT *
         FROM treasury_withdrawals
@@ -3281,74 +4036,112 @@ async function payWebhook(
         withdrawal.amount
       );
 
-    const [changed] =
-      await sql`
-        UPDATE treasury_withdrawals
-        SET
-          status='COMPLETED',
-          approval_status='APPROVED',
-          message='Payout M-Pesa confirmado pela PAY.',
-          updated_at=NOW()
-        WHERE
-          id=${withdrawal.id}
-          AND status <> 'COMPLETED'
-        RETURNING *
-      `;
+    const fee =
+      Number(
+        data?.fee || 0
+      );
 
-    if (changed) {
-      /*
-       * A reserva já existe desde
-       * a criação da retirada.
-       *
-       * Aqui removemos somente
-       * a reserva.
-       *
-       * O MZN ainda não tinha sido
-       * debitado do saldo principal.
-       */
-      await sql`
-        UPDATE treasury_wallet
-        SET
-          reserved_mzn=
-            GREATEST(
-              0,
-              reserved_mzn-${amount}
-            ),
-          mzn=
-            GREATEST(
-              0,
-              mzn-${amount}
-            ),
-          updated_at=NOW()
-        WHERE id=1
-      `;
+    const [
+      changedResult,
+      walletResult,
+      transactionResult
+    ] =
+      await sql.transaction([
+        sql`
+          UPDATE treasury_withdrawals
+          SET
+            status='COMPLETED',
+            approval_status='APPROVED',
+            provider='PAY',
+            provider_id=${
+              providerId || null
+            },
+            provider_reference=${
+              providerReference ||
+              providerId ||
+              null
+            },
+            fee=${fee},
+            net_amount=${
+              Number(
+                data?.net ||
+                data?.net_amount ||
+                amount
+              )
+            },
+            message='Payout M-Pesa confirmado pela PAY.',
+            updated_at=NOW()
+          WHERE
+            id=${withdrawal.id}
+            AND status <> 'COMPLETED'
+            AND reserved_mzn_exists(
+              1
+            ) IS NOT DISTINCT FROM TRUE
+          RETURNING *
+        `,
 
-      await sql`
-        INSERT INTO transactions(
-          type,
-          asset,
-          amount,
-          status,
-          reference,
-          provider,
-          provider_reference
-        )
-        VALUES(
-          'WITHDRAWAL_MZN_MPESA',
-          'MZN',
-          ${amount},
-          'COMPLETED',
-          ${withdrawal.reference},
-          'PAY',
-          ${
-            providerReference ||
-            providerId ||
-            null
-          }
-        )
-        ON CONFLICT(reference)
-        DO NOTHING
-      `;
+        sql`
+          UPDATE treasury_wallet
+          SET
+            reserved_mzn=
+              GREATEST(
+                0,
+                reserved_mzn-${amount}
+              ),
+            mzn=
+              GREATEST(
+                0,
+                mzn-${amount}
+              ),
+            updated_at=NOW()
+          WHERE
+            id=1
+            AND reserved_mzn>=${amount}
+          RETURNING *
+        `,
+
+        sql`
+          INSERT INTO transactions(
+            type,
+            asset,
+            amount,
+            status,
+            reference,
+            provider,
+            provider_reference
+          )
+          VALUES(
+            'WITHDRAWAL_MZN_MPESA',
+            'MZN',
+            ${amount},
+            'COMPLETED',
+            ${withdrawal.reference},
+            'PAY',
+            ${
+              providerReference ||
+              providerId ||
+              null
+            }
+          )
+          ON CONFLICT(reference)
+          DO NOTHING
+          RETURNING *
+        `
+      ]);
+
+    /*
+     * Compatibilidade com bases antigas:
+     * caso a função auxiliar acima não exista,
+     * o processamento abaixo não deve ficar
+     * dependente dela.
+     */
+    if (
+      changedResult.length &&
+      !walletResult.length
+    ) {
+      throw new Error(
+        "Reserva MZN insuficiente para liquidar payout confirmado."
+      );
     }
 
     return json(
@@ -3384,7 +4177,9 @@ async function payWebhook(
         data?.payout_reference
       );
 
-    const [withdrawal] =
+    const [
+      withdrawal
+    ] =
       await sql`
         SELECT *
         FROM treasury_withdrawals
@@ -3413,12 +4208,32 @@ async function payWebhook(
       );
     }
 
-    const [changed] =
+    /*
+     * Não liberamos a reserva aqui.
+     *
+     * Primeiro marcamos FAILED.
+     * Depois o administrador pode usar
+     * release_failed_withdrawal.
+     *
+     * Isso evita que webhook + ação manual
+     * liberem a mesma reserva duas vezes.
+     */
+    const [
+      changed
+    ] =
       await sql`
         UPDATE treasury_withdrawals
         SET
           status='FAILED',
-          message='Payout recusado/falhado pela PAY.',
+          provider='PAY',
+          provider_id=${
+            providerId || null
+          },
+          provider_reference=${
+            providerReference ||
+            null
+          },
+          message='Payout recusado/falhado pela PAY. Reserva ainda mantida até liberação administrativa.',
           updated_at=NOW()
         WHERE
           id=${withdrawal.id}
@@ -3426,32 +4241,6 @@ async function payWebhook(
           AND status <> 'FAILED'
         RETURNING *
       `;
-
-    /*
-     * O MZN estava reservado,
-     * não debitado.
-     *
-     * Portanto, em caso de falha,
-     * apenas liberamos a reserva.
-     */
-    if (changed) {
-      const amount =
-        Number(
-          withdrawal.amount
-        );
-
-      await sql`
-        UPDATE treasury_wallet
-        SET
-          reserved_mzn=
-            GREATEST(
-              0,
-              reserved_mzn-${amount}
-            ),
-          updated_at=NOW()
-        WHERE id=1
-      `;
-    }
 
     return json(
       res,
@@ -3461,7 +4250,9 @@ async function payWebhook(
         event:
           eventName,
         status:
-          "FAILED"
+          changed
+            ? "FAILED"
+            : withdrawal.status
       }
     );
   }
@@ -3526,9 +4317,6 @@ export default async function handler(
 
     let body = {};
 
-    /*
-     * GET não precisa de body.
-     */
     if (
       req.method !== "GET"
     ) {
@@ -3540,10 +4328,6 @@ export default async function handler(
 
     switch (action) {
 
-      /* =========================
-         DASHBOARD
-      ========================= */
-
       case "dashboard":
       case "treasury":
         return json(
@@ -3552,10 +4336,6 @@ export default async function handler(
           await dashboard()
         );
 
-      /* =========================
-         CONFIG
-      ========================= */
-
       case "config":
         return json(
           res,
@@ -3563,20 +4343,12 @@ export default async function handler(
           await configStatus()
         );
 
-      /* =========================
-         SOURCES
-      ========================= */
-
       case "sources":
         return json(
           res,
           200,
           await sources()
         );
-
-      /* =========================
-         FX
-      ========================= */
 
       case "fx":
       case "rate":
@@ -3588,10 +4360,6 @@ export default async function handler(
             ...(await fx())
           }
         );
-
-      /* =========================
-         CREATE DEPOSIT
-      ========================= */
 
       case "create_treasury_deposit": {
         const result =
@@ -3644,10 +4412,6 @@ export default async function handler(
         );
       }
 
-      /* =========================
-         DEPOSIT STATUS
-      ========================= */
-
       case "deposit_status":
         return json(
           res,
@@ -3663,10 +4427,6 @@ export default async function handler(
           )
         );
 
-      /* =========================
-         CONVERSION
-      ========================= */
-
       case "convert_mzn_to_usdt":
         return json(
           res,
@@ -3675,10 +4435,6 @@ export default async function handler(
             body
           )
         );
-
-      /* =========================
-         RESERVE USDT
-      ========================= */
 
       case "reserve_usdt":
         return json(
@@ -3689,10 +4445,6 @@ export default async function handler(
           )
         );
 
-      /* =========================
-         RELEASE USDT
-      ========================= */
-
       case "release_reservation":
         return json(
           res,
@@ -3701,10 +4453,6 @@ export default async function handler(
             body
           )
         );
-
-      /* =========================
-         LIQUIDITY
-      ========================= */
 
       case "liquidity":
         return json(
@@ -3716,10 +4464,6 @@ export default async function handler(
           }
         );
 
-      /* =========================
-         TRON USDT
-      ========================= */
-
       case "tron_usdt_balance":
       case "wallet_usdt":
         return json(
@@ -3729,14 +4473,12 @@ export default async function handler(
             success: true,
             address:
               treasuryAddress(),
+            contract:
+              CONTRACT,
             usdt:
               await tronUSDTBalance()
           }
         );
-
-      /* =========================
-         TRON TRX
-      ========================= */
 
       case "tron_trx_balance":
       case "wallet_trx":
@@ -3752,10 +4494,6 @@ export default async function handler(
           }
         );
 
-      /* =========================
-         CREATE WITHDRAWAL
-      ========================= */
-
       case "create_withdrawal":
       case "create_mpesawithdrawal":
       case "create_mpesa_withdrawal":
@@ -3767,10 +4505,6 @@ export default async function handler(
           )
         );
 
-      /* =========================
-         APPROVE ONLY
-      ========================= */
-
       case "approve_withdrawal":
         return json(
           res,
@@ -3779,10 +4513,6 @@ export default async function handler(
             body
           )
         );
-
-      /* =========================
-         PROCESS ONLY
-      ========================= */
 
       case "process_withdrawal":
         return json(
@@ -3793,10 +4523,6 @@ export default async function handler(
           )
         );
 
-      /* =========================
-         CANCEL
-      ========================= */
-
       case "cancel_withdrawal":
         return json(
           res,
@@ -3805,10 +4531,6 @@ export default async function handler(
             body
           )
         );
-
-      /* =========================
-         RELEASE FAILED
-      ========================= */
 
       case "release_failed_withdrawal":
         return json(
@@ -3819,10 +4541,6 @@ export default async function handler(
           )
         );
 
-      /* =========================
-         WITHDRAWALS
-      ========================= */
-
       case "withdrawals":
       case "admin_withdrawals":
         return json(
@@ -3831,10 +4549,6 @@ export default async function handler(
           await withdrawals()
         );
 
-      /* =========================
-         OPERATIONS
-      ========================= */
-
       case "operations":
       case "transactions":
         return json(
@@ -3842,10 +4556,6 @@ export default async function handler(
           200,
           await operations()
         );
-
-      /* =========================
-         PAY STATUS
-      ========================= */
 
       case "pay_status":
         return json(
@@ -3865,13 +4575,14 @@ export default async function handler(
                 ? String(
                     process.env.PAY_WALLET_ID
                   )
-                : null
+                : null,
+
+            payout_destination_configured:
+              Boolean(
+                process.env.PAY_PAYOUT_DESTINATION
+              )
           }
         );
-
-      /* =========================
-         HEALTH
-      ========================= */
 
       case "health":
         return json(
