@@ -55,9 +55,6 @@ const FX_MARKET_URL =
   process.env.FX_MARKET_URL ||
   "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=mzn";
 
-/*
- * Endereço oficial do USDT TRC20 na TRON.
- */
 const CONTRACT =
   process.env.USDT_TRON_CONTRACT ||
   "TR7NHqKQxGTCi8q8ZY4pL8otSzgjLj6t";
@@ -71,9 +68,7 @@ const PAY_BASE =
   "https://pay.co.mz/api/public/v1";
 
 const PAY_TIMEOUT_MS =
-  Number(
-    process.env.PAY_TIMEOUT_MS || 20000
-  );
+  Number(process.env.PAY_TIMEOUT_MS || 20000);
 
 const DEPOSIT_SOURCES = [
   "MPESA",
@@ -98,14 +93,6 @@ const LIQUIDITY_SOURCES = [
   "MANUAL_APPROVED"
 ];
 
-/*
- * Compatibilidade:
- * as tabelas continuam sendo verificadas,
- * mas apenas uma vez por instância quente.
- *
- * A migração definitiva para esquema.sql
- * será feita posteriormente.
- */
 let tablesReady = false;
 let tablesPromise = null;
 
@@ -115,14 +102,17 @@ let tablesPromise = null;
 
 const json = (res, status, data) => {
   res.status(status);
+
   res.setHeader(
     "Content-Type",
     "application/json"
   );
+
   res.setHeader(
     "Cache-Control",
     "no-store"
   );
+
   res.end(
     JSON.stringify(data)
   );
@@ -471,6 +461,7 @@ async function ensureTables() {
 
   tablesPromise =
     (async () => {
+
       await sql`
         CREATE TABLE IF NOT EXISTS treasury_wallet (
           id INTEGER PRIMARY KEY,
@@ -1162,10 +1153,6 @@ function extractPayReference(data) {
   );
 }
 
-/*
- * A PAY recomenda confiar no webhook
- * e usar GET /charges para reconciliação.
- */
 async function findPayCharge(
   providerReference
 ) {
@@ -1222,6 +1209,14 @@ async function createDeposit(body) {
     );
   }
 
+  if (
+    source === "EMOLA"
+  ) {
+    throw new Error(
+      "e-Mola ainda não está disponível em produção na PAY.co.mz."
+    );
+  }
+
   const amount =
     positive(
       body.amount
@@ -1243,6 +1238,15 @@ async function createDeposit(body) {
           : "MZN"
       )
     );
+
+  if (
+    source === "MPESA" &&
+    currency !== "MZN"
+  ) {
+    throw new Error(
+      "Depósito M-Pesa deve usar MZN."
+    );
+  }
 
   if (
     source === "USDT_TRON" &&
@@ -1270,6 +1274,37 @@ async function createDeposit(body) {
       body.tx_hash ||
       body.txHash
     ) || null;
+
+  if (
+    source === "MPESA"
+  ) {
+    let normalized =
+      phone
+        ? phone.replace(
+            /\D/g,
+            ""
+          )
+        : "";
+
+    if (
+      /^\d{9}$/.test(
+        normalized
+      )
+    ) {
+      normalized =
+        "258" + normalized;
+    }
+
+    if (
+      !/^258(84|85)\d{7}$/.test(
+        normalized
+      )
+    ) {
+      throw new Error(
+        "Número M-Pesa inválido. Use 84XXXXXXXX ou 85XXXXXXXX."
+      );
+    }
+  }
 
   if (
     source === "USDT_TRON"
@@ -1554,11 +1589,6 @@ async function verifyUSDTDeposit(
       transfer?.result?.from
     ) || null;
 
-  /*
-   * A ordem especifica o valor esperado.
-   * Não aceitamos automaticamente
-   * qualquer quantidade enviada.
-   */
   const expectedAmount =
     Number(
       order.amount
@@ -1628,15 +1658,33 @@ async function confirmUSDTDeposit(
     );
 
   /*
-   * Todas as alterações internas
-   * desta confirmação são atómicas.
+   * PRIMEIRO alteramos a wallet.
+   *
+   * A condição PENDING pertence ao
+   * mesmo depósito e impede crédito
+   * duplicado.
    */
   const [
-    depositResult,
-    walletResult,
-    transactionResult
+    walletResult
   ] =
     await sql.transaction([
+      sql`
+        UPDATE treasury_wallet
+        SET
+          usdt=usdt+${amount},
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND EXISTS (
+            SELECT 1
+            FROM treasury_deposits
+            WHERE
+              id=${order.id}
+              AND status='PENDING'
+          )
+        RETURNING *
+      `,
+
       sql`
         UPDATE treasury_deposits
         SET
@@ -1653,21 +1701,6 @@ async function confirmUSDTDeposit(
       `,
 
       sql`
-        UPDATE treasury_wallet
-        SET
-          usdt=usdt+${amount},
-          updated_at=NOW()
-        WHERE id=1
-        AND EXISTS (
-          SELECT 1
-          FROM treasury_deposits
-          WHERE id=${order.id}
-          AND status='PENDING'
-        )
-        RETURNING *
-      `,
-
-      sql`
         UPDATE transactions
         SET
           status='COMPLETED',
@@ -1680,7 +1713,7 @@ async function confirmUSDTDeposit(
     ]);
 
   if (
-    !depositResult.length
+    !walletResult.length
   ) {
     const [
       current
@@ -1692,24 +1725,29 @@ async function confirmUSDTDeposit(
         LIMIT 1
       `;
 
-    return current || order;
-  }
+    if (
+      current?.status ===
+      "COMPLETED"
+    ) {
+      return current;
+    }
 
-  /*
-   * Segurança adicional:
-   * se a atualização da wallet não ocorreu,
-   * a transação inteira deve ser considerada
-   * inconsistente e não deve prosseguir.
-   */
-  if (
-    !walletResult.length
-  ) {
     throw new Error(
-      "Falha ao creditar a tesouraria."
+      "Falha ao creditar USDT na tesouraria."
     );
   }
 
-  return depositResult[0];
+  const [
+    updated
+  ] =
+    await sql`
+      SELECT *
+      FROM treasury_deposits
+      WHERE id=${order.id}
+      LIMIT 1
+    `;
+
+  return updated || order;
 }
 
 /* =========================================================
@@ -1924,10 +1962,6 @@ async function depositStatus(
     }
   }
 
-  /*
-   * Para PAY, o estado oficial vem
-   * pelo webhook/reconciliação.
-   */
   return {
     success: true,
     confirmed: false,
@@ -2016,20 +2050,24 @@ async function convertMZN(
     };
   }
 
+  /*
+   * Uma única transação.
+   *
+   * O UPDATE da wallet é o primeiro passo.
+   * Os restantes só existem se a condição
+   * da wallet tiver sido satisfeita.
+   */
   const ref =
     reference("CONV");
 
-  /*
-   * A conversão, reserva e registo
-   * contabilístico são feitos juntos.
-   */
   const [
-    debitedResult,
+    walletResult,
     conversionResult,
     reservationResult,
     transactionResult
   ] =
     await sql.transaction([
+
       sql`
         UPDATE treasury_wallet
         SET
@@ -2054,17 +2092,12 @@ async function convertMZN(
           rate,
           status
         )
-        SELECT
+        VALUES(
           ${ref},
           ${amount},
           ${usdt},
           ${market.rate},
           'COMPLETED'
-        WHERE EXISTS (
-          SELECT 1
-          FROM treasury_wallet
-          WHERE id=1
-          AND reserved_usdt>=${usdt}
         )
         RETURNING *
       `,
@@ -2076,16 +2109,11 @@ async function convertMZN(
           status,
           reason
         )
-        SELECT
+        VALUES(
           ${ref},
           ${usdt},
           'RESERVED',
           'Conversão MZN -> USDT'
-        WHERE EXISTS (
-          SELECT 1
-          FROM treasury_wallet
-          WHERE id=1
-          AND reserved_usdt>=${usdt}
         )
         RETURNING *
       `,
@@ -2098,30 +2126,25 @@ async function convertMZN(
           status,
           reference
         )
-        SELECT
+        VALUES(
           'CONVERSION_MZN_USDT',
           'USDT',
           ${usdt},
           'COMPLETED',
           ${ref}
-        WHERE EXISTS (
-          SELECT 1
-          FROM treasury_wallet
-          WHERE id=1
-          AND reserved_usdt>=${usdt}
         )
         RETURNING *
       `
     ]);
 
   if (
-    !debitedResult.length ||
+    !walletResult.length ||
     !conversionResult.length ||
     !reservationResult.length ||
     !transactionResult.length
   ) {
     throw new Error(
-      "Não foi possível concluir a conversão de forma atómica."
+      "Saldo MZN ou liquidez USDT insuficiente para concluir a conversão."
     );
   }
 
@@ -2174,10 +2197,10 @@ async function reserveUSDT(
     reference("RES");
 
   const [
-    walletResult,
-    reservationResult
+    walletResult
   ] =
     await sql.transaction([
+
       sql`
         UPDATE treasury_wallet
         SET
@@ -2210,8 +2233,7 @@ async function reserveUSDT(
     ]);
 
   if (
-    !walletResult.length ||
-    !reservationResult.length
+    !walletResult.length
   ) {
     throw new Error(
       "USDT disponível insuficiente."
@@ -2248,11 +2270,43 @@ async function releaseReservation(
     );
   }
 
+  /*
+   * Primeiro capturamos a reserva.
+   * Depois alteramos wallet dentro da
+   * mesma transação.
+   */
+  const [
+    reservation
+  ] =
+    await sql`
+      SELECT *
+      FROM treasury_reservations
+      WHERE
+        reference=${ref}
+        AND status='RESERVED'
+      LIMIT 1
+    `;
+
+  if (!reservation) {
+    return {
+      success: true,
+      already_processed: true,
+      reference:
+        ref
+    };
+  }
+
+  const amount =
+    Number(
+      reservation.usdt_amount
+    );
+
   const [
     changedResult,
     walletResult
   ] =
     await sql.transaction([
+
       sql`
         UPDATE treasury_reservations
         SET
@@ -2269,18 +2323,12 @@ async function releaseReservation(
           reserved_usdt=
             GREATEST(
               0,
-              reserved_usdt-COALESCE(
-                (
-                  SELECT usdt_amount
-                  FROM treasury_reservations
-                  WHERE reference=${ref}
-                  AND status='RESERVED'
-                ),
-                0
-              )
+              reserved_usdt-${amount}
             ),
           updated_at=NOW()
-        WHERE id=1
+        WHERE
+          id=1
+          AND reserved_usdt>=${amount}
         RETURNING *
       `
     ]);
@@ -2290,37 +2338,19 @@ async function releaseReservation(
   ) {
     return {
       success: true,
-      already_processed: true
+      already_processed: true,
+      reference:
+        ref
     };
   }
 
-  const amount =
-    Number(
-      changedResult[0]
-        .usdt_amount
+  if (
+    !walletResult.length
+  ) {
+    throw new Error(
+      "Não foi possível liberar a reserva USDT."
     );
-
-  /*
-   * Correção:
-   * a atualização acima não consegue
-   * mais enxergar a reserva como RESERVED
-   * depois da primeira query.
-   *
-   * Fazemos a compensação segura abaixo
-   * somente sobre a alteração realmente
-   * efetuada.
-   */
-  await sql`
-    UPDATE treasury_wallet
-    SET
-      reserved_usdt=
-        GREATEST(
-          0,
-          reserved_usdt-${amount}
-        ),
-      updated_at=NOW()
-    WHERE id=1
-  `;
+  }
 
   return {
     success: true,
@@ -2372,11 +2402,6 @@ async function createWithdrawal(
     );
   }
 
-  /*
-   * A PAY usa a carteira/destino configurado
-   * para o payout. Nunca aceitamos um destino
-   * arbitrário vindo do navegador.
-   */
   const destination =
     clean(
       process.env.PAY_PAYOUT_DESTINATION
@@ -2390,6 +2415,7 @@ async function createWithdrawal(
     withdrawalResult
   ] =
     await sql.transaction([
+
       sql`
         UPDATE treasury_wallet
         SET
@@ -2701,38 +2727,17 @@ async function processWithdrawal(
     if (
       !storedReference
     ) {
-      /*
-       * Não aceitamos payout sem
-       * identificador externo.
-       */
       throw new Error(
         "PAY não devolveu identificador do payout."
       );
     }
 
     if (completed) {
+
       const [
-        updatedResult,
-        walletResult,
-        transactionResult
+        walletResult
       ] =
         await sql.transaction([
-          sql`
-            UPDATE treasury_withdrawals
-            SET
-              provider='PAY',
-              provider_reference=${storedReference},
-              provider_id=${providerId},
-              fee=${providerFee},
-              net_amount=${providerNet},
-              status='COMPLETED',
-              message='Payout confirmado pela PAY.',
-              updated_at=NOW()
-            WHERE
-              id=${withdrawal.id}
-              AND status='PROCESSING'
-            RETURNING *
-          `,
 
           sql`
             UPDATE treasury_wallet
@@ -2751,6 +2756,30 @@ async function processWithdrawal(
             WHERE
               id=1
               AND reserved_mzn>=${amount}
+              AND EXISTS (
+                SELECT 1
+                FROM treasury_withdrawals
+                WHERE
+                  id=${withdrawal.id}
+                  AND status='PROCESSING'
+              )
+            RETURNING *
+          `,
+
+          sql`
+            UPDATE treasury_withdrawals
+            SET
+              provider='PAY',
+              provider_reference=${storedReference},
+              provider_id=${providerId},
+              fee=${providerFee},
+              net_amount=${providerNet},
+              status='COMPLETED',
+              message='Payout confirmado pela PAY.',
+              updated_at=NOW()
+            WHERE
+              id=${withdrawal.id}
+              AND status='PROCESSING'
             RETURNING *
           `,
 
@@ -2780,13 +2809,21 @@ async function processWithdrawal(
         ]);
 
       if (
-        !updatedResult.length ||
         !walletResult.length
       ) {
         throw new Error(
           "Não foi possível finalizar contabilmente o payout."
         );
       }
+
+      const [
+        updated
+      ] =
+        await sql`
+          SELECT *
+          FROM treasury_withdrawals
+          WHERE id=${withdrawal.id}
+        `;
 
       return {
         success: true,
@@ -2805,14 +2842,11 @@ async function processWithdrawal(
         payout:
           result,
         withdrawal:
-          updatedResult[0]
+          updated?.[0] ||
+          withdrawal
       };
     }
 
-    /*
-     * PENDING / PROCESSING:
-     * mantemos o dinheiro reservado.
-     */
     const [
       updated
     ] =
@@ -2853,21 +2887,22 @@ async function processWithdrawal(
         updated?.[0] ||
         withdrawal
     };
+
   } catch (e) {
+
     /*
-     * MUITO IMPORTANTE:
+     * Timeout, erro de rede ou 5xx:
+     * estado externo desconhecido.
      *
-     * Timeout, erro de rede ou resposta
-     * desconhecida NÃO significa que o
-     * payout não aconteceu.
-     *
-     * Por isso mantemos PROCESSING.
+     * NÃO liberamos a reserva.
+     * NÃO reenviamos automaticamente.
      */
     if (
       e?.code ===
       "UPSTREAM_TIMEOUT" ||
       e?.statusCode >= 500
     ) {
+
       await sql`
         UPDATE treasury_withdrawals
         SET
@@ -2892,14 +2927,6 @@ async function processWithdrawal(
       };
     }
 
-    /*
-     * Para rejeições HTTP definitivas
-     * da PAY, ainda não liberamos
-     * automaticamente a reserva.
-     *
-     * O administrador deve reconciliar
-     * e liberar a reserva.
-     */
     await sql`
       UPDATE treasury_withdrawals
       SET
@@ -2962,17 +2989,29 @@ async function cancelWithdrawal(
       row.amount
     );
 
-  await sql`
-    UPDATE treasury_wallet
-    SET
-      reserved_mzn=
-        GREATEST(
-          0,
-          reserved_mzn-${amount}
-        ),
-      updated_at=NOW()
-    WHERE id=1
-  `;
+  const [
+    wallet
+  ] =
+    await sql`
+      UPDATE treasury_wallet
+      SET
+        reserved_mzn=
+          GREATEST(
+            0,
+            reserved_mzn-${amount}
+          ),
+        updated_at=NOW()
+      WHERE
+        id=1
+        AND reserved_mzn>=${amount}
+      RETURNING *
+    `;
+
+  if (!wallet) {
+    throw new Error(
+      "Não foi possível liberar a reserva MZN."
+    );
+  }
 
   return {
     success: true,
@@ -3002,52 +3041,89 @@ async function releaseFailedWithdrawal(
     );
   }
 
-  /*
-   * Só FAILED pode ser liberado
-   * manualmente.
-   *
-   * PROCESSING nunca deve ser
-   * liberado sem reconciliação.
-   */
   const [
-    row
+    current
   ] =
     await sql`
-      UPDATE treasury_withdrawals
-      SET
-        status='CANCELLED',
-        message='Reserva liberada após falha confirmada do payout.',
-        updated_at=NOW()
-      WHERE
-        reference=${ref}
-        AND status='FAILED'
-      RETURNING *
+      SELECT *
+      FROM treasury_withdrawals
+      WHERE reference=${ref}
+      LIMIT 1
     `;
 
-  if (!row) {
+  if (!current) {
     throw new Error(
-      "Retirada FAILED não encontrada."
+      "Retirada não encontrada."
+    );
+  }
+
+  if (
+    current.status ===
+    "CANCELLED"
+  ) {
+    return {
+      success: true,
+      already_processed:
+        true,
+      reference:
+        ref
+    };
+  }
+
+  if (
+    current.status !==
+    "FAILED"
+  ) {
+    throw new Error(
+      "Somente uma retirada FAILED pode ter a reserva liberada."
     );
   }
 
   const amount =
     Number(
-      row.amount
+      current.amount
     );
 
-  await sql`
-    UPDATE treasury_wallet
-    SET
-      reserved_mzn=
-        GREATEST(
-          0,
-          reserved_mzn-${amount}
-        ),
-      updated_at=NOW()
-    WHERE
-      id=1
-      AND reserved_mzn>=${amount}
-  `;
+  const [
+    row
+  ] =
+    await sql.transaction([
+
+      sql`
+        UPDATE treasury_wallet
+        SET
+          reserved_mzn=
+            GREATEST(
+              0,
+              reserved_mzn-${amount}
+            ),
+          updated_at=NOW()
+        WHERE
+          id=1
+          AND reserved_mzn>=${amount}
+        RETURNING *
+      `,
+
+      sql`
+        UPDATE treasury_withdrawals
+        SET
+          status='CANCELLED',
+          message='Reserva liberada após falha confirmada do payout.',
+          updated_at=NOW()
+        WHERE
+          reference=${ref}
+          AND status='FAILED'
+        RETURNING *
+      `
+    ]);
+
+  if (
+    !row?.length
+  ) {
+    throw new Error(
+      "Não foi possível liberar a reserva da retirada."
+    );
+  }
 
   return {
     success: true,
@@ -3253,7 +3329,13 @@ async function sources() {
       payout_destination_configured:
         Boolean(
           process.env.PAY_PAYOUT_DESTINATION
-        )
+        ),
+
+      mpesa_production:
+        true,
+
+      emola_production:
+        false
     },
 
     fx: {
@@ -3345,12 +3427,24 @@ async function configStatus() {
       ),
 
     deposit_methods:
-      DEPOSIT_SOURCES,
+      [
+        "MPESA",
+        "BANK",
+        "USDT_TRON",
+        "EXTERNAL",
+        "MANUAL"
+      ],
 
     withdrawal_methods:
       [
         "MPESA"
-      ]
+      ],
+
+    mpesa_production:
+      true,
+
+    emola_production:
+      false
   };
 }
 
@@ -3398,6 +3492,52 @@ function parsePaySignature(
   }
 
   return null;
+}
+
+/*
+ * Verifica se o evento já foi processado.
+ */
+async function webhookAlreadyProcessed(
+  eventId
+) {
+  const [
+    row
+  ] =
+    await sql`
+      SELECT event_id
+      FROM pay_webhook_events
+      WHERE event_id=${eventId}
+      LIMIT 1
+    `;
+
+  return Boolean(row);
+}
+
+/*
+ * Registra somente depois de o evento
+ * ter sido processado com sucesso ou
+ * considerado definitivamente ignorado.
+ *
+ * Se ocorrer erro temporário antes disso,
+ * não gravamos o event_id, permitindo
+ * que a PAY faça retry.
+ */
+async function markWebhookProcessed(
+  eventId,
+  eventName
+) {
+  await sql`
+    INSERT INTO pay_webhook_events(
+      event_id,
+      event_name
+    )
+    VALUES(
+      ${eventId},
+      ${eventName}
+    )
+    ON CONFLICT(event_id)
+    DO NOTHING
+  `;
 }
 
 async function payWebhook(
@@ -3534,10 +3674,6 @@ async function payWebhook(
       event?.event_id
     );
 
-  /*
-   * Event ID é obrigatório para
-   * processamento seguro.
-   */
   if (!eventId) {
     return json(
       res,
@@ -3551,33 +3687,13 @@ async function payWebhook(
   }
 
   /*
-   * Inserimos e verificamos se foi
-   * realmente uma nova ocorrência.
-   */
-  const [
-    insertedEvent
-  ] =
-    await sql`
-      INSERT INTO pay_webhook_events(
-        event_id,
-        event_name
-      )
-      VALUES(
-        ${eventId},
-        ${eventName}
-      )
-      ON CONFLICT(event_id)
-      DO NOTHING
-      RETURNING event_id
-    `;
-
-  /*
-   * Webhook repetido:
-   * respondemos 200 e NÃO processamos
+   * Se já foi concluído, não processamos
    * novamente.
    */
   if (
-    !insertedEvent
+    await webhookAlreadyProcessed(
+      eventId
+    )
   ) {
     return json(
       res,
@@ -3614,6 +3730,11 @@ async function payWebhook(
     if (
       !providerReference
     ) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
       return json(
         res,
         200,
@@ -3637,6 +3758,11 @@ async function payWebhook(
       `;
 
     if (!order) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
       return json(
         res,
         200,
@@ -3645,6 +3771,32 @@ async function payWebhook(
           ignored: true,
           reason:
             "Referência PAY não associada ao USDTMZ."
+        }
+      );
+    }
+
+    /*
+     * Se já estiver concluído, apenas
+     * marcamos o webhook como processado.
+     */
+    if (
+      order.status ===
+      "COMPLETED"
+    ) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
+      return json(
+        res,
+        200,
+        {
+          success: true,
+          already_completed:
+            true,
+          order_id:
+            order.order_id
         }
       );
     }
@@ -3669,6 +3821,11 @@ async function payWebhook(
           orderAmount
       ) > 0.01
     ) {
+      /*
+       * Não marcamos como processado.
+       * É uma inconsistência que precisa
+       * ser tratada/reconciliada.
+       */
       return json(
         res,
         400,
@@ -3687,10 +3844,6 @@ async function payWebhook(
         ""
       ).toLowerCase();
 
-    /*
-     * Para esta API, somente M-Pesa
-     * é aceito atualmente pela PAY.
-     */
     if (
       method &&
       method !== "mpesa"
@@ -3707,8 +3860,7 @@ async function payWebhook(
     }
 
     /*
-     * Reconciliamos a transação na PAY
-     * para obter fee/net reais.
+     * Reconciliação com GET /charges.
      */
     let charge;
 
@@ -3719,8 +3871,8 @@ async function payWebhook(
         );
     } catch (e) {
       /*
-       * 503 faz a PAY tentar novamente.
-       * Não creditamos saldo sem reconciliação.
+       * NÃO marcamos event_id.
+       * A PAY poderá reenviar.
        */
       return json(
         res,
@@ -3779,12 +3931,14 @@ async function payWebhook(
 
     const net =
       Number(
-        charge.net
+        charge.net ??
+        charge.net_amount
       );
 
     if (
       !Number.isFinite(fee) ||
       !Number.isFinite(net) ||
+      fee < 0 ||
       net <= 0
     ) {
       return json(
@@ -3817,64 +3971,102 @@ async function payWebhook(
         state
       )
     ) {
+      await sql`
+        UPDATE treasury_deposits
+        SET
+          status='FAILED',
+          fee=${fee},
+          net_amount=${net},
+          message='Pagamento não foi concluído na PAY.',
+          updated_at=NOW()
+        WHERE
+          id=${order.id}
+          AND status='PENDING'
+      `;
+
+      await sql`
+        UPDATE transactions
+        SET
+          status='FAILED',
+          provider='PAY',
+          provider_reference=${providerReference}
+        WHERE
+          reference=${order.order_id}
+          AND status='PENDING'
+      `;
+
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
       return json(
         res,
         200,
         {
           success: true,
-          ignored: true,
+          event:
+            eventName,
           status:
-            state
+            "FAILED"
         }
       );
     }
 
+    const providerId =
+      clean(
+        charge?.id ||
+        data?.id
+      ) || null;
+
     /*
-     * Crédito financeiro:
-     * somente NET entra na tesouraria.
+     * CRÍTICO:
      *
-     * Exemplo PAY:
-     * 1000 MZN bruto
-     * 100 MZN fee
-     * 900 MZN líquido.
+     * A wallet é atualizada ANTES do
+     * depósito mudar de PENDING.
+     *
+     * Assim a condição PENDING continua
+     * válida durante a transação.
+     *
+     * Se qualquer query falhar,
+     * toda a transação sofre rollback.
      */
     const [
-      changedResult,
       walletResult,
+      changedResult,
       transactionResult
     ] =
       await sql.transaction([
-        sql`
-          UPDATE treasury_deposits
-          SET
-            status='COMPLETED',
-            fee=${fee},
-            net_amount=${net},
-            provider_id=${clean(
-              charge?.id ||
-              data?.id
-            ) || null},
-            message='Pagamento confirmado pela PAY; valor líquido creditado.',
-            updated_at=NOW()
-          WHERE
-            id=${order.id}
-            AND status='PENDING'
-          RETURNING *
-        `,
 
         sql`
           UPDATE treasury_wallet
           SET
             mzn=mzn+${net},
             updated_at=NOW()
-          WHERE id=1
-          AND EXISTS (
-            SELECT 1
-            FROM treasury_deposits
-            WHERE
-              id=${order.id}
-              AND status='PENDING'
-          )
+          WHERE
+            id=1
+            AND EXISTS (
+              SELECT 1
+              FROM treasury_deposits
+              WHERE
+                id=${order.id}
+                AND status='PENDING'
+            )
+          RETURNING *
+        `,
+
+        sql`
+          UPDATE treasury_deposits
+          SET
+            status='COMPLETED',
+            fee=${fee},
+            net_amount=${net},
+            provider_id=${providerId},
+            message='Pagamento confirmado pela PAY; valor líquido creditado.',
+            updated_at=NOW()
+          WHERE
+            id=${order.id}
+            AND status='PENDING'
           RETURNING *
         `,
 
@@ -3891,19 +4083,70 @@ async function payWebhook(
         `
       ]);
 
+    /*
+     * Se outra tentativa já tiver concluído
+     * o depósito, não creditamos novamente.
+     */
     if (
-      changedResult.length &&
       !walletResult.length
     ) {
+      const [
+        current
+      ] =
+        await sql`
+          SELECT *
+          FROM treasury_deposits
+          WHERE id=${order.id}
+          LIMIT 1
+        `;
+
+      if (
+        current?.status ===
+        "COMPLETED"
+      ) {
+        await markWebhookProcessed(
+          eventId,
+          eventName
+        );
+
+        return json(
+          res,
+          200,
+          {
+            success: true,
+            already_completed:
+              true,
+            order_id:
+              order.order_id
+          }
+        );
+      }
+
       throw new Error(
         "Falha ao creditar saldo líquido PAY."
       );
     }
 
+    if (
+      !changedResult.length
+    ) {
+      throw new Error(
+        "Depósito não pôde ser marcado como COMPLETED."
+      );
+    }
+
     /*
-     * Se a ordem já estava COMPLETED,
-     * não creditamos novamente.
+     * transactions pode não existir em bases
+     * antigas para esta referência.
+     * O depósito e a wallet são a fonte
+     * financeira principal.
      */
+
+    await markWebhookProcessed(
+      eventId,
+      eventName
+    );
+
     return json(
       res,
       200,
@@ -3967,6 +4210,11 @@ async function payWebhook(
       `;
     }
 
+    await markWebhookProcessed(
+      eventId,
+      eventName
+    );
+
     return json(
       res,
       200,
@@ -4021,12 +4269,41 @@ async function payWebhook(
       `;
 
     if (!withdrawal) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
       return json(
         res,
         200,
         {
           success: true,
           ignored: true
+        }
+      );
+    }
+
+    /*
+     * Já COMPLETED:
+     * nunca descontar novamente.
+     */
+    if (
+      withdrawal.status ===
+      "COMPLETED"
+    ) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
+      return json(
+        res,
+        200,
+        {
+          success: true,
+          already_completed:
+            true
         }
       );
     }
@@ -4041,12 +4318,46 @@ async function payWebhook(
         data?.fee || 0
       );
 
+    const net =
+      Number(
+        data?.net ??
+        data?.net_amount ??
+        amount
+      );
+
+    /*
+     * PRIMEIRO reduzimos a reserva.
+     * A condição PROCESSING/FAILED impede
+     * dupla liquidação.
+     */
     const [
-      changedResult,
       walletResult,
+      changedResult,
       transactionResult
     ] =
       await sql.transaction([
+
+        sql`
+          UPDATE treasury_wallet
+          SET
+            reserved_mzn=
+              reserved_mzn-${amount},
+            mzn=
+              mzn-${amount},
+            updated_at=NOW()
+          WHERE
+            id=1
+            AND reserved_mzn>=${amount}
+            AND EXISTS (
+              SELECT 1
+              FROM treasury_withdrawals
+              WHERE
+                id=${withdrawal.id}
+                AND status <> 'COMPLETED'
+            )
+          RETURNING *
+        `,
+
         sql`
           UPDATE treasury_withdrawals
           SET
@@ -4062,41 +4373,12 @@ async function payWebhook(
               null
             },
             fee=${fee},
-            net_amount=${
-              Number(
-                data?.net ||
-                data?.net_amount ||
-                amount
-              )
-            },
+            net_amount=${net},
             message='Payout M-Pesa confirmado pela PAY.',
             updated_at=NOW()
           WHERE
             id=${withdrawal.id}
             AND status <> 'COMPLETED'
-            AND reserved_mzn_exists(
-              1
-            ) IS NOT DISTINCT FROM TRUE
-          RETURNING *
-        `,
-
-        sql`
-          UPDATE treasury_wallet
-          SET
-            reserved_mzn=
-              GREATEST(
-                0,
-                reserved_mzn-${amount}
-              ),
-            mzn=
-              GREATEST(
-                0,
-                mzn-${amount}
-              ),
-            updated_at=NOW()
-          WHERE
-            id=1
-            AND reserved_mzn>=${amount}
           RETURNING *
         `,
 
@@ -4129,20 +4411,18 @@ async function payWebhook(
         `
       ]);
 
-    /*
-     * Compatibilidade com bases antigas:
-     * caso a função auxiliar acima não exista,
-     * o processamento abaixo não deve ficar
-     * dependente dela.
-     */
     if (
-      changedResult.length &&
       !walletResult.length
     ) {
       throw new Error(
         "Reserva MZN insuficiente para liquidar payout confirmado."
       );
     }
+
+    await markWebhookProcessed(
+      eventId,
+      eventName
+    );
 
     return json(
       res,
@@ -4198,6 +4478,11 @@ async function payWebhook(
       `;
 
     if (!withdrawal) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
       return json(
         res,
         200,
@@ -4208,39 +4493,53 @@ async function payWebhook(
       );
     }
 
+    if (
+      withdrawal.status ===
+      "COMPLETED"
+    ) {
+      await markWebhookProcessed(
+        eventId,
+        eventName
+      );
+
+      return json(
+        res,
+        200,
+        {
+          success: true,
+          already_completed:
+            true
+        }
+      );
+    }
+
+    await sql`
+      UPDATE treasury_withdrawals
+      SET
+        status='FAILED',
+        provider='PAY',
+        provider_id=${
+          providerId || null
+        },
+        provider_reference=${
+          providerReference ||
+          null
+        },
+        message='Payout recusado/falhado pela PAY. Reserva ainda mantida até liberação administrativa.',
+        updated_at=NOW()
+      WHERE
+        id=${withdrawal.id}
+        AND status <> 'COMPLETED'
+        AND status <> 'FAILED'
+    `;
+
     /*
-     * Não liberamos a reserva aqui.
-     *
-     * Primeiro marcamos FAILED.
-     * Depois o administrador pode usar
-     * release_failed_withdrawal.
-     *
-     * Isso evita que webhook + ação manual
-     * liberem a mesma reserva duas vezes.
+     * NÃO liberamos a reserva automaticamente.
      */
-    const [
-      changed
-    ] =
-      await sql`
-        UPDATE treasury_withdrawals
-        SET
-          status='FAILED',
-          provider='PAY',
-          provider_id=${
-            providerId || null
-          },
-          provider_reference=${
-            providerReference ||
-            null
-          },
-          message='Payout recusado/falhado pela PAY. Reserva ainda mantida até liberação administrativa.',
-          updated_at=NOW()
-        WHERE
-          id=${withdrawal.id}
-          AND status <> 'COMPLETED'
-          AND status <> 'FAILED'
-        RETURNING *
-      `;
+    await markWebhookProcessed(
+      eventId,
+      eventName
+    );
 
     return json(
       res,
@@ -4250,12 +4549,19 @@ async function payWebhook(
         event:
           eventName,
         status:
-          changed
-            ? "FAILED"
-            : withdrawal.status
+          "FAILED"
       }
     );
   }
+
+  /* =======================================================
+     EVENTO DESCONHECIDO
+  ======================================================= */
+
+  await markWebhookProcessed(
+    eventId,
+    eventName
+  );
 
   return json(
     res,
@@ -4278,6 +4584,7 @@ export default async function handler(
   res
 ) {
   try {
+
     await ensureTables();
 
     const url =
@@ -4362,6 +4669,7 @@ export default async function handler(
         );
 
       case "create_treasury_deposit": {
+
         const result =
           await createDeposit(
             body
@@ -4369,14 +4677,12 @@ export default async function handler(
 
         if (
           result.order &&
-          (
-            result.order.source ===
-              "MPESA" ||
-            result.order.source ===
-              "EMOLA"
-          )
+          result.order.source ===
+            "MPESA"
         ) {
+
           try {
+
             const payment =
               await createPayDeposit(
                 result.order
@@ -4390,7 +4696,9 @@ export default async function handler(
                 payment
               }
             );
+
           } catch (e) {
+
             return json(
               res,
               400,
@@ -4580,7 +4888,13 @@ export default async function handler(
             payout_destination_configured:
               Boolean(
                 process.env.PAY_PAYOUT_DESTINATION
-              )
+              ),
+
+            mpesa_production:
+              true,
+
+            emola_production:
+              false
           }
         );
 
@@ -4634,7 +4948,9 @@ export default async function handler(
           }
         );
     }
+
   } catch (e) {
+
     console.error(
       "USDTMZ API06:",
       e
