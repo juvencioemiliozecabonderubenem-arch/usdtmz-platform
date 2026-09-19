@@ -7,12 +7,14 @@
 
 <style>
 *{box-sizing:border-box}
+
 body{
   margin:0;
   font-family:Arial,sans-serif;
   background:#f4f6f8;
   color:#17202a
 }
+
 header{
   background:#111827;
   color:#fff;
@@ -21,28 +23,40 @@ header{
   top:0;
   z-index:10
 }
-header h1{margin:0;font-size:22px}
+
+header h1{
+  margin:0;
+  font-size:22px
+}
+
 header p{
   margin:6px 0 0;
   color:#cbd5e1;
   font-size:13px
 }
+
 main{
   max-width:1100px;
   margin:auto;
   padding:15px
 }
-h2{margin:22px 0 10px}
+
+h2{
+  margin:22px 0 10px
+}
+
 .grid{
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:12px
 }
+
 .grid3{
   display:grid;
   grid-template-columns:repeat(3,1fr);
   gap:12px
 }
+
 .card,.stat{
   background:#fff;
   border:1px solid #e5e7eb;
@@ -50,28 +64,40 @@ h2{margin:22px 0 10px}
   padding:15px;
   box-shadow:0 3px 12px #0000000d
 }
+
 .label,.small{
   font-size:12px;
   color:#64748b
 }
+
 .value{
   font-size:22px;
   font-weight:bold;
   margin-top:5px
 }
+
 label{
   display:block;
   font-size:13px;
   font-weight:bold;
   margin:10px 0 5px
 }
+
 input,select{
   width:100%;
   padding:11px;
   border:1px solid #cbd5e1;
   border-radius:8px;
-  font-size:14px
+  font-size:14px;
+  background:#fff
 }
+
+input:focus,
+select:focus{
+  outline:2px solid #bfdbfe;
+  border-color:#2563eb
+}
+
 button{
   width:100%;
   border:0;
@@ -81,12 +107,37 @@ button{
   font-weight:bold;
   cursor:pointer
 }
-button:disabled{opacity:.55}
-.primary{background:#2563eb;color:#fff}
-.dark{background:#111827;color:#fff}
-.refresh{background:#e5e7eb;color:#111827}
-.danger{background:#dc2626;color:#fff}
-.success{background:#16a34a;color:#fff}
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed
+}
+
+.primary{
+  background:#2563eb;
+  color:#fff
+}
+
+.dark{
+  background:#111827;
+  color:#fff
+}
+
+.refresh{
+  background:#e5e7eb;
+  color:#111827
+}
+
+.danger{
+  background:#dc2626;
+  color:#fff
+}
+
+.success{
+  background:#16a34a;
+  color:#fff
+}
+
 .box{
   background:#f8fafc;
   border:1px solid #e2e8f0;
@@ -94,6 +145,7 @@ button:disabled{opacity:.55}
   padding:12px;
   margin-top:10px
 }
+
 .notice{
   background:#fff7ed;
   border:1px solid #fed7aa;
@@ -102,37 +154,51 @@ button:disabled{opacity:.55}
   border-radius:9px;
   font-size:13px
 }
+
 .notice.info{
   background:#eff6ff;
   border-color:#bfdbfe;
   color:#1e40af
 }
+
 .notice.success{
   background:#f0fdf4;
   border-color:#bbf7d0;
   color:#166534
 }
+
 .notice.error{
   background:#fef2f2;
   border-color:#fecaca;
   color:#991b1b
 }
+
 .wallet{
   word-break:break-all;
   background:#f3f4f6;
   padding:10px;
   border-radius:8px
 }
+
 .result{
   font-size:23px;
-  font-weight:bold
+  font-weight:bold;
+  color:#111827
 }
+
+.result-sub{
+  margin-top:4px;
+  font-size:12px;
+  color:#64748b
+}
+
 .method-grid{
   display:grid;
   grid-template-columns:repeat(3,1fr);
   gap:9px;
   margin-top:10px
 }
+
 .method{
   border:1px solid #cbd5e1;
   background:#f8fafc;
@@ -142,10 +208,21 @@ button:disabled{opacity:.55}
   font-weight:bold;
   cursor:pointer
 }
+
+.method:hover{
+  background:#f1f5f9
+}
+
 .method.active{
   border:2px solid #2563eb;
   background:#eff6ff
 }
+
+.method.disabled{
+  opacity:.55;
+  cursor:not-allowed
+}
+
 .status{
   display:inline-block;
   padding:5px 8px;
@@ -155,23 +232,31 @@ button:disabled{opacity:.55}
   font-size:11px;
   font-weight:bold
 }
+
 .status.ok{
   background:#dcfce7;
   color:#166534
 }
+
 .status.err{
   background:#fee2e2;
   color:#991b1b
 }
+
 .status.blue{
   background:#dbeafe;
   color:#1e40af
 }
+
 .operation{
   border-bottom:1px solid #e5e7eb;
   padding:10px 0
 }
-.operation:last-child{border-bottom:0}
+
+.operation:last-child{
+  border-bottom:0
+}
+
 .admin-status{
   display:inline-block;
   margin-top:8px;
@@ -182,15 +267,29 @@ button:disabled{opacity:.55}
   font-size:12px;
   font-weight:bold
 }
-.rate-loading{color:#64748b}
-.rate-ok{color:#15803d}
-.rate-error{color:#b91c1c}
-.hidden{display:none!important}
+
+.rate-loading{
+  color:#64748b
+}
+
+.rate-ok{
+  color:#15803d
+}
+
+.rate-error{
+  color:#b91c1c
+}
+
+.hidden{
+  display:none!important
+}
+
 .actions{
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:8px
 }
+
 .withdraw-item{
   border:1px solid #e5e7eb;
   background:#fff;
@@ -198,11 +297,13 @@ button:disabled{opacity:.55}
   padding:11px;
   margin-top:8px
 }
+
 .withdraw-actions{
   display:grid;
   grid-template-columns:repeat(2,1fr);
   gap:7px
 }
+
 pre{
   white-space:pre-wrap;
   word-break:break-word;
@@ -212,13 +313,37 @@ pre{
   padding:10px;
   border-radius:8px
 }
-@media(max-width:800px){
-  .grid,.grid3{grid-template-columns:1fr}
-  .method-grid{grid-template-columns:1fr 1fr}
+
+hr{
+  border:0;
+  border-top:1px solid #e5e7eb;
+  margin:15px 0
 }
+
+@media(max-width:800px){
+
+  .grid,
+  .grid3{
+    grid-template-columns:1fr
+  }
+
+  .method-grid{
+    grid-template-columns:1fr 1fr
+  }
+
+}
+
 @media(max-width:500px){
-  .method-grid{grid-template-columns:1fr}
-  .actions,.withdraw-actions{grid-template-columns:1fr}
+
+  .method-grid{
+    grid-template-columns:1fr
+  }
+
+  .actions,
+  .withdraw-actions{
+    grid-template-columns:1fr
+  }
+
 }
 </style>
 </head>
@@ -226,14 +351,22 @@ pre{
 <body>
 
 <header>
+
 <h1>USDTMZ — Central Admin</h1>
-<p>Depósitos, conversão, tesouraria e levantamentos</p>
+
+<p>
+Depósitos, câmbio, conversão, tesouraria e levantamentos
+</p>
+
 <div id="adminStatus" class="admin-status">
 🔐 Verificando sessão...
 </div>
+
 </header>
 
+
 <main>
+
 
 <!-- =====================================================
      TESOURARIA
@@ -284,128 +417,368 @@ A CARREGAR...
 
 
 <!-- =====================================================
-     DEPÓSITOS
+     CÂMBIO / EXCHANGE RATE
 ===================================================== -->
 
-<h2>➕ Depositar</h2>
+<h2>💱 Sistema Financeiro — Exchange Rate</h2>
 
 <section class="card">
 
 <div class="notice info">
-<strong>Fluxo seguro:</strong><br>
-A ordem é criada como <b>PENDING</b>. O saldo da tesouraria
-não é aumentado simplesmente porque a ordem foi criada.
-O servidor somente confirma o depósito depois de receber
-uma confirmação real do provedor ou da blockchain.
+
+<strong>Cotação cambial em tempo real</strong><br>
+
+A taxa é obtida pelo servidor.
+O navegador somente apresenta a cotação e calcula uma
+prévia. A execução financeira definitiva é feita pela API
+do servidor.
+
 </div>
+
+
+<div class="box">
+
+<div class="small">
+1 USDT =
+</div>
+
+<strong
+  id="currentRate"
+  class="rate-loading">
+
+A calcular...
+
+</strong>
+
+<div
+  id="rateSource"
+  class="small">
+
+Fonte: servidor
+
+</div>
+
+<div
+  id="rateUpdated"
+  class="small">
+
+Atualização: —
+
+</div>
+
+</div>
+
+
+<label>
+Valor em MZN
+</label>
+
+<input
+  id="convertMzn"
+  type="number"
+  min="20"
+  max="40000"
+  step="1"
+  inputmode="numeric"
+  placeholder="Ex.: 6400">
+
+
+<div class="box">
+
+<div class="small">
+Cotação da conversão
+</div>
+
+<div
+  id="conversionRateDisplay"
+  class="small">
+
+Taxa: —
+
+</div>
+
+<hr>
+
+<div class="small">
+USDT estimado
+</div>
+
+<div
+  id="convertUsdt"
+  class="result">
+
+0 USDT
+
+</div>
+
+<div
+  id="conversionPreview"
+  class="result-sub">
+
+Digite o valor MZN para calcular.
+
+</div>
+
+</div>
+
+
+<button
+  class="primary"
+  id="convertButton">
+
+🔄 EXECUTAR CONVERSÃO MZN → USDT
+
+</button>
+
+
+<button
+  class="refresh"
+  id="rateButton">
+
+💱 ATUALIZAR EXCHANGE RATE
+
+</button>
+
+
+<div
+  id="conversionMessage"
+  class="small"
+  style="margin-top:10px">
+
+</div>
+
+</section>
+
+
+<!-- =====================================================
+     DEPÓSITOS
+===================================================== -->
+
+<h2>➕ Entrada de Fundos</h2>
+
+<section class="card">
+
+<div class="notice info">
+
+<strong>Fluxo financeiro:</strong><br>
+
+Pagamento → confirmação real → crédito na tesouraria.
+
+Criar uma ordem não aumenta automaticamente o saldo.
+
+</div>
+
 
 <div class="method-grid">
 
-<div class="method" data-method="MPESA">
-📱<br>M-Pesa
-</div>
+<div
+  class="method"
+  data-method="MPESA">
 
-<div class="method" data-method="EMOLA">
-📱<br>e-Mola
-</div>
-
-<div class="method" data-method="BANK">
-🏦<br>Banco
-</div>
-
-<div class="method" data-method="USDT_TRON">
-💵<br>USDT TRC20
-</div>
-
-<div class="method" data-method="EXTERNAL">
-👛<br>Carteira externa
-</div>
-
-<div class="method" data-method="MANUAL">
-📝<br>Manual aprovado
-</div>
+📱<br>
+M-Pesa
 
 </div>
 
-<div id="depositForm" class="box hidden">
 
-<strong id="selectedDeposit">Método</strong>
+<div
+  class="method"
+  data-method="EMOLA">
 
-<label>Valor</label>
+📱<br>
+e-Mola
+
+</div>
+
+
+<div
+  class="method"
+  data-method="BANK">
+
+🏦<br>
+Banco
+
+</div>
+
+
+<div
+  class="method"
+  data-method="USDT_TRON">
+
+💵<br>
+USDT TRC20
+
+</div>
+
+
+<div
+  class="method"
+  data-method="EXTERNAL">
+
+👛<br>
+Carteira externa
+
+</div>
+
+
+<div
+  class="method"
+  data-method="MANUAL">
+
+📝<br>
+Manual aprovado
+
+</div>
+
+</div>
+
+
+<div
+  id="depositForm"
+  class="box hidden">
+
+<strong id="selectedDeposit">
+Método
+</strong>
+
+
+<label>
+Valor
+</label>
 
 <input
- id="depositAmount"
- type="number"
- min="0.000001"
- step="0.000001"
- placeholder="Valor">
+  id="depositAmount"
+  type="number"
+  min="0.000001"
+  step="0.000001"
+  inputmode="decimal"
+  placeholder="Valor">
 
-<label>Moeda</label>
+
+<label>
+Moeda
+</label>
 
 <select id="depositCurrency">
-<option value="MZN">MZN</option>
-<option value="USDT">USDT</option>
+
+<option value="MZN">
+MZN
+</option>
+
+<option value="USDT">
+USDT
+</option>
+
 </select>
+
 
 <label id="depositReferenceLabel">
 Número / Referência / TX Hash
 </label>
 
 <input
- id="depositReference"
- placeholder="Informe os dados necessários">
+  id="depositReference"
+  placeholder="Informe os dados necessários">
 
-<div id="depositHint" class="small"></div>
 
-<button class="primary" id="depositButton">
+<div
+  id="depositHint"
+  class="small">
+
+</div>
+
+
+<button
+  class="primary"
+  id="depositButton">
+
 ➕ CRIAR ORDEM DE DEPÓSITO
+
 </button>
 
 </div>
 
 
-<div id="depositOrder" class="box hidden">
+<div
+  id="depositOrder"
+  class="box hidden">
 
-<strong>📋 Ordem de depósito</strong>
+<strong>
+📋 Ordem de depósito
+</strong>
+
 
 <p>
 <b>ID:</b>
 <span id="orderId">—</span>
 </p>
 
+
 <p>
 <b>Status:</b>
-<span id="orderStatus" class="status">
+
+<span
+  id="orderStatus"
+  class="status">
+
 PENDING
+
 </span>
+
 </p>
+
 
 <p>
 <b>Valor:</b>
 <span id="orderAmount">—</span>
 </p>
 
+
 <p>
 <b>USDT:</b>
 <span id="orderUsdt">—</span>
 </p>
+
 
 <p>
 <b>Taxa:</b>
 <span id="orderRate">—</span>
 </p>
 
+
+<p>
+<b>Taxa Pay:</b>
+<span id="orderFee">—</span>
+</p>
+
+
+<p>
+<b>Líquido recebido:</b>
+<span id="orderNet">—</span>
+</p>
+
+
 <p>
 <b>Referência Pay:</b>
 <span id="orderProviderReference">—</span>
 </p>
 
-<div id="orderMessage" class="small">
+
+<div
+  id="orderMessage"
+  class="small">
+
 Aguardando confirmação real.
+
 </div>
 
-<button class="refresh" id="checkOrder">
+
+<button
+  class="refresh"
+  id="checkOrder">
+
 🔄 VERIFICAR ORDEM
+
 </button>
 
 </div>
@@ -414,146 +787,129 @@ Aguardando confirmação real.
 
 
 <!-- =====================================================
-     CONVERSÃO
+     RETIRADAS
 ===================================================== -->
 
-<h2>🔄 Converter MZN → USDT</h2>
+<h2>➖ Retirar Fundos</h2>
 
 <section class="card">
 
 <div class="notice info">
-A taxa vem do servidor através de uma cotação de mercado.
-O navegador apenas apresenta a cotação. Ele não pode criar
-USDT. A conversão só é concluída quando existe liquidez
-USDT real suficiente na tesouraria.
-</div>
 
-<div class="box">
+<strong>Segurança financeira:</strong><br>
 
-<div class="small">
-Taxa atual
-</div>
+Toda retirada começa como <b>PENDING</b>.
 
-<strong id="currentRate" class="rate-loading">
-A calcular...
-</strong>
+Nenhuma retirada normal é enviada diretamente pelo navegador.
 
-<div id="rateSource" class="small">
-Fonte: servidor
-</div>
+Fluxo:
 
-<div id="rateUpdated" class="small">
-Atualização: —
-</div>
+<b>PENDING → APPROVED → PROCESSING → COMPLETED</b>
 
 </div>
 
-<label>Valor MZN</label>
-
-<input
- id="convertMzn"
- type="number"
- min="20"
- max="40000"
- step="1"
- placeholder="Ex.: 640">
-
-<div class="box">
-
-<div class="small">
-Você recebe
-</div>
-
-<div class="result" id="convertUsdt">
-0 USDT
-</div>
-
-</div>
-
-<button
- class="primary"
- id="convertButton">
-🔄 CONVERTER MZN → USDT
-</button>
-
-<button
- class="refresh"
- id="rateButton">
-💱 ATUALIZAR TAXA
-</button>
-
-</section>
-
-
-<!-- =====================================================
-     LEVANTAMENTOS
-===================================================== -->
-
-<h2>➖ Retirar</h2>
-
-<section class="card">
-
-<div class="notice info">
-<strong>Segurança:</strong>
-nenhuma retirada normal é enviada automaticamente.
-Primeiro é criada como <b>PENDING</b>. Depois o administrador
-deve autorizar. Somente uma retirada <b>APPROVED</b> pode ser
-enviada ao provedor.
-</div>
 
 <div class="method-grid">
 
-<div class="method" data-withdraw="BINANCE">
-🚀<br>Binance
-</div>
 
-<div class="method" data-withdraw="TRON">
-💵<br>USDT TRC20
-</div>
+<div
+  class="method"
+  data-withdraw="BINANCE">
 
-<div class="method" data-withdraw="MPESA">
-📱<br>M-Pesa
-</div>
-
-<div class="method" data-withdraw="EMOLA">
-📱<br>e-Mola
-</div>
-
-<div class="method" data-withdraw="BANK">
-🏦<br>Banco
-</div>
+🚀<br>
+Binance
 
 </div>
 
-<div id="withdrawForm" class="box hidden">
+
+<div
+  class="method"
+  data-withdraw="TRON">
+
+💵<br>
+USDT TRC20
+
+</div>
+
+
+<div
+  class="method"
+  data-withdraw="MPESA">
+
+📱<br>
+M-Pesa
+
+</div>
+
+
+<div
+  class="method"
+  data-withdraw="EMOLA">
+
+📱<br>
+e-Mola
+
+</div>
+
+
+<div
+  class="method"
+  data-withdraw="BANK">
+
+🏦<br>
+Banco
+
+</div>
+
+
+</div>
+
+
+<div
+  id="withdrawForm"
+  class="box hidden">
+
 
 <strong id="selectedWithdraw">
 Método
 </strong>
 
+
 <label id="withdrawLabel">
-Valor USDT
+Valor
 </label>
 
 <input
- id="withdrawAmount"
- type="number"
- min="0.000001"
- step="0.000001"
- placeholder="Valor">
+  id="withdrawAmount"
+  type="number"
+  min="0.000001"
+  step="0.000001"
+  inputmode="decimal"
+  placeholder="Valor">
 
-<label>Destino</label>
+
+<label>
+Destino / Referência
+</label>
 
 <input
- id="withdrawDestination"
- placeholder="Destino">
+  id="withdrawDestination"
+  placeholder="Destino">
 
-<div id="withdrawHint" class="small"></div>
+
+<div
+  id="withdrawHint"
+  class="small">
+
+</div>
+
 
 <button
- class="dark"
- id="withdrawButton">
+  class="dark"
+  id="withdrawButton">
+
 ➕ CRIAR RETIRADA PENDING
+
 </button>
 
 </div>
@@ -562,27 +918,35 @@ Valor USDT
 
 
 <!-- =====================================================
-     RETIRADAS PENDENTES
+     AUTORIZAÇÕES
 ===================================================== -->
 
-<h2>🔐 Autorizações de retirada</h2>
+<h2>🔐 Autorizações de Retirada</h2>
 
 <section class="card">
 
 <div class="notice">
-Aqui o administrador vê as retiradas criadas e decide
-quando autorizar. O processamento só pode ocorrer depois
-de <b>APPROVED</b>.
+
+O administrador deve autorizar antes do processamento.
+
+Uma retirada <b>APPROVED</b> pode então ser processada.
+
 </div>
+
 
 <div id="withdrawals">
+
 A carregar retiradas...
+
 </div>
 
+
 <button
- class="refresh"
- id="refreshWithdrawals">
+  class="refresh"
+  id="refreshWithdrawals">
+
 🔄 ATUALIZAR RETIRADAS
+
 </button>
 
 </section>
@@ -596,9 +960,12 @@ A carregar retiradas...
 
 <section class="card">
 
+
 <div class="wallet">
 
-Endereço da tesouraria:<br><br>
+Endereço da tesouraria:
+
+<br><br>
 
 <strong id="walletAddress">
 Carregando...
@@ -606,12 +973,14 @@ Carregando...
 
 </div>
 
+
 <div class="grid">
+
 
 <div class="box">
 
 <div class="small">
-USDT real
+USDT real on-chain
 </div>
 
 <strong id="tronUsdt">
@@ -620,10 +989,11 @@ USDT real
 
 </div>
 
+
 <div class="box">
 
 <div class="small">
-TRX
+TRX real on-chain
 </div>
 
 <strong id="tronTrx">
@@ -632,18 +1002,31 @@ TRX
 
 </div>
 
+
 </div>
 
+
 <p class="small">
-Rede: TRON Mainnet / TRC-20<br>
-Contrato USDT:<br>
-TR7NHqjeKQXGTCi8q8ZY4pL8otSzgjLj6t
+
+Rede: TRON Mainnet / TRC-20
+
+<br>
+
+Contrato USDT:
+
+<br>
+
+TR7NHqKQxGTCi8q8ZY4pL8otSzgjLj6t
+
 </p>
 
+
 <button
- class="refresh"
- id="refreshButton">
+  class="refresh"
+  id="refreshButton">
+
 🔄 ATUALIZAR TESOURARIA
+
 </button>
 
 </section>
@@ -653,14 +1036,16 @@ TR7NHqjeKQXGTCi8q8ZY4pL8otSzgjLj6t
      OPERAÇÕES
 ===================================================== -->
 
-<h2>📋 Operações recentes</h2>
+<h2>📋 Operações Recentes</h2>
 
 <section class="card">
 
 <div
- id="operations"
- class="small">
+  id="operations"
+  class="small">
+
 A carregar operações...
+
 </div>
 
 </section>
@@ -670,43 +1055,88 @@ A carregar operações...
      CONFIGURAÇÃO
 ===================================================== -->
 
-<h2>⚙️ Configuração</h2>
+<h2>⚙️ Configuração Financeira</h2>
 
 <section class="card">
 
+
 <p>
-<b>Taxa:</b>
+
+<b>Exchange Rate:</b>
+
 <span id="configRate">
 A calcular...
 </span>
+
 </p>
 
+
 <p>
+
 <b>Mínimo:</b>
+
 20 MZN
+
 </p>
 
+
 <p>
+
 <b>Máximo:</b>
+
 40.000 MZN
+
 </p>
 
+
 <p>
+
 <b>Rede:</b>
+
 TRON / TRC-20
+
 </p>
 
+
 <p>
+
 <b>Pay.co.mz:</b>
+
 <span id="payStatus">
 A verificar...
 </span>
+
 </p>
 
+
+<p>
+
+<b>M-Pesa:</b>
+
+<span id="mpesaStatus">
+A verificar...
+</span>
+
+</p>
+
+
+<p>
+
+<b>e-Mola:</b>
+
+<span id="emolaStatus">
+A verificar...
+</span>
+
+</p>
+
+
 <div class="notice">
-Chaves privadas, credenciais Pay.co.mz, credenciais TRON,
-segredos de webhook e outras credenciais permanecem
+
+As chaves privadas, API keys, credenciais Pay.co.mz,
+segredos de webhook e credenciais TRON permanecem
 exclusivamente no servidor.
+
 </div>
 
 </section>
@@ -717,12 +1147,15 @@ exclusivamente no servidor.
 <script>
 "use strict";
 
+
 /* =====================================================
    CONFIGURAÇÃO
 ===================================================== */
 
 const MIN_MZN = 20;
+
 const MAX_MZN = 40000;
+
 
 const API = {
 
@@ -762,12 +1195,16 @@ let rateLoading = false;
 
 
 /* =====================================================
-   UTILIDADES
+   ELEMENTOS
 ===================================================== */
 
 const $ = id =>
   document.getElementById(id);
 
+
+/* =====================================================
+   FORMATAÇÃO
+===================================================== */
 
 function money(value, decimals = 6){
 
@@ -783,6 +1220,7 @@ function money(value, decimals = 6){
       maximumFractionDigits:decimals
     }
   );
+
 }
 
 
@@ -800,14 +1238,26 @@ function esc(value){
 
 function errorMsg(message){
 
-  alert("❌ " + message);
+  alert(
+    "❌ " +
+    String(
+      message ||
+      "Operação não concluída."
+    )
+  );
 
 }
 
 
 function successMsg(message){
 
-  alert("✅ " + message);
+  alert(
+    "✅ " +
+    String(
+      message ||
+      "Operação concluída."
+    )
+  );
 
 }
 
@@ -815,7 +1265,8 @@ function successMsg(message){
 function normalizeStatus(status){
 
   return String(
-    status || "PENDING"
+    status ||
+    "PENDING"
   ).toUpperCase();
 
 }
@@ -823,7 +1274,9 @@ function normalizeStatus(status){
 
 function statusClass(status){
 
-  const s = normalizeStatus(status);
+  const s =
+    normalizeStatus(status);
+
 
   if([
     "COMPLETED",
@@ -834,6 +1287,7 @@ function statusClass(status){
   ].includes(s))
     return "status ok";
 
+
   if([
     "FAILED",
     "CANCELLED",
@@ -841,11 +1295,13 @@ function statusClass(status){
   ].includes(s))
     return "status err";
 
+
   if([
     "APPROVED",
     "PROCESSING"
   ].includes(s))
     return "status blue";
+
 
   return "status";
 
@@ -856,7 +1312,10 @@ function statusClass(status){
    REQUEST
 ===================================================== */
 
-async function request(url, options = {}){
+async function request(
+  url,
+  options = {}
+){
 
   const response =
     await fetch(
@@ -865,6 +1324,7 @@ async function request(url, options = {}){
         credentials:"include",
         cache:"no-store",
         ...options,
+
         headers:{
           Accept:"application/json",
           "Cache-Control":"no-cache",
@@ -881,10 +1341,13 @@ async function request(url, options = {}){
       }
     );
 
+
   const text =
     await response.text();
 
+
   let data = {};
+
 
   try{
 
@@ -901,6 +1364,7 @@ async function request(url, options = {}){
 
   }
 
+
   if(!response.ok){
 
     throw new Error(
@@ -912,13 +1376,14 @@ async function request(url, options = {}){
 
   }
 
+
   return data;
 
 }
 
 
 /* =====================================================
-   SESSÃO
+   SESSÃO ADMIN
 ===================================================== */
 
 async function verifySession(){
@@ -932,6 +1397,7 @@ async function verifySession(){
         Date.now()
       );
 
+
     if(
       d.authenticated !== true
     )
@@ -939,36 +1405,53 @@ async function verifySession(){
         "Sessão inválida."
       );
 
+
     adminAuthenticated = true;
 
-    $("adminStatus").textContent =
+
+    $("adminStatus")
+      .textContent =
       "🔐 ADMIN AUTENTICADO";
 
-    $("adminStatus").style.background =
+
+    $("adminStatus")
+      .style.background =
       "#dcfce7";
 
-    $("adminStatus").style.color =
+
+    $("adminStatus")
+      .style.color =
       "#166534";
 
+
     return true;
+
 
   }catch(error){
 
     adminAuthenticated = false;
 
-    $("adminStatus").textContent =
+
+    $("adminStatus")
+      .textContent =
       "🔴 SESSÃO ADMIN INVÁLIDA";
 
-    $("adminStatus").style.background =
+
+    $("adminStatus")
+      .style.background =
       "#fee2e2";
 
-    $("adminStatus").style.color =
+
+    $("adminStatus")
+      .style.color =
       "#991b1b";
+
 
     console.error(
       "SESSION",
       error
     );
+
 
     return false;
 
@@ -978,7 +1461,7 @@ async function verifySession(){
 
 
 /* =====================================================
-   TAXA
+   EXTRAIR RATE
 ===================================================== */
 
 function getRate(data){
@@ -1005,11 +1488,14 @@ function getRate(data){
 
   ];
 
+
   for(
     const value of values
   ){
 
-    const n = Number(value);
+    const n =
+      Number(value);
+
 
     if(
       Number.isFinite(n) &&
@@ -1019,17 +1505,24 @@ function getRate(data){
 
   }
 
+
   return null;
 
 }
 
+
+/* =====================================================
+   CARREGAR EXCHANGE RATE
+===================================================== */
 
 async function loadRate(){
 
   if(rateLoading)
     return null;
 
+
   rateLoading = true;
+
 
   try{
 
@@ -1040,85 +1533,113 @@ async function loadRate(){
         Date.now()
       );
 
+
     const rate =
       getRate(d);
+
 
     if(!rate)
       throw new Error(
         "Taxa indisponível."
       );
 
+
     currentRate = rate;
+
 
     $("currentRate")
       .textContent =
-        money(rate,4) +
-        " MZN / USDT";
+      money(rate,4) +
+      " MZN / USDT";
+
 
     $("currentRate")
       .className =
-        "rate-ok";
+      "rate-ok";
+
 
     $("configRate")
       .textContent =
-        money(rate,4) +
-        " MZN por 1 USDT";
+      money(rate,4) +
+      " MZN por 1 USDT";
+
 
     $("rateSource")
       .textContent =
-        "Fonte: " +
-        (
-          d?.source ||
-          d?.provider ||
-          "servidor"
-        );
+      "Fonte: " +
+      (
+        d?.source ||
+        d?.provider ||
+        "servidor"
+      );
+
 
     $("rateUpdated")
       .textContent =
-        "Atualização: " +
-        (
-          d?.timestamp
-            ? new Date(
-                d.timestamp
-              ).toLocaleString("pt-PT")
-            : new Date()
-                .toLocaleString("pt-PT")
-        );
+      "Atualização: " +
+      (
+        d?.timestamp
+          ? new Date(
+              d.timestamp
+            ).toLocaleString(
+              "pt-PT"
+            )
+          : new Date()
+              .toLocaleString(
+                "pt-PT"
+              )
+      );
+
 
     updateConversion();
 
+
     return rate;
+
 
   }catch(error){
 
     currentRate = null;
 
+
     $("currentRate")
       .textContent =
-        "INDISPONÍVEL";
+      "INDISPONÍVEL";
+
 
     $("currentRate")
       .className =
-        "rate-error";
+      "rate-error";
+
 
     $("configRate")
       .textContent =
-        "INDISPONÍVEL";
+      "INDISPONÍVEL";
+
 
     $("convertUsdt")
       .textContent =
-        "0 USDT";
+      "0 USDT";
+
+
+    $("conversionRateDisplay")
+      .textContent =
+      "Taxa indisponível";
+
 
     $("rateSource")
       .textContent =
-        "Fonte: indisponível";
+      "Fonte: indisponível";
+
 
     console.error(
       "RATE",
       error
     );
 
+
     return null;
+
 
   }finally{
 
@@ -1129,12 +1650,19 @@ async function loadRate(){
 }
 
 
+/* =====================================================
+   PRÉVIA DA CONVERSÃO
+===================================================== */
+
 function updateConversion(){
 
+  const input =
+    $("convertMzn").value;
+
+
   const mzn =
-    Number(
-      $("convertMzn").value
-    );
+    Number(input);
+
 
   if(
     !currentRate ||
@@ -1146,14 +1674,66 @@ function updateConversion(){
       .textContent =
       "0 USDT";
 
+
+    $("conversionRateDisplay")
+      .textContent =
+      currentRate
+        ? "Taxa: " +
+          money(
+            currentRate,
+            4
+          ) +
+          " MZN / USDT"
+        : "Taxa: —";
+
+
+    $("conversionPreview")
+      .textContent =
+      "Digite o valor MZN para calcular.";
+
+
     return;
 
   }
 
+
+  const usdt =
+    mzn / currentRate;
+
+
   $("convertUsdt")
     .textContent =
     money(
-      mzn / currentRate,
+      usdt,
+      6
+    ) +
+    " USDT";
+
+
+  $("conversionRateDisplay")
+    .textContent =
+    "Taxa aplicada na prévia: " +
+    money(
+      currentRate,
+      4
+    ) +
+    " MZN / USDT";
+
+
+  $("conversionPreview")
+    .textContent =
+    money(
+      mzn,
+      2
+    ) +
+    " MZN ÷ " +
+    money(
+      currentRate,
+      4
+    ) +
+    " = " +
+    money(
+      usdt,
       6
     ) +
     " USDT";
@@ -1162,10 +1742,10 @@ function updateConversion(){
 
 
 $("convertMzn")
-.addEventListener(
-  "input",
-  updateConversion
-);
+  .addEventListener(
+    "input",
+    updateConversion
+  );
 
 
 /* =====================================================
@@ -1181,11 +1761,14 @@ async function loadDashboard(){
       Date.now()
     );
 
+
   const t =
     d.treasury || {};
 
+
   const l =
     d.liquidity || {};
+
 
   const mzn =
     Number(
@@ -1193,11 +1776,13 @@ async function loadDashboard(){
       0
     );
 
+
   const usdt =
     Number(
       t.usdt ??
       0
     );
+
 
   const reserved =
     Number(
@@ -1206,11 +1791,13 @@ async function loadDashboard(){
       0
     );
 
+
   const reservedMzn =
     Number(
       t.reserved_mzn ??
       0
     );
+
 
   const available =
     Number(
@@ -1221,6 +1808,7 @@ async function loadDashboard(){
       )
     );
 
+
   const trx =
     Number(
       t.trx ??
@@ -1228,35 +1816,60 @@ async function loadDashboard(){
       0
     );
 
+
   $("mznBalance")
     .textContent =
-    money(mzn,2) +
+    money(
+      mzn,
+      2
+    ) +
     " MZN";
+
 
   $("usdtBalance")
     .textContent =
-    money(usdt,6) +
+    money(
+      usdt,
+      6
+    ) +
     " USDT";
+
 
   $("trxBalance")
     .textContent =
-    money(trx,6) +
+    money(
+      trx,
+      6
+    ) +
     " TRX";
+
 
   $("reservedUsdt")
     .textContent =
-    money(reserved,6) +
+    money(
+      reserved,
+      6
+    ) +
     " USDT";
+
 
   $("reservedMzn")
     .textContent =
-    money(reservedMzn,2) +
+    money(
+      reservedMzn,
+      2
+    ) +
     " MZN";
+
 
   $("availableUsdt")
     .textContent =
-    money(available,6) +
+    money(
+      available,
+      6
+    ) +
     " USDT";
+
 
   const realAvailable =
     Number(
@@ -1264,11 +1877,13 @@ async function loadDashboard(){
       available
     );
 
+
   $("liquidityStatus")
     .textContent =
-      realAvailable > 0
-        ? "COM LIQUIDEZ"
-        : "SEM LIQUIDEZ";
+    realAvailable > 0
+      ? "COM LIQUIDEZ"
+      : "SEM LIQUIDEZ";
+
 
   renderOperations(d);
 
@@ -1290,6 +1905,7 @@ async function loadTron(){
         Date.now()
       );
 
+
     $("walletAddress")
       .textContent =
       info.wallet_address ||
@@ -1297,11 +1913,13 @@ async function loadTron(){
       info.wallet?.address ||
       "Não disponível";
 
+
   }catch(error){
 
     $("walletAddress")
       .textContent =
       "Não disponível";
+
 
     console.error(
       "TRON INFO",
@@ -1320,6 +1938,7 @@ async function loadTron(){
         Date.now()
       );
 
+
     const usdt =
       Number(
         d?.balances?.USDT ??
@@ -1328,6 +1947,7 @@ async function loadTron(){
         d?.usdt ??
         0
       );
+
 
     const trx =
       Number(
@@ -1338,15 +1958,24 @@ async function loadTron(){
         0
       );
 
+
     $("tronUsdt")
       .textContent =
-      money(usdt,6) +
+      money(
+        usdt,
+        6
+      ) +
       " USDT";
+
 
     $("tronTrx")
       .textContent =
-      money(trx,6) +
+      money(
+        trx,
+        6
+      ) +
       " TRX";
+
 
   }catch(error){
 
@@ -1375,14 +2004,35 @@ async function loadPayStatus(){
         Date.now()
       );
 
+
     if(d.configured){
 
       $("payStatus")
         .textContent =
         "CONFIGURADO";
 
-      $("payStatus").style.color =
+      $("payStatus")
+        .style.color =
         "#15803d";
+
+
+      $("mpesaStatus")
+        .textContent =
+        "DISPONÍVEL VIA PAY";
+
+      $("mpesaStatus")
+        .style.color =
+        "#15803d";
+
+
+      $("emolaStatus")
+        .textContent =
+        "NÃO DISPONÍVEL NO PAY";
+
+      $("emolaStatus")
+        .style.color =
+        "#b91c1c";
+
 
     }else{
 
@@ -1390,14 +2040,35 @@ async function loadPayStatus(){
         .textContent =
         "NÃO CONFIGURADO";
 
-      $("payStatus").style.color =
+      $("payStatus")
+        .style.color =
         "#b91c1c";
 
+
+      $("mpesaStatus")
+        .textContent =
+        "INDISPONÍVEL";
+
+      $("emolaStatus")
+        .textContent =
+        "INDISPONÍVEL";
+
     }
+
 
   }catch{
 
     $("payStatus")
+      .textContent =
+      "INDISPONÍVEL";
+
+
+    $("mpesaStatus")
+      .textContent =
+      "INDISPONÍVEL";
+
+
+    $("emolaStatus")
       .textContent =
       "INDISPONÍVEL";
 
@@ -1419,6 +2090,7 @@ function renderOperations(d){
       ? d.recent_transactions
       : [];
 
+
   const deposits =
     Array.isArray(
       d.deposits
@@ -1426,12 +2098,14 @@ function renderOperations(d){
       ? d.deposits
       : [];
 
+
   const conversions =
     Array.isArray(
       d.conversions
     )
       ? d.conversions
       : [];
+
 
   if(
     !rows.length &&
@@ -1446,6 +2120,7 @@ function renderOperations(d){
     return;
 
   }
+
 
   let html = "";
 
@@ -1609,26 +2284,32 @@ document
             )
           );
 
+
         button.classList.add(
           "active"
         );
+
 
         selectedDepositMethod =
           String(
             button.dataset.method
           ).toUpperCase();
 
+
         $("depositForm")
           .classList.remove(
             "hidden"
           );
+
 
         $("depositOrder")
           .classList.add(
             "hidden"
           );
 
+
         currentOrderId = null;
+
 
         $("selectedDeposit")
           .textContent =
@@ -1647,15 +2328,18 @@ document
             .value =
             "USDT";
 
+
           $("depositReferenceLabel")
             .textContent =
             "TX Hash TRON";
+
 
         }else{
 
           $("depositCurrency")
             .value =
             "MZN";
+
 
           $("depositReferenceLabel")
             .textContent =
@@ -1667,10 +2351,10 @@ document
         const hints = {
 
           MPESA:
-            "Informe o número M-Pesa do pagamento.",
+            "Informe o número M-Pesa. A cobrança real será criada pelo servidor através do Pay.co.mz.",
 
           EMOLA:
-            "e-Mola ainda não está disponível no provedor Pay.co.mz em produção.",
+            "e-Mola permanece bloqueado para execução enquanto não houver provedor de produção ativo.",
 
           BANK:
             "Informe a referência bancária.",
@@ -1682,7 +2366,7 @@ document
             "Informe a referência do recebimento externo.",
 
           MANUAL:
-            "Informe a referência e somente use esta opção para depósito realmente aprovado."
+            "Use somente para fundos realmente recebidos e aprovados."
 
         };
 
@@ -1707,8 +2391,14 @@ document
 function normalizePhone(value){
 
   let phone =
-    String(value || "")
-      .replace(/\D/g,"");
+    String(
+      value || ""
+    )
+    .replace(
+      /\D/g,
+      ""
+    );
+
 
   if(
     phone.startsWith("258")
@@ -1718,6 +2408,7 @@ function normalizePhone(value){
       phone.slice(3);
 
   }
+
 
   return /^(82|83|84|85|86|87)\d{7}$/
     .test(phone)
@@ -1789,6 +2480,22 @@ function showOrder(data){
     );
 
 
+  const fee =
+    Number(
+      order.fee ??
+      data.fee ??
+      0
+    );
+
+
+  const net =
+    Number(
+      order.net_amount ??
+      data.net_amount ??
+      0
+    );
+
+
   const providerReference =
     order.provider_reference ||
     data.provider_reference ||
@@ -1849,6 +2556,28 @@ function showOrder(data){
         ) +
         " MZN / USDT"
       : "Servidor";
+
+
+  $("orderFee")
+    .textContent =
+    fee
+      ? money(
+          fee,
+          2
+        ) +
+        " MZN"
+      : "—";
+
+
+  $("orderNet")
+    .textContent =
+    net
+      ? money(
+          net,
+          2
+        ) +
+        " MZN"
+      : "—";
 
 
   $("orderProviderReference")
@@ -1998,14 +2727,6 @@ $("depositButton")
       );
 
 
-    /*
-     * e-Mola:
-     * Não fingir integração.
-     *
-     * O Pay.co.mz atual não aceita
-     * emola em produção.
-     */
-
     if(
       selectedDepositMethod ===
       "EMOLA"
@@ -2025,6 +2746,11 @@ $("depositButton")
     try{
 
       button.disabled = true;
+
+
+      $("orderMessage")
+        .textContent =
+        "A criar ordem no servidor...";
 
 
       const data =
@@ -2072,7 +2798,8 @@ $("depositButton")
           "COMPLETED",
           "PAID",
           "CONFIRMED",
-          "SUCCESS"
+          "SUCCESS",
+          "SUCCEEDED"
         ].includes(status)
       ){
 
@@ -2083,7 +2810,7 @@ $("depositButton")
       }else{
 
         successMsg(
-          "Ordem criada como PENDING. Aguardando confirmação real."
+          "Ordem criada. Aguardando confirmação real."
         );
 
       }
@@ -2140,6 +2867,7 @@ $("checkOrder")
 
       showOrder(data);
 
+
       await refreshAll();
 
 
@@ -2156,7 +2884,7 @@ $("checkOrder")
 
 
 /* =====================================================
-   CONVERSÃO
+   EXECUTAR CONVERSÃO
 ===================================================== */
 
 $("convertButton")
@@ -2188,14 +2916,50 @@ $("convertButton")
 
     if(!currentRate)
       return errorMsg(
-        "Taxa de mercado indisponível."
+        "Exchange rate indisponível."
       );
+
+
+    const estimated =
+      amount /
+      currentRate;
+
+
+    if(
+      !confirm(
+        "CONFIRMAR CONVERSÃO\n\n" +
+        money(
+          amount,
+          2
+        ) +
+        " MZN\n\n" +
+        "Taxa de referência: " +
+        money(
+          currentRate,
+          4
+        ) +
+        " MZN/USDT\n\n" +
+        "Prévia: " +
+        money(
+          estimated,
+          6
+        ) +
+        " USDT\n\n" +
+        "A execução definitiva será validada pelo servidor conforme a liquidez real."
+      )
+    )
+      return;
 
 
     try{
 
       $("convertButton")
         .disabled = true;
+
+
+      $("conversionMessage")
+        .textContent =
+        "⏳ Executando conversão no servidor...";
 
 
       const data =
@@ -2230,6 +2994,47 @@ $("convertButton")
       }
 
 
+      const result =
+        data.conversion ||
+        data;
+
+
+      const finalUsdt =
+        Number(
+          result.usdt_amount ??
+          data.usdt_amount ??
+          estimated
+        );
+
+
+      const finalRate =
+        Number(
+          result.rate ??
+          data.rate ??
+          currentRate
+        );
+
+
+      $("conversionMessage")
+        .textContent =
+        "✅ Conversão executada: " +
+        money(
+          amount,
+          2
+        ) +
+        " MZN → " +
+        money(
+          finalUsdt,
+          6
+        ) +
+        " USDT @ " +
+        money(
+          finalRate,
+          4
+        ) +
+        " MZN/USDT";
+
+
       successMsg(
         data.message ||
         "Conversão executada."
@@ -2242,10 +3047,17 @@ $("convertButton")
 
       updateConversion();
 
+
       await refreshAll();
 
 
     }catch(error){
+
+      $("conversionMessage")
+        .textContent =
+        "❌ " +
+        error.message;
+
 
       errorMsg(
         error.message
@@ -2288,7 +3100,7 @@ $("rateButton")
 
 
       successMsg(
-        "Taxa atual: " +
+        "Exchange rate atual: " +
         money(
           rate,
           4
@@ -2315,7 +3127,7 @@ $("rateButton")
 
 
 /* =====================================================
-   LEVANTAMENTOS — SELEÇÃO
+   RETIRADAS — SELEÇÃO
 ===================================================== */
 
 document
@@ -2375,6 +3187,7 @@ document
             .textContent =
             "Valor USDT";
 
+
         }else{
 
           $("withdrawLabel")
@@ -2390,16 +3203,16 @@ document
             "Usa o processamento Binance já existente.",
 
           TRON:
-            "A retirada TRON deve ser criada e autorizada antes do envio.",
+            "Será criada como PENDING. O envio exige autorização.",
 
           MPESA:
-            "Será criada como PENDING. Depois de APPROVED, o Pay.co.mz poderá processar o payout conforme a carteira Pay configurada.",
+            "Será criada como PENDING. Depois de APPROVED, o servidor poderá executar o payout Pay.co.mz.",
 
           EMOLA:
             "e-Mola não está disponível no payout Pay.co.mz atual.",
 
           BANK:
-            "Payout bancário depende da configuração suportada pelo provedor."
+            "Será criada como PENDING para processamento conforme a configuração bancária."
 
         };
 
@@ -2459,11 +3272,9 @@ $("withdrawButton")
       );
 
 
-    /*
-     * BINANCE
-     *
-     * Mantém o fluxo existente.
-     */
+    /* =================================================
+       BINANCE
+    ================================================= */
 
     if(
       selectedWithdrawMethod ===
@@ -2551,12 +3362,9 @@ $("withdrawButton")
     }
 
 
-    /*
-     * TRON
-     *
-     * A criação normal passa
-     * pelo fluxo de autorização.
-     */
+    /* =================================================
+       TRON
+    ================================================= */
 
     if(
       selectedWithdrawMethod ===
@@ -2573,11 +3381,6 @@ $("withdrawButton")
           "Endereço TRON inválido."
         );
 
-
-      /*
-       * Não enviar diretamente.
-       * Criar PENDING primeiro.
-       */
 
       try{
 
@@ -2618,6 +3421,7 @@ $("withdrawButton")
         $("withdrawAmount")
           .value = "";
 
+
         $("withdrawDestination")
           .value = "";
 
@@ -2645,9 +3449,9 @@ $("withdrawButton")
     }
 
 
-    /*
-     * M-PESA
-     */
+    /* =================================================
+       M-PESA
+    ================================================= */
 
     if(
       selectedWithdrawMethod ===
@@ -2655,6 +3459,7 @@ $("withdrawButton")
     ){
 
       if(
+        !Number.isInteger(amount) ||
         amount < MIN_MZN
       )
         return errorMsg(
@@ -2702,6 +3507,7 @@ $("withdrawButton")
         $("withdrawAmount")
           .value = "";
 
+
         $("withdrawDestination")
           .value = "";
 
@@ -2729,9 +3535,9 @@ $("withdrawButton")
     }
 
 
-    /*
-     * e-Mola
-     */
+    /* =================================================
+       E-MOLA
+    ================================================= */
 
     if(
       selectedWithdrawMethod ===
@@ -2739,15 +3545,15 @@ $("withdrawButton")
     ){
 
       return errorMsg(
-        "e-Mola ainda não está disponível no payout de produção do Pay.co.mz."
+        "e-Mola ainda não está disponível em produção no Pay.co.mz."
       );
 
     }
 
 
-    /*
-     * BANK
-     */
+    /* =================================================
+       BANCO
+    ================================================= */
 
     if(
       selectedWithdrawMethod ===
@@ -2794,6 +3600,7 @@ $("withdrawButton")
         $("withdrawAmount")
           .value = "";
 
+
         $("withdrawDestination")
           .value = "";
 
@@ -2814,8 +3621,6 @@ $("withdrawButton")
 
       }
 
-
-      return;
 
     }
 
@@ -2884,21 +3689,28 @@ async function loadWithdrawals(){
         ){
 
           actions = `
+
             <button
               class="success"
               data-approve="${esc(
                 item.reference
               )}">
+
               🔐 AUTORIZAR
+
             </button>
+
 
             <button
               class="danger"
               data-cancel="${esc(
                 item.reference
               )}">
+
               ✖ CANCELAR
+
             </button>
+
           `;
 
         }
@@ -2910,21 +3722,49 @@ async function loadWithdrawals(){
         ){
 
           actions = `
+
             <button
               class="dark"
               data-process="${esc(
                 item.reference
               )}">
+
               🚀 PROCESSAR PAYOUT
+
             </button>
+
 
             <button
               class="danger"
               data-cancel="${esc(
                 item.reference
               )}">
+
               ✖ CANCELAR
+
             </button>
+
+          `;
+
+        }
+
+
+        if(
+          status ===
+          "PROCESSING"
+        ){
+
+          actions = `
+
+            <div
+              class="notice info"
+              style="grid-column:1/-1">
+
+              ⏳ Processamento em andamento.
+              Aguarde confirmação do provedor.
+
+            </div>
+
           `;
 
         }
@@ -2943,9 +3783,14 @@ async function loadWithdrawals(){
 
             <br>
 
-            <span class="${statusClass(status)}">
+
+            <span
+              class="${statusClass(status)}">
+
               ${esc(status)}
+
             </span>
+
 
             <p class="small">
 
@@ -2961,7 +3806,9 @@ async function loadWithdrawals(){
                 item.amount_mzn ??
                 item.amount_usdt ??
                 0,
-                6
+                item.amount_mzn !== undefined
+                  ? 2
+                  : 6
               )}
 
               ${item.amount_mzn !== undefined
@@ -2979,13 +3826,18 @@ async function loadWithdrawals(){
               <br>
 
               Criado:
-              ${item.created_at
-                ? new Date(
-                    item.created_at
-                  ).toLocaleString("pt-PT")
-                : "—"}
+              ${
+                item.created_at
+                  ? new Date(
+                      item.created_at
+                    ).toLocaleString(
+                      "pt-PT"
+                    )
+                  : "—"
+              }
 
-            </span>
+            </p>
+
 
             <div class="withdraw-actions">
 
@@ -3005,9 +3857,9 @@ async function loadWithdrawals(){
       html;
 
 
-    /*
-     * AUTORIZAR
-     */
+    /* =================================================
+       AUTORIZAR
+    ================================================= */
 
     document
       .querySelectorAll(
@@ -3080,9 +3932,9 @@ async function loadWithdrawals(){
       });
 
 
-    /*
-     * PROCESSAR
-     */
+    /* =================================================
+       PROCESSAR
+    ================================================= */
 
     document
       .querySelectorAll(
@@ -3100,7 +3952,8 @@ async function loadWithdrawals(){
 
             if(
               !confirm(
-                "PROCESSAR esta retirada agora?\n\nSomente prossiga se a autorização estiver correta."
+                "PROCESSAR esta retirada agora?\n\n" +
+                "Somente prossiga se a autorização estiver correta."
               )
             )
               return;
@@ -3157,9 +4010,9 @@ async function loadWithdrawals(){
       });
 
 
-    /*
-     * CANCELAR
-     */
+    /* =================================================
+       CANCELAR
+    ================================================= */
 
     document
       .querySelectorAll(
@@ -3239,6 +4092,7 @@ async function loadWithdrawals(){
       error
     );
 
+
     $("withdrawals")
       .textContent =
       "Não foi possível carregar as retiradas.";
@@ -3276,7 +4130,7 @@ async function refreshAll(){
 
 
 /* =====================================================
-   BOTÃO ATUALIZAR TESOURARIA
+   ATUALIZAR TESOURARIA
 ===================================================== */
 
 $("refreshButton")
@@ -3316,7 +4170,7 @@ $("refreshButton")
 
 
 /* =====================================================
-   BOTÃO ATUALIZAR RETIRADAS
+   ATUALIZAR RETIRADAS
 ===================================================== */
 
 $("refreshWithdrawals")
@@ -3363,6 +4217,7 @@ $("refreshWithdrawals")
     $("operations")
       .textContent =
       "🔴 Sessão Admin inválida.";
+
 
     $("withdrawals")
       .textContent =
