@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>USDTMZ — Login Admin</title>
 
   <style>
@@ -25,9 +26,9 @@
       max-width: 400px;
       margin: 20px;
       padding: 30px;
-      background: white;
+      background: #ffffff;
       border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
     h1 {
@@ -56,6 +57,11 @@
       border: 1px solid #d1d5db;
       border-radius: 9px;
       font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #111827;
     }
 
     button {
@@ -64,22 +70,31 @@
       border: 0;
       border-radius: 9px;
       background: #111827;
-      color: white;
+      color: #ffffff;
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
 
+    button:hover:not(:disabled) {
+      opacity: 0.92;
+    }
+
     button:disabled {
-      opacity: .6;
+      opacity: 0.6;
       cursor: not-allowed;
     }
 
     #message {
       margin-top: 15px;
-      text-align: center;
       min-height: 20px;
+      text-align: center;
       color: #dc2626;
+      font-size: 14px;
+    }
+
+    .success {
+      color: #16a34a !important;
     }
   </style>
 </head>
@@ -87,79 +102,276 @@
 <body>
 
   <div class="login-box">
+
     <h1>USDTMZ</h1>
-    <div class="subtitle">Painel Administrativo</div>
 
-    <form id="loginForm">
+    <div class="subtitle">
+      Painel Administrativo
+    </div>
 
-      <label for="email">Email</label>
+    <form id="loginForm" autocomplete="on">
+
+      <label for="email">
+        Email
+      </label>
+
       <input
         type="email"
         id="email"
+        name="email"
         autocomplete="username"
         required
+        maxlength="254"
       >
 
-      <label for="password">Senha</label>
+      <label for="password">
+        Senha
+      </label>
+
       <input
         type="password"
         id="password"
+        name="password"
         autocomplete="current-password"
         required
+        maxlength="200"
       >
 
-      <button type="submit" id="loginButton">
+      <button
+        type="submit"
+        id="loginButton"
+      >
         Entrar
       </button>
 
-      <div id="message"></div>
+      <div
+        id="message"
+        role="alert"
+        aria-live="polite"
+      ></div>
 
     </form>
+
   </div>
 
 <script>
+"use strict";
+
+/* =========================================================
+   USDTMZ — LOGIN ADMIN
+   =========================================================
+
+   Endpoint existente:
+   POST /api/admin-login
+
+   NÃO cria API nova.
+   NÃO guarda senha no navegador.
+   A sessão é criada pelo servidor através de cookie
+   HttpOnly.
+
+   ========================================================= */
+
+const LOGIN_API = "/api/admin-login";
+
 const form = document.getElementById("loginForm");
 const button = document.getElementById("loginButton");
 const message = document.getElementById("message");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+
+
+/* =========================================================
+   MOSTRAR MENSAGEM
+   ========================================================= */
+
+function showMessage(text, success = false) {
+  message.textContent = String(text || "");
+  message.classList.toggle("success", success);
+}
+
+
+/* =========================================================
+   CONVERTER RESPOSTA
+   ========================================================= */
+
+async function readResponse(response) {
+
+  const text = await response.text();
+
+  let data = {};
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {
+        success: false,
+        message: text
+      };
+    }
+  }
+
+  return {
+    response,
+    data
+  };
+}
+
+
+/* =========================================================
+   LOGIN
+   ========================================================= */
+
+async function loginAdmin(email, password) {
+
+  const response = await fetch(LOGIN_API, {
+    method: "POST",
+
+    /*
+      Importante para permitir que o navegador receba/envie
+      o cookie de sessão.
+    */
+    credentials: "include",
+
+    cache: "no-store",
+
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+
+    body: JSON.stringify({
+      email,
+      password
+    })
+  });
+
+  const { data } = await readResponse(response);
+
+  if (!response.ok || data.success !== true) {
+
+    const error = new Error(
+      data.message ||
+      `Falha no login. HTTP ${response.status}`
+    );
+
+    error.status = response.status;
+    error.data = data;
+
+    throw error;
+  }
+
+  return data;
+}
+
+
+/* =========================================================
+   SUBMIT
+   ========================================================= */
 
 form.addEventListener("submit", async (event) => {
+
   event.preventDefault();
 
-  message.textContent = "";
+  showMessage("");
+
   button.disabled = true;
   button.textContent = "Entrando...";
 
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+  const email = emailInput.value.trim().toLowerCase();
+  const password = passwordInput.value;
+
+
+  /* -------------------------------------------------------
+     VALIDAÇÃO LOCAL
+     ------------------------------------------------------- */
+
+  if (!email || !password) {
+
+    showMessage("Email e senha são obrigatórios.");
+
+    button.disabled = false;
+    button.textContent = "Entrar";
+
+    return;
+  }
+
+
+  /* -------------------------------------------------------
+     LOGIN NO SERVIDOR
+     ------------------------------------------------------- */
 
   try {
-    const response = await fetch("/api/admin-login", {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email,
-        password
-      })
-    });
 
-    const data = await response.json();
+    const data = await loginAdmin(
+      email,
+      password
+    );
 
-    if (!response.ok || !data.success) {
-      message.textContent = data.message || "Não foi possível entrar.";
-      return;
-    }
+    /*
+      O servidor já criou o cookie HttpOnly.
 
-    window.location.href = "/admin.html";
+      Não guardamos:
+      - senha
+      - token
+      - sessão
+      - credenciais
+      no localStorage/sessionStorage.
+    */
+
+    showMessage(
+      data.message || "Login realizado com sucesso.",
+      true
+    );
+
+
+    /*
+      Pequeno atraso apenas para permitir que o navegador
+      processe a resposta Set-Cookie antes da navegação.
+    */
+
+    setTimeout(() => {
+      window.location.replace("/admin.html");
+    }, 100);
 
   } catch (error) {
-    message.textContent = "Erro de conexão com o servidor.";
+
+    console.error("USDTMZ — Login Admin:", error);
+
+    if (error.status === 401) {
+
+      showMessage(
+        error.data?.message ||
+        "Email ou senha incorretos."
+      );
+
+    } else if (error.status === 400) {
+
+      showMessage(
+        error.data?.message ||
+        "Dados de login inválidos."
+      );
+
+    } else if (error.status >= 500) {
+
+      showMessage(
+        "Erro interno do servidor. Tente novamente."
+      );
+
+    } else {
+
+      showMessage(
+        error.data?.message ||
+        "Erro de conexão com o servidor."
+      );
+    }
+
   } finally {
+
     button.disabled = false;
     button.textContent = "Entrar";
   }
+
 });
 </script>
 
