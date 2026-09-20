@@ -4,125 +4,282 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#07111f">
   <title>USDTMZ — Central Admin</title>
 
   <style>
     *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family:Arial,Helvetica,sans-serif;
-      background:#0b1220;
-      color:#e5e7eb;
-    }
-    button,input,select{font:inherit}
-    button{cursor:pointer}
-    .container{
-      width:min(1200px,94%);
-      margin:0 auto;
-      padding:20px 0 50px;
+
+    :root{
+      --bg:#06101d;
+      --bg2:#0a1626;
+      --card:#0d1b2d;
+      --card2:#101f33;
+      --border:#20344c;
+      --border2:#29425f;
+      --text:#f1f5f9;
+      --muted:#8fa4ba;
+      --blue:#2563eb;
+      --blue2:#3b82f6;
+      --green:#16a34a;
+      --green2:#22c55e;
+      --orange:#d97706;
+      --red:#dc2626;
+      --cyan:#0891b2;
+      --shadow:0 16px 45px rgba(0,0,0,.28);
     }
 
+    html{
+      scroll-behavior:smooth;
+    }
+
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%,rgba(37,99,235,.14),transparent 28%),
+        radial-gradient(circle at 90% 10%,rgba(8,145,178,.10),transparent 25%),
+        var(--bg);
+      color:var(--text);
+    }
+
+    button,input,select{
+      font:inherit;
+    }
+
+    button{
+      cursor:pointer;
+    }
+
+    button:disabled{
+      cursor:not-allowed!important;
+      opacity:.48;
+    }
+
+    .container{
+      width:min(1280px,94%);
+      margin:0 auto;
+      padding:22px 0 60px;
+    }
+
+    /* HEADER */
+
     header{
-      background:#111827;
-      border:1px solid #263244;
-      border-radius:16px;
-      padding:20px;
+      position:relative;
+      overflow:hidden;
+      background:
+        linear-gradient(135deg,#0d1d31,#0a1626);
+      border:1px solid var(--border);
+      border-radius:22px;
+      padding:24px;
       margin-bottom:18px;
       display:flex;
       justify-content:space-between;
       align-items:center;
-      gap:15px;
+      gap:20px;
       flex-wrap:wrap;
+      box-shadow:var(--shadow);
     }
 
-    h1,h2,h3{margin-top:0}
-    h1{margin-bottom:6px;font-size:25px}
-    h2{font-size:20px}
-    h3{font-size:16px}
+    header:before{
+      content:"";
+      position:absolute;
+      width:260px;
+      height:260px;
+      right:-100px;
+      top:-150px;
+      border-radius:50%;
+      background:rgba(37,99,235,.15);
+      filter:blur(4px);
+    }
 
-    .subtitle{color:#9ca3af}
+    header>*{
+      position:relative;
+      z-index:1;
+    }
+
+    h1,h2,h3{
+      margin-top:0;
+    }
+
+    h1{
+      margin-bottom:7px;
+      font-size:26px;
+      letter-spacing:-.5px;
+    }
+
+    h2{
+      font-size:19px;
+      margin-bottom:17px;
+    }
+
+    h3{
+      font-size:15px;
+      margin-bottom:12px;
+    }
+
+    .subtitle{
+      color:var(--muted);
+      font-size:13px;
+    }
+
     .admin-badge{
-      display:inline-block;
-      margin-top:10px;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      margin-top:12px;
       padding:7px 12px;
-      border-radius:20px;
-      background:#052e16;
+      border-radius:999px;
+      background:rgba(22,163,74,.13);
+      border:1px solid rgba(34,197,94,.28);
       color:#86efac;
-      font-weight:bold;
-      font-size:12px;
+      font-weight:700;
+      font-size:11px;
+      letter-spacing:.4px;
     }
 
     .header-actions{
       display:flex;
-      gap:8px;
+      gap:9px;
       flex-wrap:wrap;
     }
 
+    /* CARDS */
+
     .card{
-      background:#111827;
-      border:1px solid #263244;
-      border-radius:16px;
-      padding:20px;
+      background:
+        linear-gradient(145deg,rgba(16,31,51,.98),rgba(10,23,39,.98));
+      border:1px solid var(--border);
+      border-radius:19px;
+      padding:21px;
       margin-bottom:18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.13);
     }
+
+    .section-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:15px;
+    }
+
+    .section-head h2{
+      margin:0;
+    }
+
+    /* GRID */
 
     .grid{
       display:grid;
-      grid-template-columns:repeat(3,1fr);
+      grid-template-columns:repeat(4,1fr);
       gap:12px;
     }
 
     .stat{
-      background:#0f172a;
-      border:1px solid #273449;
-      border-radius:14px;
+      position:relative;
+      overflow:hidden;
+      background:rgba(3,12,24,.72);
+      border:1px solid var(--border);
+      border-radius:15px;
       padding:16px;
-      min-height:105px;
+      min-height:108px;
+    }
+
+    .stat:after{
+      content:"";
+      position:absolute;
+      right:-35px;
+      bottom:-45px;
+      width:100px;
+      height:100px;
+      border-radius:50%;
+      background:rgba(59,130,246,.06);
     }
 
     .stat-label{
-      color:#9ca3af;
-      font-size:13px;
+      color:var(--muted);
+      font-size:12px;
       margin-bottom:9px;
+      font-weight:600;
     }
 
     .stat-value{
-      font-size:23px;
-      font-weight:bold;
+      font-size:21px;
+      font-weight:800;
       word-break:break-word;
+      letter-spacing:-.3px;
     }
+
+    /* STATUS */
 
     .status{
-      display:inline-block;
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
       padding:5px 9px;
       border-radius:8px;
-      font-size:12px;
-      font-weight:bold;
+      font-size:11px;
+      font-weight:800;
     }
 
-    .ok{background:#052e16;color:#86efac}
-    .warn{background:#422006;color:#fdba74}
-    .danger{background:#450a0a;color:#fca5a5}
-    .neutral{background:#1e293b;color:#cbd5e1}
+    .ok{
+      background:rgba(22,163,74,.13);
+      color:#86efac;
+    }
+
+    .warn{
+      background:rgba(217,119,6,.13);
+      color:#fdba74;
+    }
+
+    .danger{
+      background:rgba(220,38,38,.13);
+      color:#fca5a5;
+    }
+
+    .neutral{
+      background:#17263a;
+      color:#cbd5e1;
+    }
+
+    /* RATE */
 
     .rate-box{
       display:grid;
       grid-template-columns:1fr 1fr;
-      gap:15px;
+      gap:14px;
     }
 
     .rate-main{
-      background:#0f172a;
-      border:1px solid #273449;
-      border-radius:14px;
+      background:rgba(3,12,24,.72);
+      border:1px solid var(--border);
+      border-radius:15px;
       padding:20px;
     }
 
     .rate-number{
-      font-size:32px;
-      font-weight:bold;
+      font-size:33px;
+      font-weight:900;
       margin:8px 0;
+      letter-spacing:-1px;
     }
+
+    .rate-sub{
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    /* FORMS */
 
     .form-grid{
       display:grid;
@@ -137,24 +294,33 @@
     }
 
     .field label{
-      font-size:13px;
+      font-size:12px;
       color:#cbd5e1;
-      font-weight:bold;
+      font-weight:700;
     }
 
     input,select{
       width:100%;
-      border:1px solid #334155;
-      background:#020617;
+      border:1px solid #29415d;
+      background:#030c18;
       color:#f8fafc;
-      border-radius:10px;
+      border-radius:11px;
       padding:12px;
       outline:none;
+      transition:.18s;
     }
 
-    input:focus,select:focus{
-      border-color:#64748b;
+    input::placeholder{
+      color:#52677e;
     }
+
+    input:focus,
+    select:focus{
+      border-color:var(--blue2);
+      box-shadow:0 0 0 3px rgba(59,130,246,.10);
+    }
+
+    /* METHODS */
 
     .methods{
       display:grid;
@@ -164,45 +330,61 @@
     }
 
     .method{
-      border:1px solid #334155;
-      background:#0f172a;
-      color:#e5e7eb;
-      border-radius:10px;
-      padding:12px 7px;
+      min-height:62px;
+      border:1px solid #29415d;
+      background:#091728;
+      color:#dbeafe;
+      border-radius:11px;
+      padding:9px 6px;
       text-align:center;
-      font-size:12px;
-      font-weight:bold;
+      font-size:11px;
+      font-weight:800;
+      transition:.15s;
+    }
+
+    .method:hover{
+      border-color:#42658b;
     }
 
     .method.active{
-      border-color:#60a5fa;
-      background:#172554;
+      border-color:#3b82f6;
+      background:rgba(37,99,235,.17);
+      box-shadow:inset 0 0 0 1px rgba(59,130,246,.12);
     }
 
-    .method.disabled{
-      opacity:.45;
-      cursor:not-allowed;
-    }
+    /* BUTTONS */
 
     .btn{
-      border:0;
+      border:1px solid transparent;
       border-radius:10px;
-      padding:12px 16px;
-      font-weight:bold;
-      color:white;
-      background:#2563eb;
+      padding:11px 15px;
+      font-weight:800;
+      color:#fff;
+      background:var(--blue);
+      transition:.15s;
     }
 
-    .btn:hover{filter:brightness(1.08)}
-    .btn:disabled{
-      opacity:.5;
-      cursor:not-allowed;
+    .btn:hover:not(:disabled){
+      filter:brightness(1.08);
+      transform:translateY(-1px);
     }
 
-    .btn.secondary{background:#334155}
-    .btn.success{background:#15803d}
-    .btn.warning{background:#b45309}
-    .btn.danger{background:#b91c1c}
+    .btn.secondary{
+      background:#26384d;
+      border-color:#344c66;
+    }
+
+    .btn.success{
+      background:#15803d;
+    }
+
+    .btn.warning{
+      background:#b45309;
+    }
+
+    .btn.danger{
+      background:#b91c1c;
+    }
 
     .actions{
       display:flex;
@@ -211,45 +393,51 @@
       margin-top:15px;
     }
 
+    /* NOTICE */
+
     .notice{
-      padding:12px;
-      border-radius:10px;
-      background:#172033;
-      border:1px solid #334155;
+      padding:12px 14px;
+      border-radius:11px;
+      background:#0b1a2c;
+      border:1px solid #29415d;
       color:#cbd5e1;
-      font-size:13px;
-      line-height:1.5;
+      font-size:12px;
+      line-height:1.55;
       margin-bottom:15px;
     }
 
     .notice.success{
-      background:#052e16;
+      background:rgba(22,163,74,.09);
       border-color:#166534;
       color:#bbf7d0;
     }
 
     .notice.warning{
-      background:#422006;
+      background:rgba(217,119,6,.09);
       border-color:#92400e;
       color:#fed7aa;
     }
 
     .notice.danger{
-      background:#450a0a;
+      background:rgba(220,38,38,.09);
       border-color:#991b1b;
       color:#fecaca;
     }
+
+    /* RESULT */
 
     .result{
       margin-top:15px;
       padding:15px;
       border-radius:12px;
-      background:#020617;
-      border:1px solid #334155;
+      background:#030c18;
+      border:1px solid #29415d;
       display:none;
     }
 
-    .result.show{display:block}
+    .result.show{
+      display:block;
+    }
 
     .result-grid{
       display:grid;
@@ -258,109 +446,214 @@
     }
 
     .result-item{
-      background:#0f172a;
-      padding:10px;
-      border-radius:8px;
+      background:#0b1a2c;
+      padding:11px;
+      border-radius:9px;
+      border:1px solid rgba(41,65,93,.65);
     }
 
     .result-item small{
       display:block;
-      color:#94a3b8;
+      color:#8096ad;
       margin-bottom:4px;
+      font-size:10px;
     }
+
+    /* TABLE */
 
     .table-wrap{
       overflow-x:auto;
+      border:1px solid var(--border);
+      border-radius:12px;
     }
 
     table{
       width:100%;
       border-collapse:collapse;
-      min-width:700px;
+      min-width:760px;
     }
 
     th,td{
-      padding:11px 9px;
-      border-bottom:1px solid #263244;
+      padding:11px 10px;
+      border-bottom:1px solid #1b2d42;
       text-align:left;
-      font-size:13px;
+      font-size:12px;
+      vertical-align:middle;
+    }
+
+    tbody tr:last-child td{
+      border-bottom:0;
+    }
+
+    tbody tr:hover{
+      background:rgba(37,99,235,.035);
     }
 
     th{
-      color:#94a3b8;
-      font-size:12px;
+      color:#7f95ab;
+      font-size:10px;
       text-transform:uppercase;
+      letter-spacing:.6px;
+      background:#091728;
     }
 
     .mono{
-      font-family:monospace;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        monospace;
       word-break:break-all;
     }
 
+    /* WALLET */
+
     .wallet{
-      background:#020617;
-      border:1px solid #334155;
-      border-radius:12px;
+      background:#030c18;
+      border:1px solid #29415d;
+      border-radius:13px;
       padding:15px;
-      margin-top:10px;
     }
 
     .wallet-address{
       font-family:monospace;
       word-break:break-all;
       color:#93c5fd;
+      margin-top:6px;
     }
+
+    /* CONFIG */
 
     .config{
       display:grid;
-      grid-template-columns:repeat(2,1fr);
+      grid-template-columns:repeat(3,1fr);
       gap:10px;
     }
 
     .config-item{
-      background:#0f172a;
-      border:1px solid #273449;
-      border-radius:10px;
+      background:#0b1a2c;
+      border:1px solid var(--border);
+      border-radius:11px;
       padding:12px;
     }
 
     .config-item strong{
       display:block;
-      margin-bottom:5px;
+      margin-bottom:6px;
+      font-size:12px;
     }
 
-    .muted{color:#94a3b8}
-    .center{text-align:center}
+    .config-item span{
+      color:#cbd5e1;
+      font-size:12px;
+    }
+
+    .muted{
+      color:var(--muted);
+    }
+
+    .center{
+      text-align:center;
+    }
+
+    /* TOAST */
 
     #toast{
       position:fixed;
       right:18px;
       bottom:18px;
-      max-width:360px;
+      max-width:390px;
       z-index:9999;
       display:none;
       padding:14px 16px;
-      border-radius:10px;
-      background:#020617;
-      border:1px solid #475569;
-      box-shadow:0 10px 30px rgba(0,0,0,.4);
+      border-radius:12px;
+      background:#071321;
+      border:1px solid #38516d;
+      box-shadow:0 15px 45px rgba(0,0,0,.45);
+      font-size:13px;
+      line-height:1.45;
     }
 
-    #toast.show{display:block}
-
-    @media(max-width:850px){
-      .grid{grid-template-columns:repeat(2,1fr)}
-      .methods{grid-template-columns:repeat(3,1fr)}
-      .rate-box{grid-template-columns:1fr}
+    #toast.show{
+      display:block;
     }
 
-    @media(max-width:600px){
-      .container{width:96%;padding-top:10px}
-      .grid,.form-grid,.config,.result-grid{grid-template-columns:1fr}
-      .methods{grid-template-columns:repeat(2,1fr)}
-      header{padding:15px}
-      .card{padding:15px}
-      .rate-number{font-size:26px}
+    /* LOADING */
+
+    .loading{
+      opacity:.65;
+      pointer-events:none;
+    }
+
+    /* MOBILE */
+
+    @media(max-width:1050px){
+      .grid{
+        grid-template-columns:repeat(2,1fr);
+      }
+
+      .methods{
+        grid-template-columns:repeat(3,1fr);
+      }
+
+      .config{
+        grid-template-columns:repeat(2,1fr);
+      }
+    }
+
+    @media(max-width:760px){
+      .rate-box{
+        grid-template-columns:1fr;
+      }
+
+      .form-grid,
+      .result-grid,
+      .config{
+        grid-template-columns:1fr;
+      }
+
+      .grid{
+        grid-template-columns:repeat(2,1fr);
+      }
+    }
+
+    @media(max-width:520px){
+      .container{
+        width:96%;
+        padding-top:10px;
+      }
+
+      header{
+        padding:17px;
+        border-radius:17px;
+      }
+
+      .card{
+        padding:15px;
+        border-radius:16px;
+      }
+
+      .grid{
+        grid-template-columns:1fr;
+      }
+
+      .methods{
+        grid-template-columns:repeat(2,1fr);
+      }
+
+      .rate-number{
+        font-size:27px;
+      }
+
+      .header-actions{
+        width:100%;
+      }
+
+      .header-actions .btn{
+        flex:1;
+      }
     }
   </style>
 </head>
@@ -369,123 +662,217 @@
 
 <div class="container">
 
+  <!-- HEADER -->
+
   <header>
+
     <div>
       <h1>USDTMZ — Central Admin</h1>
+
       <div class="subtitle">
-        Depósitos, câmbio, conversão, tesouraria e levantamentos
+        Tesouraria • Câmbio • Conversão • Depósitos • Retiradas • TRON
       </div>
-      <span class="admin-badge">🔐 ADMIN AUTENTICADO</span>
+
+      <span class="admin-badge" id="adminBadge">
+        🔐 VERIFICANDO SESSÃO...
+      </span>
     </div>
 
     <div class="header-actions">
-      <button class="btn secondary" onclick="refreshAll()">🔄 Atualizar</button>
-      <button class="btn danger" onclick="logout()">Sair</button>
+      <button
+        class="btn secondary"
+        id="refreshBtn"
+        onclick="refreshAll()"
+      >
+        🔄 Atualizar
+      </button>
+
+      <button
+        class="btn danger"
+        onclick="logout()"
+      >
+        Sair
+      </button>
     </div>
+
   </header>
 
+
   <!-- TESOURARIA -->
+
   <section class="card">
-    <h2>📊 Tesouraria</h2>
+
+    <div class="section-head">
+      <h2>📊 Tesouraria Central</h2>
+      <span class="status neutral" id="treasuryStatus">
+        A CARREGAR
+      </span>
+    </div>
 
     <div class="grid">
 
       <div class="stat">
-        <div class="stat-label">🇲🇿 Fundo MZN</div>
-        <div class="stat-value" id="fundMzn">0 MZN</div>
+        <div class="stat-label">🇲🇿 FUNDO MZN</div>
+        <div class="stat-value" id="fundMzn">
+          0 MZN
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">💵 USDT real</div>
-        <div class="stat-value" id="realUsdt">0 USDT</div>
+        <div class="stat-label">💵 USDT REAL</div>
+        <div class="stat-value" id="realUsdt">
+          0 USDT
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">⛓️ TRX</div>
-        <div class="stat-value" id="trxBalance">0 TRX</div>
+        <div class="stat-label">⛓️ TRX REAL</div>
+        <div class="stat-value" id="trxBalance">
+          0 TRX
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">🔒 USDT reservado</div>
-        <div class="stat-value" id="reservedUsdt">0 USDT</div>
+        <div class="stat-label">🔒 USDT RESERVADO</div>
+        <div class="stat-value" id="reservedUsdt">
+          0 USDT
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">🇲🇿 MZN reservado</div>
-        <div class="stat-value" id="reservedMzn">0 MZN</div>
+        <div class="stat-label">🔒 MZN RESERVADO</div>
+        <div class="stat-value" id="reservedMzn">
+          0 MZN
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">✅ USDT disponível</div>
-        <div class="stat-value" id="availableUsdt">0 USDT</div>
+        <div class="stat-label">✅ USDT DISPONÍVEL</div>
+        <div class="stat-value" id="availableUsdt">
+          0 USDT
+        </div>
       </div>
 
       <div class="stat">
-        <div class="stat-label">🟢 Estado</div>
+        <div class="stat-label">💱 EQUIVALENTE MZN</div>
+        <div class="stat-value" id="availableMznEquivalent">
+          0 MZN
+        </div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-label">🟢 ESTADO</div>
         <div class="stat-value" id="liquidityState">
           A CARREGAR...
         </div>
       </div>
 
     </div>
+
   </section>
 
+
   <!-- EXCHANGE RATE -->
+
   <section class="card">
 
-    <h2>💱 Sistema Financeiro — Exchange Rate</h2>
+    <div class="section-head">
+      <h2>💱 Sistema Financeiro — Exchange Rate</h2>
+
+      <span class="status neutral" id="rateStatus">
+        SERVIDOR
+      </span>
+    </div>
 
     <div class="notice">
-      <strong>Cotação cambial em tempo real</strong><br>
-      A taxa é obtida pelo servidor. O navegador somente apresenta a cotação
-      e calcula uma prévia. A execução financeira definitiva é feita pela API
-      do servidor.
+      <strong>Cotação cambial controlada pelo servidor.</strong><br>
+      O navegador apresenta apenas uma prévia.
+      A taxa definitiva da operação é calculada e validada pela API do
+      servidor no momento da execução.
     </div>
 
     <div class="rate-box">
 
       <div class="rate-main">
-        <div class="muted">1 USDT =</div>
+
+        <div class="muted">
+          Cotação principal
+        </div>
+
         <div class="rate-number" id="rateDisplay">
           INDISPONÍVEL
         </div>
-        <div class="muted">
-          Fonte: <span id="rateSource">indisponível</span>
+
+        <div class="rate-sub">
+          Fonte:
+          <strong id="rateSource">
+            indisponível
+          </strong>
         </div>
-        <div class="muted">
-          Atualização: <span id="rateUpdated">—</span>
+
+        <div
+          class="rate-sub"
+          style="margin-top:5px"
+        >
+          Atualização:
+          <strong id="rateUpdated">
+            —
+          </strong>
         </div>
+
       </div>
+
 
       <div class="rate-main">
 
         <div class="field">
-          <label for="conversionMzn">Valor em MZN</label>
+
+          <label for="conversionMzn">
+            VALOR EM MZN
+          </label>
+
           <input
             id="conversionMzn"
             type="number"
             min="20"
             max="40000"
             step="0.01"
+            inputmode="decimal"
             placeholder="Ex.: 6400"
             oninput="previewConversion()"
           >
+
         </div>
 
         <div style="margin-top:12px">
-          <div class="muted">Cotação da conversão</div>
+
+          <div class="muted">
+            Taxa da conversão
+          </div>
+
           <strong id="conversionRate">
             Taxa indisponível
           </strong>
+
         </div>
 
         <div style="margin-top:12px">
-          <div class="muted">USDT estimado</div>
-          <strong id="estimatedUsdt">0 USDT</strong>
+
+          <div class="muted">
+            USDT estimado
+          </div>
+
+          <strong id="estimatedUsdt">
+            0 USDT
+          </strong>
+
         </div>
 
-        <div class="muted" style="margin-top:8px">
-          Digite o valor MZN para calcular.
+        <div
+          class="muted"
+          style="margin-top:8px"
+        >
+          A cotação exibida aqui não substitui a validação do servidor.
         </div>
 
       </div>
@@ -493,6 +880,7 @@
     </div>
 
     <div class="actions">
+
       <button
         class="btn success"
         id="convertBtn"
@@ -506,12 +894,21 @@
         id="rateBtn"
         onclick="loadRate(true)"
       >
-        💱 ATUALIZAR EXCHANGE RATE
+        💱 ATUALIZAR COTAÇÃO
       </button>
+
     </div>
 
-    <div id="conversionResult" class="result">
-      <h3>Resultado da conversão</h3>
+
+    <div
+      id="conversionResult"
+      class="result"
+    >
+
+      <h3>
+        Resultado da conversão
+      </h3>
+
       <div class="result-grid">
 
         <div class="result-item">
@@ -536,29 +933,54 @@
 
         <div class="result-item">
           <small>Referência</small>
-          <strong id="resultReference" class="mono">—</strong>
+          <strong
+            id="resultReference"
+            class="mono"
+          >
+            —
+          </strong>
         </div>
 
         <div class="result-item">
           <small>Mensagem</small>
-          <strong id="resultMessage">—</strong>
+          <strong id="resultMessage">
+            —
+          </strong>
         </div>
 
       </div>
+
     </div>
 
   </section>
 
+
   <!-- DEPOSITOS -->
+
   <section class="card">
 
-    <h2>➕ Entrada de Fundos</h2>
+    <div class="section-head">
+      <h2>➕ Entrada de Fundos</h2>
+
+      <span class="status neutral">
+        TESOURARIA
+      </span>
+    </div>
 
     <div class="notice">
-      <strong>Fluxo financeiro:</strong>
-      Pagamento → confirmação real → crédito na tesouraria.
-      Criar uma ordem não aumenta automaticamente o saldo.
+
+      <strong>Fluxo financeiro seguro:</strong>
+
+      criação da ordem →
+      confirmação real →
+      crédito da tesouraria.
+
+      <br>
+
+      Criar uma ordem nunca significa que o dinheiro já entrou.
+
     </div>
+
 
     <div class="methods">
 
@@ -599,7 +1021,7 @@
         id="depositMethodExternal"
         onclick="setDepositMethod('external')"
       >
-        👛<br>Carteira externa
+        👛<br>Carteira
       </button>
 
       <button
@@ -607,41 +1029,67 @@
         id="depositMethodManual"
         onclick="setDepositMethod('manual')"
       >
-        📝<br>Manual aprovado
+        📝<br>Manual
       </button>
 
     </div>
 
-    <div id="depositNotice" class="notice">
+
+    <div
+      id="depositNotice"
+      class="notice"
+    >
       <strong>Depósito por 📱 M-Pesa</strong><br>
-      Valor → número M-Pesa → cobrança real criada pelo servidor através do
-      Pay.co.mz.
+      O servidor criará a cobrança através do Pay.co.mz.
     </div>
+
 
     <div class="form-grid">
 
       <div class="field">
-        <label for="depositAmount">Valor</label>
+
+        <label for="depositAmount">
+          VALOR
+        </label>
+
         <input
           id="depositAmount"
           type="number"
           min="20"
           max="40000"
           step="0.01"
+          inputmode="decimal"
           placeholder="Ex.: 1000"
         >
+
       </div>
 
+
       <div class="field">
-        <label for="depositCurrency">Moeda</label>
+
+        <label for="depositCurrency">
+          MOEDA
+        </label>
+
         <select id="depositCurrency">
-          <option value="MZN">MZN</option>
-          <option value="USDT">USDT</option>
+          <option value="MZN">
+            MZN
+          </option>
+
+          <option value="USDT">
+            USDT
+          </option>
         </select>
+
       </div>
 
+
       <div class="field">
-        <label id="depositReferenceLabel" for="depositReference">
+
+        <label
+          id="depositReferenceLabel"
+          for="depositReference"
+        >
           Número M-Pesa
         </label>
 
@@ -649,13 +1097,17 @@
           id="depositReference"
           type="text"
           inputmode="numeric"
+          autocomplete="off"
           placeholder="84xxxxxxxx ou 85xxxxxxxx"
         >
+
       </div>
 
     </div>
 
+
     <div class="actions">
+
       <button
         class="btn success"
         id="depositBtn"
@@ -663,16 +1115,28 @@
       >
         ➕ CRIAR ORDEM DE DEPÓSITO
       </button>
+
     </div>
 
-    <div id="depositResult" class="result"></div>
+
+    <div
+      id="depositResult"
+      class="result"
+    ></div>
+
 
     <div style="margin-top:20px">
-      <h3>Ordens recentes</h3>
+
+      <h3>
+        Ordens recentes
+      </h3>
 
       <div class="table-wrap">
+
         <table>
+
           <thead>
+
             <tr>
               <th>ID</th>
               <th>Estado</th>
@@ -682,33 +1146,62 @@
               <th>Pay referência</th>
               <th>Ação</th>
             </tr>
+
           </thead>
 
           <tbody id="depositOrders">
+
             <tr>
-              <td colspan="7" class="center muted">
+              <td
+                colspan="7"
+                class="center muted"
+              >
                 A carregar...
               </td>
             </tr>
+
           </tbody>
+
         </table>
+
       </div>
+
     </div>
 
   </section>
 
-  <!-- LEVANTAMENTOS -->
+
+  <!-- RETIRADAS -->
+
   <section class="card">
 
-    <h2>➖ Retirar Fundos</h2>
+    <div class="section-head">
+      <h2>➖ Retirar Fundos</h2>
+
+      <span class="status warn">
+        AUTORIZAÇÃO OBRIGATÓRIA
+      </span>
+    </div>
+
 
     <div class="notice warning">
-      <strong>Segurança financeira:</strong>
-      Toda retirada começa como <strong>PENDING</strong>.
-      Nenhuma retirada normal é enviada diretamente pelo navegador.
-      Fluxo:
-      <strong>PENDING → APPROVED → PROCESSING → COMPLETED</strong>.
+
+      <strong>Proteção contra retirada não autorizada:</strong><br>
+
+      Toda retirada começa como
+      <strong>PENDING</strong>.
+
+      Depois:
+
+      <strong>
+        PENDING → APPROVED → PROCESSING → COMPLETED
+      </strong>.
+
+      O navegador nunca pode transformar uma retirada diretamente
+      em COMPLETED.
+
     </div>
+
 
     <div class="methods">
 
@@ -754,15 +1247,21 @@
 
     </div>
 
-    <div id="withdrawNotice" class="notice">
-      Retirada para Binance/USDT.
+
+    <div
+      id="withdrawNotice"
+      class="notice"
+    >
+      Retirada para Binance/USDT TRC20.
     </div>
+
 
     <div class="form-grid">
 
       <div class="field">
+
         <label for="withdrawAmount">
-          Valor
+          VALOR
         </label>
 
         <input
@@ -770,23 +1269,30 @@
           type="number"
           min="0.000001"
           step="0.000001"
+          inputmode="decimal"
           placeholder="Ex.: 10"
         >
+
       </div>
 
+
       <div class="field">
+
         <label for="withdrawDestination">
-          Destino
+          DESTINO
         </label>
 
         <input
           id="withdrawDestination"
           type="text"
+          autocomplete="off"
           placeholder="Endereço / conta de destino"
         >
+
       </div>
 
     </div>
+
 
     <div class="actions">
 
@@ -800,33 +1306,66 @@
 
     </div>
 
-    <div id="withdrawResult" class="result"></div>
+
+    <div
+      id="withdrawResult"
+      class="result"
+    ></div>
 
   </section>
 
-  <!-- AUTORIZACOES -->
+
+  <!-- AUTORIZAÇÕES -->
+
   <section class="card">
 
-    <h2>🔐 Autorizações de Retirada</h2>
+    <div class="section-head">
+      <h2>🔐 Autorizações de Retirada</h2>
 
-    <div class="notice">
-      O administrador deve autorizar antes do processamento.
-      Uma retirada <strong>APPROVED</strong> pode então ser processada.
+      <span class="status warn">
+        ADMIN
+      </span>
     </div>
 
-    <div id="withdrawalsError" class="notice danger" style="display:none">
+
+    <div class="notice">
+
+      Somente uma sessão administrativa válida pode autorizar
+      ou processar uma retirada.
+
+    </div>
+
+
+    <div
+      id="withdrawalsError"
+      class="notice danger"
+      style="display:none"
+    >
       Não foi possível carregar as retiradas.
     </div>
 
+
     <div class="actions">
-      <button class="btn secondary" onclick="loadWithdrawals()">
+
+      <button
+        class="btn secondary"
+        onclick="loadWithdrawals()"
+      >
         🔄 ATUALIZAR RETIRADAS
       </button>
+
     </div>
 
-    <div class="table-wrap" style="margin-top:15px">
+
+    <div
+      class="table-wrap"
+      style="margin-top:15px"
+    >
+
       <table>
+
         <thead>
+
           <tr>
             <th>ID</th>
             <th>Método</th>
@@ -836,79 +1375,155 @@
             <th>Criado</th>
             <th>Ações</th>
           </tr>
+
         </thead>
 
         <tbody id="withdrawalsTable">
+
           <tr>
-            <td colspan="7" class="center muted">
+            <td
+              colspan="7"
+              class="center muted"
+            >
               A carregar retiradas...
             </td>
           </tr>
+
         </tbody>
+
       </table>
+
     </div>
 
   </section>
 
+
   <!-- TRON -->
+
   <section class="card">
 
-    <h2>⛓️ Carteira USDT / TRON</h2>
+    <div class="section-head">
+
+      <h2>
+        ⛓️ Carteira USDT / TRON
+      </h2>
+
+      <span class="status ok">
+        TRON MAINNET
+      </span>
+
+    </div>
+
 
     <div class="wallet">
 
-      <div class="muted">Endereço da tesouraria:</div>
+      <div class="muted">
+        Endereço da tesouraria
+      </div>
 
-      <div class="wallet-address" id="tronAddress">
+      <div
+        class="wallet-address"
+        id="tronAddress"
+      >
         TYBvQh45dpWKSHHT1mUBDSEcQxB8C7hHGi
       </div>
 
+
       <br>
+
 
       <div class="grid">
 
         <div class="stat">
-          <div class="stat-label">USDT real on-chain</div>
-          <div class="stat-value" id="tronUsdt">
+
+          <div class="stat-label">
+            USDT REAL ON-CHAIN
+          </div>
+
+          <div
+            class="stat-value"
+            id="tronUsdt"
+          >
             0 USDT
           </div>
+
         </div>
 
+
         <div class="stat">
-          <div class="stat-label">TRX real on-chain</div>
-          <div class="stat-value" id="tronTrx">
+
+          <div class="stat-label">
+            TRX REAL ON-CHAIN
+          </div>
+
+          <div
+            class="stat-value"
+            id="tronTrx"
+          >
             0 TRX
           </div>
+
         </div>
 
       </div>
 
-      <div class="notice" style="margin-top:15px;margin-bottom:0">
-        Rede: <strong>TRON Mainnet / TRC-20</strong><br>
+
+      <div
+        class="notice"
+        style="margin-top:15px;margin-bottom:0"
+      >
+
+        Rede:
+        <strong>
+          TRON Mainnet / TRC-20
+        </strong>
+
+        <br>
+
         Contrato USDT:
+
         <span class="mono">
           TR7NHqKQxGTCi8q8ZY4pL8otSzgjLj6t
         </span>
+
       </div>
 
     </div>
 
+
     <div class="actions">
-      <button class="btn secondary" onclick="loadTron()">
-        🔄 ATUALIZAR TESOURARIA
+
+      <button
+        class="btn secondary"
+        onclick="loadTron()"
+      >
+        🔄 ATUALIZAR BLOCKCHAIN
       </button>
+
     </div>
 
   </section>
 
-  <!-- OPERACOES -->
+
+  <!-- OPERAÇÕES -->
+
   <section class="card">
 
-    <h2>📋 Operações Recentes</h2>
+    <div class="section-head">
+      <h2>📋 Operações Recentes</h2>
+
+      <span class="status neutral">
+        AUDITORIA
+      </span>
+    </div>
+
 
     <div class="table-wrap">
+
       <table>
+
         <thead>
+
           <tr>
             <th>Data</th>
             <th>Tipo</th>
@@ -916,102 +1531,176 @@
             <th>Estado</th>
             <th>Referência</th>
           </tr>
+
         </thead>
 
         <tbody id="operationsTable">
+
           <tr>
-            <td colspan="5" class="center muted">
+            <td
+              colspan="5"
+              class="center muted"
+            >
               A carregar operações...
             </td>
           </tr>
+
         </tbody>
+
       </table>
+
     </div>
 
   </section>
 
-  <!-- CONFIGURACAO -->
+
+  <!-- CONFIGURAÇÃO -->
+
   <section class="card">
 
-    <h2>⚙️ Configuração Financeira</h2>
+    <div class="section-head">
+      <h2>⚙️ Configuração Financeira</h2>
+
+      <span class="status neutral">
+        SERVIDOR
+      </span>
+    </div>
+
 
     <div class="config">
 
       <div class="config-item">
         <strong>Exchange Rate</strong>
-        <span id="configRate">INDISPONÍVEL</span>
+        <span id="configRate">
+          INDISPONÍVEL
+        </span>
       </div>
 
       <div class="config-item">
         <strong>Mínimo</strong>
-        <span>20 MZN</span>
+        <span>
+          20 MZN
+        </span>
       </div>
 
       <div class="config-item">
         <strong>Máximo</strong>
-        <span>40.000 MZN</span>
+        <span>
+          40.000 MZN
+        </span>
       </div>
 
       <div class="config-item">
         <strong>Rede</strong>
-        <span>TRON / TRC-20</span>
+        <span>
+          TRON / TRC-20
+        </span>
       </div>
 
       <div class="config-item">
         <strong>Pay.co.mz</strong>
-        <span id="configPay">INDISPONÍVEL</span>
+        <span id="configPay">
+          INDISPONÍVEL
+        </span>
       </div>
 
       <div class="config-item">
         <strong>M-Pesa</strong>
-        <span id="configMpesa">INDISPONÍVEL</span>
+        <span id="configMpesa">
+          INDISPONÍVEL
+        </span>
       </div>
 
       <div class="config-item">
         <strong>e-Mola</strong>
-        <span id="configEmola">INDISPONÍVEL</span>
+        <span id="configEmola">
+          INDISPONÍVEL
+        </span>
+      </div>
+
+      <div class="config-item">
+        <strong>Sessão</strong>
+        <span id="configSession">
+          VERIFICANDO
+        </span>
       </div>
 
     </div>
 
-    <div class="notice" style="margin-top:15px;margin-bottom:0">
+
+    <div
+      class="notice"
+      style="margin-top:15px;margin-bottom:0"
+    >
+
       As chaves privadas, API keys, credenciais Pay.co.mz,
-      segredos de webhook e credenciais TRON permanecem exclusivamente
-      no servidor.
+      segredos de webhook e credenciais TRON permanecem
+      exclusivamente no servidor.
+
+      <br><br>
+
+      <strong>
+        Este painel não deve receber nem armazenar chaves privadas.
+      </strong>
+
     </div>
 
   </section>
 
 </div>
 
+
 <div id="toast"></div>
+
 
 <script>
 "use strict";
 
-/*
-  USDTMZ — CENTRAL ADMIN
 
-  IMPORTANTE:
-  - Mantém as 12 APIs existentes.
-  - Não cria API13.
-  - Nenhuma API key fica neste HTML.
-  - Pay.co.mz é chamado exclusivamente pelo servidor.
-  - A taxa final é determinada pelo servidor.
-  - e-Mola não é tratado como produção ativa enquanto
-    não existir provedor de produção configurado.
+/* =========================================================
+   USDTMZ — CENTRAL ADMIN
+   =========================================================
+
+   PRINCÍPIOS:
+
+   1. Não cria API13.
+   2. Mantém as APIs existentes.
+   3. Nenhuma API key fica no navegador.
+   4. A sessão é verificada pelo servidor.
+   5. 401/403 não são tratados como sessão válida.
+   6. A taxa final vem do servidor.
+   7. O navegador não define a taxa final.
+   8. Depósito não significa crédito automático.
+   9. Retirada começa sempre PENDING.
+   10. APPROVED é necessário antes do processamento.
+   11. O processamento continua no servidor.
+   12. TRON é somente leitura neste painel.
 */
 
+
 const API = {
-  session: "/api/admin-session",
-  treasury: "/api/admin-withdrawals",
-  tronBalance: "/api/tron-wallet-balance",
-  tronInfo: "/api/tron-wallet-info",
-  process: "/api/admin-withdrawal-process"
+
+  session:
+    "/api/admin-session",
+
+  treasury:
+    "/api/admin-withdrawals",
+
+  tronBalance:
+    "/api/tron-wallet-balance",
+
+  tronInfo:
+    "/api/tron-wallet-info",
+
+  process:
+    "/api/admin-withdrawal-process"
+
 };
+
 
 const MIN_MZN = 20;
 const MAX_MZN = 40000;
+
 
 let currentRate = null;
 let currentRateSource = "indisponível";
@@ -1025,16 +1714,20 @@ let converting = false;
 let creatingDeposit = false;
 let creatingWithdrawal = false;
 
+let authenticated = false;
 
-/* =========================
+
+/* =========================================================
    HELPERS
-========================= */
+========================================================= */
 
 function $(id){
   return document.getElementById(id);
 }
 
+
 function esc(value){
+
   if(value === null || value === undefined){
     return "";
   }
@@ -1047,12 +1740,15 @@ function esc(value){
     .replace(/'/g,"&#039;");
 }
 
-function pick(obj, keys, fallback = null){
+
+function pick(obj,keys,fallback=null){
+
   if(!obj || typeof obj !== "object"){
     return fallback;
   }
 
   for(const key of keys){
+
     if(
       obj[key] !== undefined &&
       obj[key] !== null &&
@@ -1060,182 +1756,436 @@ function pick(obj, keys, fallback = null){
     ){
       return obj[key];
     }
+
   }
 
   return fallback;
 }
 
+
 function numberValue(value){
+
   const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+
+  return Number.isFinite(n)
+    ? n
+    : 0;
 }
+
 
 function formatMzn(value){
-  return numberValue(value).toLocaleString("pt-MZ",{
-    minimumFractionDigits:2,
-    maximumFractionDigits:2
-  }) + " MZN";
+
+  return numberValue(value).toLocaleString(
+    "pt-MZ",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    }
+  ) + " MZN";
 }
+
 
 function formatUsdt(value){
-  return numberValue(value).toLocaleString("en-US",{
-    minimumFractionDigits:2,
-    maximumFractionDigits:6
-  }) + " USDT";
+
+  return numberValue(value).toLocaleString(
+    "en-US",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:6
+    }
+  ) + " USDT";
 }
+
 
 function formatTrx(value){
-  return numberValue(value).toLocaleString("en-US",{
-    minimumFractionDigits:2,
-    maximumFractionDigits:6
-  }) + " TRX";
+
+  return numberValue(value).toLocaleString(
+    "en-US",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:6
+    }
+  ) + " TRX";
 }
 
+
 function formatDate(value){
+
   if(!value){
     return "—";
   }
 
   try{
-    return new Date(value).toLocaleString("pt-MZ");
+
+    const date = new Date(value);
+
+    if(Number.isNaN(date.getTime())){
+      return String(value);
+    }
+
+    return date.toLocaleString("pt-MZ");
+
   }catch{
+
     return String(value);
+
   }
 }
 
-function toast(message, type = "normal"){
+
+function statusClass(status){
+
+  const value =
+    String(status || "").toUpperCase();
+
+  if(
+    value === "COMPLETED" ||
+    value === "SUCCEEDED" ||
+    value === "APPROVED" ||
+    value === "ACTIVE" ||
+    value === "COM_LIQUIDEZ"
+  ){
+    return "ok";
+  }
+
+  if(
+    value === "PENDING" ||
+    value === "PROCESSING" ||
+    value === "WARNING" ||
+    value === "SEM_LIQUIDEZ"
+  ){
+    return "warn";
+  }
+
+  if(
+    value === "FAILED" ||
+    value === "CANCELLED" ||
+    value === "REJECTED" ||
+    value === "ERRO"
+  ){
+    return "danger";
+  }
+
+  return "neutral";
+}
+
+
+function setTreasuryStatus(value){
+
+  const el = $("treasuryStatus");
+
+  const text =
+    String(value || "A CARREGAR").toUpperCase();
+
+  el.textContent = text;
+
+  el.className =
+    "status " + statusClass(text);
+}
+
+
+function toast(message,type="normal"){
+
   const el = $("toast");
 
-  el.textContent = message;
+  el.textContent =
+    String(message || "");
+
   el.style.borderColor =
-    type === "success" ? "#166534" :
-    type === "error" ? "#991b1b" :
-    "#475569";
+    type === "success"
+      ? "#166534"
+      : type === "error"
+        ? "#991b1b"
+        : "#38516d";
 
   el.style.color =
-    type === "success" ? "#bbf7d0" :
-    type === "error" ? "#fecaca" :
-    "#e2e8f0";
+    type === "success"
+      ? "#bbf7d0"
+      : type === "error"
+        ? "#fecaca"
+        : "#e2e8f0";
 
   el.classList.add("show");
 
   clearTimeout(window.__toastTimer);
 
-  window.__toastTimer = setTimeout(()=>{
-    el.classList.remove("show");
-  },4500);
+  window.__toastTimer =
+    setTimeout(
+      ()=>{
+        el.classList.remove("show");
+      },
+      4500
+    );
 }
+
+
+/* =========================================================
+   RESPOSTA HTTP
+========================================================= */
 
 async function parseResponse(response){
 
-  const text = await response.text();
+  const text =
+    await response.text();
 
   let data = {};
 
   try{
-    data = text ? JSON.parse(text) : {};
+
+    data =
+      text
+        ? JSON.parse(text)
+        : {};
+
   }catch{
+
     data = {
-      message: text || "Resposta inválida do servidor."
+      message:
+        text ||
+        "Resposta inválida do servidor."
     };
+
   }
 
-  if(!response.ok){
-    const message =
-      pick(data,["message","error","detail"],null) ||
-      `Erro HTTP ${response.status}`;
 
-    throw new Error(message);
+  if(!response.ok){
+
+    const message =
+      pick(
+        data,
+        [
+          "message",
+          "error",
+          "detail"
+        ],
+        `Erro HTTP ${response.status}`
+      );
+
+    const error =
+      new Error(message);
+
+    /*
+      Muito importante:
+      preservamos o HTTP status para que
+      401/403 não sejam confundidos com
+      erro temporário de rede.
+    */
+
+    error.status =
+      response.status;
+
+    error.data =
+      data;
+
+    throw error;
   }
 
   return data;
 }
 
+
 async function apiGet(url){
-  const response = await fetch(url,{
-    method:"GET",
-    credentials:"include",
-    cache:"no-store",
-    headers:{
-      "Accept":"application/json"
-    }
-  });
 
-  return parseResponse(response);
-}
-
-async function apiPost(url, body){
-  const response = await fetch(url,{
-    method:"POST",
-    credentials:"include",
-    cache:"no-store",
-    headers:{
-      "Content-Type":"application/json",
-      "Accept":"application/json"
-    },
-    body:JSON.stringify(body)
-  });
+  const response =
+    await fetch(
+      url,
+      {
+        method:"GET",
+        credentials:"include",
+        cache:"no-store",
+        headers:{
+          "Accept":"application/json"
+        }
+      }
+    );
 
   return parseResponse(response);
 }
 
 
-/* =========================
-   SESSÃO
-========================= */
+async function apiPost(url,body){
+
+  const response =
+    await fetch(
+      url,
+      {
+        method:"POST",
+        credentials:"include",
+        cache:"no-store",
+        headers:{
+          "Content-Type":"application/json",
+          "Accept":"application/json"
+        },
+        body:JSON.stringify(body)
+      }
+    );
+
+  return parseResponse(response);
+}
+
+
+/* =========================================================
+   SESSÃO ADMIN
+========================================================= */
+
+function forceLogin(){
+
+  authenticated = false;
+
+  $("configSession").textContent =
+    "EXPIRADA";
+
+  $("adminBadge").textContent =
+    "🔒 SESSÃO EXPIRADA";
+
+  $("adminBadge").style.color =
+    "#fca5a5";
+
+  window.location.href =
+    "/admin-login.html";
+}
+
 
 async function checkSession(){
 
   try{
 
-    const data = await apiGet(API.session);
+    const data =
+      await apiGet(API.session);
 
-    const authenticated = pick(
-      data,
-      ["authenticated","isAuthenticated","ok"],
-      true
-    );
+    const valid =
+      pick(
+        data,
+        [
+          "authenticated",
+          "isAuthenticated",
+          "ok"
+        ],
+        false
+      );
 
-    if(authenticated === false){
-      window.location.href = "/admin-login.html";
+
+    if(
+      valid !== true &&
+      valid !== "true" &&
+      valid !== 1
+    ){
+
+      forceLogin();
+
       return false;
     }
+
+
+    authenticated = true;
+
+    $("configSession").textContent =
+      "ATIVA";
+
+    $("adminBadge").textContent =
+      "🔐 ADMIN AUTENTICADO";
+
+    $("adminBadge").style.color =
+      "#86efac";
+
 
     return true;
 
   }catch(error){
 
-    console.error("Sessão:",error);
+    console.error(
+      "Sessão:",
+      error
+    );
+
 
     /*
-      Não fazemos logout automático simplesmente por uma
-      falha temporária de rede. O servidor continua sendo
-      a autoridade da autenticação.
+      CORREÇÃO CRÍTICA:
+
+      401/403 = sessão inválida.
+
+      Erro de rede = não devemos apagar
+      a sessão imediatamente.
     */
 
-    return true;
+    if(
+      error &&
+      (
+        error.status === 401 ||
+        error.status === 403
+      )
+    ){
+
+      forceLogin();
+
+      return false;
+    }
+
+
+    /*
+      Em erro temporário de rede,
+      não afirmamos que o administrador
+      está autenticado novamente.
+
+      Mantemos a tela, mas os endpoints
+      protegidos continuam sendo a autoridade.
+    */
+
+    $("configSession").textContent =
+      "VERIFICAÇÃO INDISPONÍVEL";
+
+    return false;
   }
 }
+
+
+/*
+  Logout real:
+
+  admin-session.js precisa aceitar
+  POST action=logout para apagar o cookie.
+
+  Caso o servidor ainda não aceite,
+  o redirect continua funcionando,
+  mas o cookie só será invalidado
+  quando expirar.
+
+  NÃO tentamos manipular cookie HttpOnly
+  pelo JavaScript.
+*/
 
 async function logout(){
 
   try{
-    await apiPost(API.session,{
-      action:"logout"
-    });
-  }catch(error){
-    console.warn("Logout:",error);
-  }
 
-  window.location.href = "/admin-login.html";
+    await apiPost(
+      API.session,
+      {
+        action:"logout"
+      }
+    );
+
+  }catch(error){
+
+    console.warn(
+      "Logout:",
+      error
+    );
+
+  }finally{
+
+    window.location.href =
+      "/admin-login.html";
+
+  }
 }
 
 
-/* =========================
+/* =========================================================
    RATE
-========================= */
+========================================================= */
 
-async function loadRate(showToast = false){
+async function loadRate(showToast=false){
 
   if(loadingRate){
     return currentRate;
@@ -1243,116 +2193,234 @@ async function loadRate(showToast = false){
 
   loadingRate = true;
 
+
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=rate"
-    );
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=rate"
+      );
 
-    const rate = pick(
-      data,
-      [
-        "rate",
-        "mzn_per_usdt",
-        "mznPerUsdt",
-        "usd_mzn",
-        "exchange_rate",
-        "exchangeRate"
-      ],
-      null
-    );
 
-    const numericRate = Number(rate);
+    const rate =
+      pick(
+        data,
+        [
+          "rate",
+          "mzn_per_usdt",
+          "mznPerUsdt",
+          "usd_mzn",
+          "exchange_rate",
+          "exchangeRate"
+        ],
+        null
+      );
 
-    if(!Number.isFinite(numericRate) || numericRate <= 0){
+
+    const numericRate =
+      Number(rate);
+
+
+    if(
+      !Number.isFinite(numericRate) ||
+      numericRate <= 0
+    ){
+
       currentRate = null;
-      $("rateDisplay").textContent = "INDISPONÍVEL";
+
+      $("rateDisplay").textContent =
+        "INDISPONÍVEL";
+
       $("rateSource").textContent =
-        pick(data,["source","provider"],"indisponível");
-      $("rateUpdated").textContent = "—";
-      $("conversionRate").textContent = "Taxa indisponível";
-      $("configRate").textContent = "INDISPONÍVEL";
+        pick(
+          data,
+          [
+            "source",
+            "provider"
+          ],
+          "indisponível"
+        );
+
+      $("rateUpdated").textContent =
+        "—";
+
+      $("conversionRate").textContent =
+        "Taxa indisponível";
+
+      $("configRate").textContent =
+        "INDISPONÍVEL";
+
+      $("rateStatus").textContent =
+        "INDISPONÍVEL";
+
+      $("rateStatus").className =
+        "status danger";
+
       previewConversion();
+
       return null;
     }
 
-    currentRate = numericRate;
 
-    currentRateSource = pick(
-      data,
-      ["source","provider"],
-      "servidor"
-    );
+    currentRate =
+      numericRate;
 
-    currentRateUpdated = new Date();
+
+    currentRateSource =
+      pick(
+        data,
+        [
+          "source",
+          "provider"
+        ],
+        "servidor"
+      );
+
+
+    currentRateUpdated =
+      new Date();
+
 
     $("rateDisplay").textContent =
-      numericRate.toLocaleString("pt-MZ",{
-        minimumFractionDigits:2,
-        maximumFractionDigits:6
-      }) + " MZN";
+      numericRate.toLocaleString(
+        "pt-MZ",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:6
+        }
+      ) +
+      " MZN";
 
-    $("rateSource").textContent = currentRateSource;
+
+    $("rateSource").textContent =
+      currentRateSource;
+
 
     $("rateUpdated").textContent =
-      currentRateUpdated.toLocaleString("pt-MZ");
+      currentRateUpdated.toLocaleString(
+        "pt-MZ"
+      );
+
+
+    $("rateStatus").textContent =
+      "ATIVA";
+
+    $("rateStatus").className =
+      "status ok";
+
 
     $("conversionRate").textContent =
       "1 USDT = " +
-      numericRate.toLocaleString("pt-MZ",{
-        minimumFractionDigits:2,
-        maximumFractionDigits:6
-      }) +
+      numericRate.toLocaleString(
+        "pt-MZ",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:6
+        }
+      ) +
       " MZN";
 
+
     $("configRate").textContent =
-      numericRate.toLocaleString("pt-MZ",{
-        minimumFractionDigits:2,
-        maximumFractionDigits:6
-      }) +
+      numericRate.toLocaleString(
+        "pt-MZ",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:6
+        }
+      ) +
       " MZN / USDT";
+
 
     previewConversion();
 
+
     if(showToast){
-      toast("Exchange Rate atualizada.","success");
+
+      toast(
+        "Exchange Rate atualizada.",
+        "success"
+      );
+
     }
+
 
     return numericRate;
 
+
   }catch(error){
 
-    console.error("Rate:",error);
+    console.error(
+      "Rate:",
+      error
+    );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return null;
+    }
+
 
     currentRate = null;
 
-    $("rateDisplay").textContent = "INDISPONÍVEL";
-    $("rateSource").textContent = "indisponível";
-    $("rateUpdated").textContent = "—";
-    $("conversionRate").textContent = "Taxa indisponível";
-    $("configRate").textContent = "INDISPONÍVEL";
+    $("rateDisplay").textContent =
+      "INDISPONÍVEL";
+
+    $("rateSource").textContent =
+      "indisponível";
+
+    $("rateUpdated").textContent =
+      "—";
+
+    $("conversionRate").textContent =
+      "Taxa indisponível";
+
+    $("configRate").textContent =
+      "INDISPONÍVEL";
+
+    $("rateStatus").textContent =
+      "ERRO";
+
+    $("rateStatus").className =
+      "status danger";
 
     previewConversion();
 
+
     if(showToast){
+
       toast(
         "Não foi possível atualizar a Exchange Rate.",
         "error"
       );
+
     }
+
 
     return null;
 
   }finally{
+
     loadingRate = false;
+
   }
 }
 
+
 function previewConversion(){
 
-  const amount = numberValue(
-    $("conversionMzn").value
-  );
+  const amount =
+    numberValue(
+      $("conversionMzn").value
+    );
+
 
   if(
     !currentRate ||
@@ -1360,20 +2428,26 @@ function previewConversion(){
     currentRate <= 0 ||
     amount <= 0
   ){
-    $("estimatedUsdt").textContent = "0 USDT";
+
+    $("estimatedUsdt").textContent =
+      "0 USDT";
+
     return;
   }
 
-  const estimated = amount / currentRate;
+
+  const estimated =
+    amount / currentRate;
+
 
   $("estimatedUsdt").textContent =
     formatUsdt(estimated);
 }
 
 
-/* =========================
-   CONVERSÃO
-========================= */
+/* =========================================================
+   CONVERSÃO MZN → USDT
+========================================================= */
 
 async function convertMzn(){
 
@@ -1381,191 +2455,317 @@ async function convertMzn(){
     return;
   }
 
-  const amount = numberValue(
-    $("conversionMzn").value
-  );
+
+  const amount =
+    numberValue(
+      $("conversionMzn").value
+    );
+
 
   if(
     !Number.isFinite(amount) ||
     amount < MIN_MZN ||
     amount > MAX_MZN
   ){
+
     toast(
       `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`,
       "error"
     );
+
     return;
   }
 
-  const button = $("convertBtn");
+
+  const button =
+    $("convertBtn");
+
 
   converting = true;
-  button.disabled = true;
-  button.textContent = "⏳ A OBTER COTAÇÃO E EXECUTAR...";
 
-  const result = $("conversionResult");
+  button.disabled = true;
+
+  button.textContent =
+    "⏳ A EXECUTAR...";
+
+
+  const result =
+    $("conversionResult");
+
 
   result.classList.add("show");
 
-  $("resultMzn").textContent = formatMzn(amount);
-  $("resultUsdt").textContent = "—";
-  $("resultRate").textContent = "A obter...";
-  $("resultStatus").textContent = "PROCESSING";
-  $("resultReference").textContent = "—";
+
+  $("resultMzn").textContent =
+    formatMzn(amount);
+
+  $("resultUsdt").textContent =
+    "—";
+
+  $("resultRate").textContent =
+    "A obter...";
+
+  $("resultStatus").textContent =
+    "PROCESSING";
+
+  $("resultReference").textContent =
+    "—";
+
   $("resultMessage").textContent =
     "Obtendo a taxa atual do servidor...";
+
 
   try{
 
     /*
-      Primeiro buscamos a taxa atual.
-      Isto é somente para apresentar a cotação.
-      O servidor continua sendo a autoridade final.
+      A taxa aqui é somente uma prévia.
+
+      A API06 deverá calcular novamente
+      a taxa no servidor.
     */
 
-    const freshRate = await loadRate(false);
+    const freshRate =
+      await loadRate(false);
+
 
     if(!freshRate){
+
       throw new Error(
         "Exchange Rate indisponível no servidor."
       );
+
     }
 
-    const previewUsdt = amount / freshRate;
+
+    const previewUsdt =
+      amount / freshRate;
+
 
     $("resultRate").textContent =
-      freshRate.toLocaleString("pt-MZ",{
-        minimumFractionDigits:2,
-        maximumFractionDigits:6
-      }) + " MZN/USDT";
+      freshRate.toLocaleString(
+        "pt-MZ",
+        {
+          minimumFractionDigits:2,
+          maximumFractionDigits:6
+        }
+      ) +
+      " MZN/USDT";
+
 
     $("resultUsdt").textContent =
       formatUsdt(previewUsdt);
 
+
     $("resultMessage").textContent =
-      "Cotação obtida. Executando conversão no servidor...";
+      "Cotação obtida. Executando validação financeira no servidor...";
+
 
     /*
       IMPORTANTE:
-      Não enviamos rate nem usdt_amount.
-      A API06 calcula e valida tudo no servidor.
+
+      Não enviamos:
+      - rate
+      - usdt_amount
+      - saldo
+      - confirmação
+
+      Tudo isso deve ser calculado pelo servidor.
     */
 
-    const data = await apiPost(
-      API.treasury,
-      {
-        action:"convert_mzn_to_usdt",
-        amount_mzn:amount
-      }
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        {
+          action:
+            "convert_mzn_to_usdt",
 
-    const usdt = pick(
-      data,
-      [
-        "usdt_amount",
-        "usdtAmount",
-        "amount_usdt"
-      ],
+          amount_mzn:
+            amount
+        }
+      );
+
+
+    const conversion =
+      data.conversion ||
+      {};
+
+
+    const usdt =
       pick(
-        data.conversion || {},
-        ["usdt_amount","usdtAmount"],
-        null
-      )
-    );
+        data,
+        [
+          "usdt_amount",
+          "usdtAmount",
+          "amount_usdt"
+        ],
+        pick(
+          conversion,
+          [
+            "usdt_amount",
+            "usdtAmount"
+          ],
+          null
+        )
+      );
 
-    const executedRate = pick(
-      data,
-      [
-        "rate",
-        "mzn_per_usdt",
-        "exchange_rate"
-      ],
+
+    const executedRate =
       pick(
-        data.conversion || {},
-        ["rate","mzn_per_usdt"],
-        freshRate
-      )
-    );
+        data,
+        [
+          "rate",
+          "mzn_per_usdt",
+          "exchange_rate"
+        ],
+        pick(
+          conversion,
+          [
+            "rate",
+            "mzn_per_usdt"
+          ],
+          freshRate
+        )
+      );
 
-    const reference = pick(
-      data,
-      [
-        "reference",
-        "conversion_reference",
-        "id"
-      ],
+
+    const reference =
       pick(
-        data.conversion || {},
-        ["reference","id"],
-        "—"
-      )
-    );
+        data,
+        [
+          "reference",
+          "conversion_reference",
+          "id"
+        ],
+        pick(
+          conversion,
+          [
+            "reference",
+            "id"
+          ],
+          "—"
+        )
+      );
 
-    const status = pick(
-      data,
-      ["status","state"],
-      "COMPLETED"
-    );
 
-    const message = pick(
-      data,
-      ["message","detail"],
-      "Conversão executada pelo servidor."
-    );
+    const status =
+      pick(
+        data,
+        [
+          "status",
+          "state"
+        ],
+        "COMPLETED"
+      );
+
+
+    const message =
+      pick(
+        data,
+        [
+          "message",
+          "detail"
+        ],
+        "Conversão executada pelo servidor."
+      );
+
 
     $("resultUsdt").textContent =
-      usdt !== null ?
-      formatUsdt(usdt) :
-      "—";
+      usdt !== null
+        ? formatUsdt(usdt)
+        : "—";
+
 
     $("resultRate").textContent =
-      executedRate !== null ?
-      Number(executedRate).toLocaleString("pt-MZ",{
-        minimumFractionDigits:2,
-        maximumFractionDigits:6
-      }) + " MZN/USDT" :
-      "—";
+      executedRate !== null
+        ? Number(executedRate)
+            .toLocaleString(
+              "pt-MZ",
+              {
+                minimumFractionDigits:2,
+                maximumFractionDigits:6
+              }
+            ) +
+            " MZN/USDT"
+        : "—";
 
-    $("resultStatus").textContent = status;
-    $("resultReference").textContent = reference;
-    $("resultMessage").textContent = message;
+
+    $("resultStatus").textContent =
+      String(status).toUpperCase();
+
+
+    $("resultReference").textContent =
+      reference;
+
+
+    $("resultMessage").textContent =
+      message;
+
 
     toast(
-      "Conversão executada com sucesso.",
+      "Conversão executada pelo servidor.",
       "success"
     );
 
+
     await refreshFinancialData();
+
 
   }catch(error){
 
-    console.error("Conversão:",error);
+    console.error(
+      "Conversão:",
+      error
+    );
 
-    $("resultStatus").textContent = "FAILED";
-    $("resultMessage").textContent = error.message;
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
+
+    $("resultStatus").textContent =
+      "FAILED";
+
+
+    $("resultMessage").textContent =
+      error.message;
+
 
     toast(
-      "A conversão não foi executada: " + error.message,
+      "A conversão não foi executada: " +
+      error.message,
       "error"
     );
+
 
   }finally{
 
     converting = false;
+
     button.disabled = false;
+
     button.textContent =
       "🔄 EXECUTAR CONVERSÃO MZN → USDT";
+
   }
 }
 
 
-/* =========================
-   DEPOSITOS
-========================= */
+/* =========================================================
+   DEPÓSITOS
+========================================================= */
 
 function setDepositMethod(method){
 
-  depositMethod = method;
+  depositMethod =
+    method;
+
 
   const methods = [
     "mpesa",
@@ -1576,6 +2776,7 @@ function setDepositMethod(method){
     "manual"
   ];
 
+
   for(const item of methods){
 
     const id =
@@ -1583,157 +2784,206 @@ function setDepositMethod(method){
       item.charAt(0).toUpperCase() +
       item.slice(1);
 
-    const el = $(id);
+
+    const el =
+      $(id);
+
 
     if(el){
+
       el.classList.toggle(
         "active",
         item === method
       );
+
     }
+
   }
 
-  const button = $("depositBtn");
-  const reference = $("depositReference");
-  const label = $("depositReferenceLabel");
-  const notice = $("depositNotice");
 
-  button.disabled = false;
+  const button =
+    $("depositBtn");
+
+  const reference =
+    $("depositReference");
+
+  const label =
+    $("depositReferenceLabel");
+
+  const notice =
+    $("depositNotice");
+
+
+  button.disabled =
+    false;
+
 
   if(method === "mpesa"){
 
-    label.textContent = "Número M-Pesa";
+    label.textContent =
+      "Número M-Pesa";
 
     reference.placeholder =
       "84xxxxxxxx ou 85xxxxxxxx";
 
-    reference.inputMode = "numeric";
+    reference.inputMode =
+      "numeric";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
-      "<strong>Depósito por 📱 M-Pesa</strong><br>" +
+      "<strong>📱 M-Pesa</strong><br>" +
       "Informe o número M-Pesa. A cobrança real será criada " +
       "pelo servidor através do Pay.co.mz.";
 
-    $("depositCurrency").value = "MZN";
+    $("depositCurrency").value =
+      "MZN";
 
     return;
   }
 
+
   if(method === "emola"){
 
-    label.textContent = "Número e-Mola";
+    label.textContent =
+      "Número e-Mola";
 
     reference.placeholder =
       "e-Mola indisponível em produção";
 
-    reference.inputMode = "tel";
+    reference.inputMode =
+      "tel";
 
-    notice.className = "notice warning";
+    notice.className =
+      "notice warning";
 
     notice.innerHTML =
       "<strong>📱 e-Mola indisponível</strong><br>" +
-      "O Pay.co.mz atualmente não possui provedor e-Mola " +
-      "de produção ativo. Esta opção permanece bloqueada " +
-      "até existir integração de produção.";
+      "A opção permanece bloqueada enquanto não existir " +
+      "provedor de produção configurado no servidor.";
 
-    button.disabled = true;
+    button.disabled =
+      true;
 
     return;
   }
 
+
   if(method === "bank"){
 
-    label.textContent = "Número / Referência bancária";
+    label.textContent =
+      "Número / Referência bancária";
 
     reference.placeholder =
       "Referência da transferência";
 
-    reference.inputMode = "text";
+    reference.inputMode =
+      "text";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
-      "<strong>🏦 Depósito bancário</strong><br>" +
-      "Use somente após confirmação real da entrada bancária.";
+      "<strong>🏦 Banco</strong><br>" +
+      "Use somente depois da confirmação real da entrada.";
 
-    $("depositCurrency").value = "MZN";
+    $("depositCurrency").value =
+      "MZN";
 
     return;
   }
 
+
   if(method === "usdt"){
 
-    label.textContent = "Referência / TXID";
+    label.textContent =
+      "TXID / Hash TRON";
 
     reference.placeholder =
       "Hash da transação TRON";
 
-    reference.inputMode = "text";
+    reference.inputMode =
+      "text";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>💵 USDT TRC20</strong><br>" +
-      "A entrada deve ser confirmada on-chain antes do crédito.";
+      "O crédito só deve ocorrer depois da confirmação on-chain.";
 
-    $("depositCurrency").value = "USDT";
+    $("depositCurrency").value =
+      "USDT";
 
     return;
   }
 
+
   if(method === "external"){
 
-    label.textContent = "Referência da carteira";
+    label.textContent =
+      "TXID / Referência";
 
     reference.placeholder =
-      "Referência / TXID";
+      "TXID ou referência da carteira";
 
-    reference.inputMode = "text";
+    reference.inputMode =
+      "text";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>👛 Carteira externa</strong><br>" +
       "O crédito depende da confirmação real da entrada.";
 
-    $("depositCurrency").value = "USDT";
+    $("depositCurrency").value =
+      "USDT";
 
     return;
   }
 
+
   if(method === "manual"){
 
-    label.textContent = "Referência da aprovação";
+    label.textContent =
+      "Referência da aprovação";
 
     reference.placeholder =
       "Referência manual aprovada";
 
-    reference.inputMode = "text";
+    reference.inputMode =
+      "text";
 
-    notice.className = "notice warning";
+    notice.className =
+      "notice warning";
 
     notice.innerHTML =
       "<strong>📝 Manual aprovado</strong><br>" +
-      "Use somente para fundos que já foram verificados " +
-      "e aprovados pelo administrador.";
+      "Utilize apenas para fundos já verificados e aprovados.";
 
     return;
   }
+
 }
 
+
 function normalizePhone(value){
+
   return String(value || "")
     .replace(/\D/g,"");
 }
 
+
 function validMpesaPhone(value){
 
-  const phone = normalizePhone(value);
+  const phone =
+    normalizePhone(value);
 
   return /^8[45]\d{7}$/.test(phone);
 }
+
 
 async function createDeposit(){
 
@@ -1741,148 +2991,232 @@ async function createDeposit(){
     return;
   }
 
+
   if(depositMethod === "emola"){
+
     toast(
       "e-Mola está indisponível em produção.",
       "error"
     );
+
     return;
   }
 
-  const amount = numberValue(
-    $("depositAmount").value
-  );
+
+  const amount =
+    numberValue(
+      $("depositAmount").value
+    );
+
 
   const currency =
     $("depositCurrency").value;
 
+
   const reference =
-    $("depositReference").value.trim();
+    $("depositReference")
+      .value
+      .trim();
+
 
   if(
     !Number.isFinite(amount) ||
     amount < MIN_MZN ||
     amount > MAX_MZN
   ){
+
     toast(
       `O valor deve estar entre ${MIN_MZN} e ${MAX_MZN} MZN.`,
       "error"
     );
+
     return;
   }
 
+
   if(!reference){
+
     toast(
-      "Informe a referência ou número necessário.",
+      "Informe a referência necessária.",
       "error"
     );
+
     return;
   }
+
 
   if(
     depositMethod === "mpesa" &&
     !validMpesaPhone(reference)
   ){
+
     toast(
       "Número M-Pesa inválido. Use 84xxxxxxx ou 85xxxxxxx.",
       "error"
     );
+
     return;
   }
 
-  const button = $("depositBtn");
 
-  creatingDeposit = true;
-  button.disabled = true;
-  button.textContent = "⏳ A CRIAR ORDEM...";
+  const button =
+    $("depositBtn");
+
+
+  creatingDeposit =
+    true;
+
+  button.disabled =
+    true;
+
+  button.textContent =
+    "⏳ A CRIAR ORDEM...";
+
 
   try{
 
     const payload = {
-      action:"create_treasury_deposit",
-      method:depositMethod,
-      amount,
-      currency,
-      reference
+
+      action:
+        "create_treasury_deposit",
+
+      method:
+        depositMethod,
+
+      amount:
+        amount,
+
+      currency:
+        currency,
+
+      reference:
+        reference
+
     };
 
-    /*
-      API key e credenciais Pay.co.mz NÃO são enviadas
-      pelo navegador.
-    */
 
-    const data = await apiPost(
-      API.treasury,
-      payload
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        payload
+      );
 
-    const providerReference = pick(
-      data,
-      [
-        "provider_reference",
-        "payment_reference",
-        "pay_reference",
-        "reference",
-        "id"
-      ],
-      "—"
-    );
 
-    const status = pick(
-      data,
-      ["status","state"],
-      "PENDING"
-    );
+    const providerReference =
+      pick(
+        data,
+        [
+          "provider_reference",
+          "payment_reference",
+          "pay_reference",
+          "reference",
+          "id"
+        ],
+        "—"
+      );
 
-    const message = pick(
-      data,
-      ["message","detail"],
-      "Ordem criada. Aguarda confirmação real."
-    );
+
+    const status =
+      pick(
+        data,
+        [
+          "status",
+          "state"
+        ],
+        "PENDING"
+      );
+
+
+    const message =
+      pick(
+        data,
+        [
+          "message",
+          "detail"
+        ],
+        "Ordem criada. Aguarda confirmação real."
+      );
+
 
     $("depositResult").className =
       "result show";
 
+
     $("depositResult").innerHTML =
       "<h3>Ordem criada</h3>" +
+
       "<div class='result-grid'>" +
+
       "<div class='result-item'>" +
       "<small>Estado</small>" +
-      "<strong>" + esc(status) + "</strong>" +
+      "<strong>" +
+      esc(status) +
+      "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Valor</small>" +
-      "<strong>" + esc(formatMzn(amount)) + "</strong>" +
+      "<strong>" +
+      esc(
+        currency === "USDT"
+          ? formatUsdt(amount)
+          : formatMzn(amount)
+      ) +
+      "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Referência</small>" +
       "<strong class='mono'>" +
       esc(providerReference) +
       "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Mensagem</small>" +
       "<strong>" +
       esc(message) +
       "</strong>" +
       "</div>" +
+
       "</div>";
+
 
     toast(
       "Ordem de depósito criada.",
       "success"
     );
 
-    $("depositReference").value = "";
+
+    $("depositReference").value =
+      "";
+
 
     await refreshFinancialData();
 
+
   }catch(error){
 
-    console.error("Depósito:",error);
+    console.error(
+      "Depósito:",
+      error
+    );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     $("depositResult").className =
       "result show";
+
 
     $("depositResult").innerHTML =
       "<div class='notice danger' style='margin:0'>" +
@@ -1890,46 +3224,61 @@ async function createDeposit(){
       esc(error.message) +
       "</div>";
 
+
     toast(
       "Falha ao criar depósito.",
       "error"
     );
 
+
   }finally{
 
-    creatingDeposit = false;
+    creatingDeposit =
+      false;
 
     button.disabled =
       depositMethod === "emola";
 
     button.textContent =
       "➕ CRIAR ORDEM DE DEPÓSITO";
+
   }
 }
 
 
-/* =========================
-   ORDENS DE DEPOSITO
-========================= */
+/* =========================================================
+   ORDENS DE DEPÓSITO
+========================================================= */
 
 async function loadDeposits(){
 
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=deposits"
-    );
-
-    const orders =
-      Array.isArray(data) ?
-      data :
-      pick(
-        data,
-        ["deposits","orders","items","data"],
-        []
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=deposits"
       );
 
-    const table = $("depositOrders");
+
+    const orders =
+      Array.isArray(data)
+        ? data
+        : pick(
+            data,
+            [
+              "deposits",
+              "orders",
+              "items",
+              "data"
+            ],
+            []
+          );
+
+
+    const table =
+      $("depositOrders");
+
 
     if(!orders.length){
 
@@ -1943,47 +3292,152 @@ async function loadDeposits(){
       return;
     }
 
-    table.innerHTML = orders.map(order=>{
 
-      const id = pick(order,["id","order_id"],"—");
-      const status = pick(order,["status","state"],"—");
-      const amount = pick(order,["amount","amount_mzn"],0);
-      const usdt = pick(order,["usdt","usdt_amount"],0);
-      const rate = pick(order,["rate","exchange_rate"],"—");
-      const ref = pick(
-        order,
-        [
-          "provider_reference",
-          "pay_reference",
-          "reference"
-        ],
-        "—"
-      );
+    table.innerHTML =
+      orders.map(
+        order => {
 
-      return `
-        <tr>
-          <td class="mono">${esc(id)}</td>
-          <td>${esc(status)}</td>
-          <td>${esc(amount)} MZN</td>
-          <td>${esc(usdt)} USDT</td>
-          <td>${esc(rate)}</td>
-          <td class="mono">${esc(ref)}</td>
-          <td>
-            <button
-              class="btn secondary"
-              onclick="verifyDeposit('${esc(id)}')"
-            >
-              Verificar
-            </button>
-          </td>
-        </tr>
-      `;
+          const id =
+            pick(
+              order,
+              [
+                "id",
+                "order_id"
+              ],
+              "—"
+            );
 
-    }).join("");
+
+          const status =
+            pick(
+              order,
+              [
+                "status",
+                "state"
+              ],
+              "—"
+            );
+
+
+          const amount =
+            pick(
+              order,
+              [
+                "amount",
+                "amount_mzn"
+              ],
+              0
+            );
+
+
+          const usdt =
+            pick(
+              order,
+              [
+                "usdt",
+                "usdt_amount"
+              ],
+              0
+            );
+
+
+          const rate =
+            pick(
+              order,
+              [
+                "rate",
+                "exchange_rate"
+              ],
+              "—"
+            );
+
+
+          const ref =
+            pick(
+              order,
+              [
+                "provider_reference",
+                "pay_reference",
+                "reference"
+              ],
+              "—"
+            );
+
+
+          const action =
+            status === "PENDING"
+              ? `
+                <button
+                  class="btn secondary"
+                  onclick="verifyDepositById(${JSON.stringify(String(id))})"
+                >
+                  Verificar
+                </button>
+              `
+              : `
+                <span class="muted">
+                  ${esc(String(status))}
+                </span>
+              `;
+
+
+          return `
+            <tr>
+
+              <td class="mono">
+                ${esc(id)}
+              </td>
+
+              <td>
+                <span class="status ${statusClass(status)}">
+                  ${esc(status)}
+                </span>
+              </td>
+
+              <td>
+                ${esc(amount)} MZN
+              </td>
+
+              <td>
+                ${esc(usdt)} USDT
+              </td>
+
+              <td>
+                ${esc(rate)}
+              </td>
+
+              <td class="mono">
+                ${esc(ref)}
+              </td>
+
+              <td>
+                ${action}
+              </td>
+
+            </tr>
+          `;
+
+        }
+      ).join("");
 
   }catch(error){
 
-    console.error("Depósitos:",error);
+    console.error(
+      "Depósitos:",
+      error
+    );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     $("depositOrders").innerHTML =
       "<tr>" +
@@ -1994,62 +3448,106 @@ async function loadDeposits(){
   }
 }
 
+
+/*
+  Nome separado para evitar colocar diretamente
+  valores arbitrários em onclick.
+*/
+
+async function verifyDepositById(id){
+
+  return verifyDeposit(id);
+}
+
+
 async function verifyDeposit(id){
 
   if(!id){
     return;
   }
 
+
   try{
 
-    const data = await apiPost(
-      API.treasury,
-      {
-        action:"deposit_status",
-        deposit_id:id
-      }
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        {
+          action:
+            "deposit_status",
 
-    const status = pick(
-      data,
-      ["status","state"],
-      "UNKNOWN"
-    );
+          deposit_id:
+            id
+        }
+      );
 
-    const message = pick(
-      data,
-      ["message","detail"],
-      "Verificação concluída."
-    );
+
+    const status =
+      pick(
+        data,
+        [
+          "status",
+          "state"
+        ],
+        "UNKNOWN"
+      );
+
+
+    const message =
+      pick(
+        data,
+        [
+          "message",
+          "detail"
+        ],
+        "Verificação concluída."
+      );
+
 
     toast(
       `Depósito ${id}: ${status}. ${message}`,
       status === "COMPLETED" ||
-      status === "SUCCEEDED" ?
-      "success" :
-      "normal"
+      status === "SUCCEEDED"
+        ? "success"
+        : "normal"
     );
+
 
     await refreshFinancialData();
 
+
   }catch(error){
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     toast(
       "Falha ao verificar depósito: " +
       error.message,
       "error"
     );
+
   }
 }
 
 
-/* =========================
-   LEVANTAMENTOS
-========================= */
+/* =========================================================
+   RETIRADAS
+========================================================= */
 
 function setWithdrawalMethod(method){
 
-  withdrawalMethod = method;
+  withdrawalMethod =
+    method;
+
 
   const methods = [
     "binance",
@@ -2059,6 +3557,7 @@ function setWithdrawalMethod(method){
     "bank"
   ];
 
+
   for(const item of methods){
 
     const id =
@@ -2066,114 +3565,138 @@ function setWithdrawalMethod(method){
       item.charAt(0).toUpperCase() +
       item.slice(1);
 
-    const el = $(id);
+
+    const el =
+      $(id);
+
 
     if(el){
+
       el.classList.toggle(
         "active",
         item === method
       );
+
     }
+
   }
 
-  const button = $("withdrawBtn");
-  const destination = $("withdrawDestination");
-  const notice = $("withdrawNotice");
 
-  button.disabled = false;
-  destination.disabled = false;
-  destination.value = "";
+  const button =
+    $("withdrawBtn");
+
+  const destination =
+    $("withdrawDestination");
+
+  const notice =
+    $("withdrawNotice");
+
+
+  button.disabled =
+    false;
+
+  destination.disabled =
+    false;
+
+  destination.value =
+    "";
+
 
   if(method === "binance"){
 
     destination.placeholder =
       "Endereço USDT TRC20 da Binance";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>🚀 Binance</strong><br>" +
-      "Informe o endereço USDT TRC20 de destino. " +
-      "A retirada será criada como PENDING e deverá ser aprovada.";
+      "Informe o endereço USDT TRC20. " +
+      "A retirada será criada como PENDING.";
 
     return;
   }
+
 
   if(method === "tron"){
 
     destination.placeholder =
       "Endereço TRON TRC20";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>💵 USDT TRC20</strong><br>" +
-      "Informe o endereço TRON. O servidor deverá validar " +
-      "o endereço antes do processamento.";
+      "O servidor deverá validar o endereço antes do processamento.";
 
     return;
   }
 
-  if(method === "mpesa"){
 
-    /*
-      Pay.co.mz utiliza o destino configurado no wallet.
-      Não permitimos que o browser escolha arbitrariamente
-      um destino de payout.
-    */
+  if(method === "mpesa"){
 
     destination.value =
       "CONFIGURADO NO SERVIDOR";
 
-    destination.disabled = true;
+    destination.disabled =
+      true;
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>📱 M-Pesa</strong><br>" +
-      "O destino do payout é configurado no servidor/Pay.co.mz. " +
-      "O navegador não pode substituir esse destino.";
+      "O destino do payout permanece configurado no servidor.";
 
     return;
   }
+
 
   if(method === "emola"){
 
     destination.placeholder =
       "e-Mola indisponível";
 
-    notice.className = "notice warning";
+    notice.className =
+      "notice warning";
 
     notice.innerHTML =
       "<strong>📱 e-Mola indisponível</strong><br>" +
-      "Não existe provedor e-Mola de produção ativo no fluxo " +
-      "Pay.co.mz atual.";
+      "Não existe provedor de produção ativo neste fluxo.";
 
-    button.disabled = true;
+    button.disabled =
+      true;
 
     return;
   }
+
 
   if(method === "bank"){
 
     destination.placeholder =
       "Conta bancária / NIB / referência";
 
-    notice.className = "notice";
+    notice.className =
+      "notice";
 
     notice.innerHTML =
       "<strong>🏦 Banco</strong><br>" +
-      "A retirada permanece PENDING até autorização do administrador.";
+      "A retirada permanece PENDING até autorização.";
 
     return;
   }
+
 }
+
 
 async function createWithdrawal(){
 
   if(creatingWithdrawal){
     return;
   }
+
 
   if(withdrawalMethod === "emola"){
 
@@ -2185,11 +3708,18 @@ async function createWithdrawal(){
     return;
   }
 
+
   const amount =
-    numberValue($("withdrawAmount").value);
+    numberValue(
+      $("withdrawAmount").value
+    );
+
 
   const destination =
-    $("withdrawDestination").value.trim();
+    $("withdrawDestination")
+      .value
+      .trim();
+
 
   if(
     !Number.isFinite(amount) ||
@@ -2204,10 +3734,6 @@ async function createWithdrawal(){
     return;
   }
 
-  /*
-    M-Pesa não aceita destino arbitrário vindo do browser.
-    Para os demais métodos, exigimos destino.
-  */
 
   if(
     withdrawalMethod !== "mpesa" &&
@@ -2222,99 +3748,199 @@ async function createWithdrawal(){
     return;
   }
 
-  const button = $("withdrawBtn");
 
-  creatingWithdrawal = true;
-  button.disabled = true;
-  button.textContent = "⏳ A CRIAR PENDING...";
+  /*
+    Proteção adicional no frontend:
+    evita enviar endereços obviamente inválidos
+    para os métodos TRON/Binance.
+
+    A validação real continua obrigatoriamente
+    no servidor.
+  */
+
+  if(
+    (
+      withdrawalMethod === "tron" ||
+      withdrawalMethod === "binance"
+    ) &&
+    (
+      destination.length !== 34 ||
+      !destination.startsWith("T")
+    )
+  ){
+
+    toast(
+      "O destino informado não parece ser um endereço TRON válido.",
+      "error"
+    );
+
+    return;
+  }
+
+
+  const button =
+    $("withdrawBtn");
+
+
+  creatingWithdrawal =
+    true;
+
+  button.disabled =
+    true;
+
+  button.textContent =
+    "⏳ A CRIAR PENDING...";
+
 
   try{
 
     const payload = {
-      action:"create_withdrawal",
-      method:withdrawalMethod,
-      amount
+
+      action:
+        "create_withdrawal",
+
+      method:
+        withdrawalMethod,
+
+      amount:
+        amount
+
     };
 
+
     if(withdrawalMethod !== "mpesa"){
-      payload.destination = destination;
+
+      payload.destination =
+        destination;
+
     }
 
-    const data = await apiPost(
-      API.treasury,
-      payload
-    );
 
-    const id = pick(
-      data,
-      ["id","withdrawal_id","reference"],
-      "—"
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        payload
+      );
 
-    const status = pick(
-      data,
-      ["status","state"],
-      "PENDING"
-    );
 
-    const message = pick(
-      data,
-      ["message","detail"],
-      "Retirada criada como PENDING."
-    );
+    const id =
+      pick(
+        data,
+        [
+          "id",
+          "withdrawal_id",
+          "reference"
+        ],
+        "—"
+      );
+
+
+    const status =
+      pick(
+        data,
+        [
+          "status",
+          "state"
+        ],
+        "PENDING"
+      );
+
+
+    const message =
+      pick(
+        data,
+        [
+          "message",
+          "detail"
+        ],
+        "Retirada criada como PENDING."
+      );
+
 
     $("withdrawResult").className =
       "result show";
 
+
     $("withdrawResult").innerHTML =
       "<h3>Retirada criada</h3>" +
+
       "<div class='result-grid'>" +
+
       "<div class='result-item'>" +
       "<small>ID</small>" +
       "<strong class='mono'>" +
       esc(id) +
       "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Estado</small>" +
       "<strong>" +
       esc(status) +
       "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Valor</small>" +
       "<strong>" +
       esc(amount) +
       "</strong>" +
       "</div>" +
+
       "<div class='result-item'>" +
       "<small>Mensagem</small>" +
       "<strong>" +
       esc(message) +
       "</strong>" +
       "</div>" +
+
       "</div>";
+
 
     toast(
       "Retirada criada como PENDING.",
       "success"
     );
 
-    $("withdrawAmount").value = "";
+
+    $("withdrawAmount").value =
+      "";
+
 
     if(withdrawalMethod !== "mpesa"){
-      $("withdrawDestination").value = "";
+
+      $("withdrawDestination").value =
+        "";
+
     }
+
 
     await loadWithdrawals();
     await loadDashboard();
 
+
   }catch(error){
 
-    console.error("Retirada:",error);
+    console.error(
+      "Retirada:",
+      error
+    );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     $("withdrawResult").className =
       "result show";
+
 
     $("withdrawResult").innerHTML =
       "<div class='notice danger' style='margin:0'>" +
@@ -2322,50 +3948,68 @@ async function createWithdrawal(){
       esc(error.message) +
       "</div>";
 
+
     toast(
       "Falha ao criar retirada.",
       "error"
     );
 
+
   }finally{
 
-    creatingWithdrawal = false;
+    creatingWithdrawal =
+      false;
 
     button.disabled =
       withdrawalMethod === "emola";
 
     button.textContent =
       "➖ CRIAR RETIRADA PENDING";
+
   }
 }
 
 
-/* =========================
-   AUTORIZAÇÃO / PROCESSAMENTO
-========================= */
+/* =========================================================
+   AUTORIZAÇÃO
+========================================================= */
 
 async function loadWithdrawals(){
 
-  const errorBox = $("withdrawalsError");
+  const errorBox =
+    $("withdrawalsError");
 
-  errorBox.style.display = "none";
+
+  errorBox.style.display =
+    "none";
+
 
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=withdrawals"
-    );
-
-    const withdrawals =
-      Array.isArray(data) ?
-      data :
-      pick(
-        data,
-        ["withdrawals","items","data"],
-        []
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=withdrawals"
       );
 
-    const table = $("withdrawalsTable");
+
+    const withdrawals =
+      Array.isArray(data)
+        ? data
+        : pick(
+            data,
+            [
+              "withdrawals",
+              "items",
+              "data"
+            ],
+            []
+          );
+
+
+    const table =
+      $("withdrawalsTable");
+
 
     if(!withdrawals.length){
 
@@ -2379,100 +4023,193 @@ async function loadWithdrawals(){
       return;
     }
 
-    table.innerHTML = withdrawals.map(item=>{
 
-      const id = pick(
-        item,
-        ["id","withdrawal_id"],
-        "—"
-      );
+    table.innerHTML =
+      withdrawals.map(
+        item => {
 
-      const method = pick(
-        item,
-        ["method","type"],
-        "—"
-      );
+          const id =
+            pick(
+              item,
+              [
+                "id",
+                "withdrawal_id"
+              ],
+              "—"
+            );
 
-      const amount = pick(
-        item,
-        ["amount","amount_usdt"],
-        0
-      );
 
-      const destination = pick(
-        item,
-        ["destination","to","address"],
-        "—"
-      );
+          const method =
+            pick(
+              item,
+              [
+                "method",
+                "type"
+              ],
+              "—"
+            );
 
-      const status = String(
-        pick(item,["status","state"],"PENDING")
-      ).toUpperCase();
 
-      const created = pick(
-        item,
-        ["created_at","createdAt","date"],
-        null
-      );
+          const amount =
+            pick(
+              item,
+              [
+                "amount",
+                "amount_usdt"
+              ],
+              0
+            );
 
-      let actions = "";
 
-      if(status === "PENDING"){
+          const destination =
+            pick(
+              item,
+              [
+                "destination",
+                "to",
+                "address"
+              ],
+              "—"
+            );
 
-        actions += `
-          <button
-            class="btn success"
-            onclick="approveWithdrawal('${esc(id)}')"
-          >
-            APROVAR
-          </button>
-        `;
 
-        actions += `
-          <button
-            class="btn danger"
-            onclick="cancelWithdrawal('${esc(id)}')"
-          >
-            CANCELAR
-          </button>
-        `;
-      }
+          const status =
+            String(
+              pick(
+                item,
+                [
+                  "status",
+                  "state"
+                ],
+                "PENDING"
+              )
+            ).toUpperCase();
 
-      if(status === "APPROVED"){
 
-        actions += `
-          <button
-            class="btn warning"
-            onclick="processWithdrawal('${esc(id)}')"
-          >
-            PROCESSAR
-          </button>
-        `;
-      }
+          const created =
+            pick(
+              item,
+              [
+                "created_at",
+                "createdAt",
+                "date"
+              ],
+              null
+            );
 
-      return `
-        <tr>
-          <td class="mono">${esc(id)}</td>
-          <td>${esc(method)}</td>
-          <td>${esc(amount)}</td>
-          <td class="mono">${esc(destination)}</td>
-          <td>${esc(status)}</td>
-          <td>${esc(formatDate(created))}</td>
-          <td>
-            <div class="actions" style="margin:0">
-              ${actions || "<span class='muted'>Sem ação</span>"}
-            </div>
-          </td>
-        </tr>
-      `;
 
-    }).join("");
+          let actions = "";
+
+
+          if(status === "PENDING"){
+
+            actions += `
+              <button
+                class="btn success"
+                onclick="approveWithdrawalById(${JSON.stringify(String(id))})"
+              >
+                APROVAR
+              </button>
+            `;
+
+
+            actions += `
+              <button
+                class="btn danger"
+                onclick="cancelWithdrawalById(${JSON.stringify(String(id))})"
+              >
+                CANCELAR
+              </button>
+            `;
+          }
+
+
+          if(status === "APPROVED"){
+
+            actions += `
+              <button
+                class="btn warning"
+                onclick="processWithdrawalById(${JSON.stringify(String(id))})"
+              >
+                PROCESSAR
+              </button>
+            `;
+          }
+
+
+          return `
+            <tr>
+
+              <td class="mono">
+                ${esc(id)}
+              </td>
+
+              <td>
+                ${esc(method)}
+              </td>
+
+              <td>
+                ${esc(amount)}
+              </td>
+
+              <td
+                class="mono"
+                style="max-width:230px"
+              >
+                ${esc(destination)}
+              </td>
+
+              <td>
+                <span class="status ${statusClass(status)}">
+                  ${esc(status)}
+                </span>
+              </td>
+
+              <td>
+                ${esc(formatDate(created))}
+              </td>
+
+              <td>
+                <div
+                  class="actions"
+                  style="margin:0"
+                >
+                  ${
+                    actions ||
+                    "<span class='muted'>Sem ação</span>"
+                  }
+                </div>
+              </td>
+
+            </tr>
+          `;
+
+        }
+      ).join("");
+
 
   }catch(error){
 
-    console.error("Withdrawals:",error);
+    console.error(
+      "Withdrawals:",
+      error
+    );
 
-    errorBox.style.display = "block";
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
+
+    errorBox.style.display =
+      "block";
+
 
     $("withdrawalsTable").innerHTML =
       "<tr>" +
@@ -2483,42 +4220,75 @@ async function loadWithdrawals(){
   }
 }
 
+
+async function approveWithdrawalById(id){
+
+  return approveWithdrawal(id);
+}
+
+
 async function approveWithdrawal(id){
 
   if(!id){
     return;
   }
 
-  if(!confirm(
-    "Autorizar esta retirada?\n\n" +
-    "Depois de APPROVED ela poderá ser processada."
-  )){
+
+  if(
+    !confirm(
+      "AUTORIZAR esta retirada?\n\n" +
+      "Depois de APPROVED ela poderá ser processada " +
+      "pelo endpoint de processamento."
+    )
+  ){
+
     return;
   }
 
+
   try{
 
-    const data = await apiPost(
-      API.treasury,
-      {
-        action:"approve_withdrawal",
-        withdrawal_id:id
-      }
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        {
+          action:
+            "approve_withdrawal",
+
+          withdrawal_id:
+            id
+        }
+      );
+
 
     toast(
       pick(
         data,
-        ["message"],
+        [
+          "message"
+        ],
         "Retirada autorizada."
       ),
       "success"
     );
 
+
     await loadWithdrawals();
     await loadDashboard();
 
+
   }catch(error){
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     toast(
       "Não foi possível autorizar: " +
@@ -2528,40 +4298,73 @@ async function approveWithdrawal(id){
   }
 }
 
+
+async function cancelWithdrawalById(id){
+
+  return cancelWithdrawal(id);
+}
+
+
 async function cancelWithdrawal(id){
 
   if(!id){
     return;
   }
 
-  if(!confirm(
-    "Cancelar esta retirada PENDING?"
-  )){
+
+  if(
+    !confirm(
+      "Cancelar esta retirada PENDING?"
+    )
+  ){
+
     return;
   }
 
+
   try{
 
-    const data = await apiPost(
-      API.treasury,
-      {
-        action:"cancel_withdrawal",
-        withdrawal_id:id
-      }
-    );
+    const data =
+      await apiPost(
+        API.treasury,
+        {
+          action:
+            "cancel_withdrawal",
+
+          withdrawal_id:
+            id
+        }
+      );
+
 
     toast(
       pick(
         data,
-        ["message"],
+        [
+          "message"
+        ],
         "Retirada cancelada."
       ),
       "success"
     );
 
+
     await loadWithdrawals();
+    await loadDashboard();
+
 
   }catch(error){
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     toast(
       "Não foi possível cancelar: " +
@@ -2571,54 +4374,88 @@ async function cancelWithdrawal(id){
   }
 }
 
+
+async function processWithdrawalById(id){
+
+  return processWithdrawal(id);
+}
+
+
 async function processWithdrawal(id){
 
   if(!id){
     return;
   }
 
-  if(!confirm(
-    "PROCESSAR esta retirada APPROVED?\n\n" +
-    "A operação poderá movimentar fundos reais."
-  )){
+
+  if(
+    !confirm(
+      "ATENÇÃO — PROCESSAR RETIRADA APPROVED?\n\n" +
+      "Esta ação pode movimentar dinheiro real.\n\n" +
+      "Confirme somente se o destino e o valor foram verificados."
+    )
+  ){
+
     return;
   }
+
 
   try{
 
     /*
-      O endpoint de processamento continua sendo a API
-      existente. O servidor deve verificar novamente:
+      O endpoint separado continua sendo utilizado.
+
+      O servidor deve verificar novamente:
       - sessão admin
-      - existência da retirada
+      - ID
       - estado APPROVED
-      - saldo disponível
+      - saldo
       - destino
       - idempotência
       - autorização
     */
 
-    const data = await apiPost(
-      API.process,
-      {
-        action:"process",
-        withdrawal_id:id
-      }
-    );
+    const data =
+      await apiPost(
+        API.process,
+        {
+          action:
+            "process",
+
+          withdrawal_id:
+            id
+        }
+      );
+
 
     toast(
       pick(
         data,
-        ["message"],
+        [
+          "message"
+        ],
         "Processamento iniciado."
       ),
       "success"
     );
 
+
     await loadWithdrawals();
     await refreshFinancialData();
 
+
   }catch(error){
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     toast(
       "Não foi possível processar: " +
@@ -2629,170 +4466,263 @@ async function processWithdrawal(id){
 }
 
 
-/* =========================
-   DASHBOARD / TESOURARIA
-========================= */
+/* =========================================================
+   DASHBOARD
+========================================================= */
 
 async function loadDashboard(){
 
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=dashboard"
-    );
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=dashboard"
+      );
+
 
     const treasury =
       pick(
         data,
-        ["treasury","balance","data"],
+        [
+          "treasury",
+          "balance",
+          "data"
+        ],
         data
       ) || {};
 
-    const fundMzn = pick(
-      treasury,
-      [
-        "fund_mzn",
-        "mzn_balance",
-        "mzn",
-        "balance_mzn"
-      ],
-      0
-    );
 
-    const realUsdt = pick(
-      treasury,
-      [
-        "real_usdt",
-        "usdt_real",
-        "usdt_balance",
-        "usdt"
-      ],
-      0
-    );
+    const fundMzn =
+      pick(
+        treasury,
+        [
+          "fund_mzn",
+          "mzn_balance",
+          "mzn",
+          "balance_mzn"
+        ],
+        0
+      );
 
-    const trx = pick(
-      treasury,
-      [
-        "trx",
-        "trx_balance",
-        "real_trx"
-      ],
-      0
-    );
 
-    const reservedUsdt = pick(
-      treasury,
-      [
-        "reserved_usdt",
-        "usdt_reserved"
-      ],
-      0
-    );
+    const realUsdt =
+      pick(
+        treasury,
+        [
+          "real_usdt",
+          "usdt_real",
+          "usdt_balance",
+          "usdt"
+        ],
+        0
+      );
 
-    const reservedMzn = pick(
-      treasury,
-      [
-        "reserved_mzn",
-        "mzn_reserved"
-      ],
-      0
-    );
 
-    const availableUsdt = pick(
-      treasury,
-      [
-        "available_usdt",
-        "usdt_available"
-      ],
-      numberValue(realUsdt) -
-      numberValue(reservedUsdt)
-    );
+    const trx =
+      pick(
+        treasury,
+        [
+          "trx",
+          "trx_balance",
+          "real_trx"
+        ],
+        0
+      );
 
-    const state = pick(
-      treasury,
-      [
-        "liquidity_state",
-        "state",
-        "status"
-      ],
-      null
-    );
+
+    const reservedUsdt =
+      pick(
+        treasury,
+        [
+          "reserved_usdt",
+          "usdt_reserved"
+        ],
+        0
+      );
+
+
+    const reservedMzn =
+      pick(
+        treasury,
+        [
+          "reserved_mzn",
+          "mzn_reserved"
+        ],
+        0
+      );
+
+
+    const availableUsdt =
+      pick(
+        treasury,
+        [
+          "available_usdt",
+          "usdt_available"
+        ],
+        numberValue(realUsdt) -
+        numberValue(reservedUsdt)
+      );
+
+
+    const state =
+      pick(
+        treasury,
+        [
+          "liquidity_state",
+          "state",
+          "status"
+        ],
+        null
+      );
+
 
     $("fundMzn").textContent =
       formatMzn(fundMzn);
 
+
     $("realUsdt").textContent =
       formatUsdt(realUsdt);
+
 
     $("trxBalance").textContent =
       formatTrx(trx);
 
+
     $("reservedUsdt").textContent =
       formatUsdt(reservedUsdt);
+
 
     $("reservedMzn").textContent =
       formatMzn(reservedMzn);
 
+
     $("availableUsdt").textContent =
       formatUsdt(availableUsdt);
 
+
+    const equivalentMzn =
+      currentRate &&
+      currentRate > 0
+        ? numberValue(availableUsdt) *
+          currentRate
+        : 0;
+
+
+    $("availableMznEquivalent").textContent =
+      equivalentMzn > 0
+        ? formatMzn(equivalentMzn)
+        : "—";
+
+
     if(state){
 
-      $("liquidityState").textContent =
+      const stateText =
         String(state).toUpperCase();
+
+
+      $("liquidityState").textContent =
+        stateText;
+
 
       $("liquidityState").className =
         "stat-value";
+
+
+      setTreasuryStatus(
+        stateText
+      );
+
     }else{
 
       const liquid =
         numberValue(availableUsdt) > 0;
 
+
+      const stateText =
+        liquid
+          ? "COM LIQUIDEZ"
+          : "SEM LIQUIDEZ";
+
+
       $("liquidityState").textContent =
-        liquid ?
-        "COM LIQUIDEZ" :
-        "SEM LIQUIDEZ";
+        stateText;
+
 
       $("liquidityState").className =
         "stat-value";
+
+
+      setTreasuryStatus(
+        stateText
+      );
     }
+
 
   }catch(error){
 
-    console.error("Dashboard:",error);
+    console.error(
+      "Dashboard:",
+      error
+    );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     $("liquidityState").textContent =
       "ERRO";
+
+
+    $("treasuryStatus").textContent =
+      "ERRO";
+
+    $("treasuryStatus").className =
+      "status danger";
   }
 }
 
 
-/* =========================
+/* =========================================================
    TRON
-========================= */
+========================================================= */
 
 async function loadTron(){
 
   try{
 
-    const info = await apiGet(
-      API.tronInfo
-    );
+    const info =
+      await apiGet(
+        API.tronInfo
+      );
 
-    const address = pick(
-      info,
-      [
-        "address",
-        "wallet_address",
-        "tron_address"
-      ],
-      null
-    );
+
+    const address =
+      pick(
+        info,
+        [
+          "address",
+          "wallet_address",
+          "tron_address"
+        ],
+        null
+      );
+
 
     if(address){
+
       $("tronAddress").textContent =
         address;
     }
+
 
   }catch(error){
 
@@ -2800,40 +4730,60 @@ async function loadTron(){
       "TRON info:",
       error
     );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
   }
+
 
   try{
 
-    const data = await apiGet(
-      API.tronBalance
-    );
+    const data =
+      await apiGet(
+        API.tronBalance
+      );
 
-    const usdt = pick(
-      data,
-      [
-        "usdt",
-        "usdt_balance",
-        "usdtBalance",
-        "token_balance"
-      ],
-      0
-    );
 
-    const trx = pick(
-      data,
-      [
-        "trx",
-        "trx_balance",
-        "trxBalance"
-      ],
-      0
-    );
+    const usdt =
+      pick(
+        data,
+        [
+          "usdt",
+          "usdt_balance",
+          "usdtBalance",
+          "token_balance"
+        ],
+        0
+      );
+
+
+    const trx =
+      pick(
+        data,
+        [
+          "trx",
+          "trx_balance",
+          "trxBalance"
+        ],
+        0
+      );
+
 
     $("tronUsdt").textContent =
       formatUsdt(usdt);
 
+
     $("tronTrx").textContent =
       formatTrx(trx);
+
 
   }catch(error){
 
@@ -2841,33 +4791,53 @@ async function loadTron(){
       "TRON balance:",
       error
     );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
   }
 }
 
 
-/* =========================
-   OPERACOES
-========================= */
+/* =========================================================
+   OPERAÇÕES
+========================================================= */
 
 async function loadOperations(){
 
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=operations"
-    );
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=operations"
+      );
+
 
     const operations =
-      Array.isArray(data) ?
-      data :
-      pick(
-        data,
-        ["operations","items","data"],
-        []
-      );
+      Array.isArray(data)
+        ? data
+        : pick(
+            data,
+            [
+              "operations",
+              "items",
+              "data"
+            ],
+            []
+          );
+
 
     const table =
       $("operationsTable");
+
 
     if(!operations.length){
 
@@ -2881,50 +4851,100 @@ async function loadOperations(){
       return;
     }
 
+
     table.innerHTML =
-      operations.map(item=>{
+      operations.map(
+        item => {
 
-        const date = pick(
-          item,
-          ["created_at","createdAt","date"],
-          null
-        );
+          const date =
+            pick(
+              item,
+              [
+                "created_at",
+                "createdAt",
+                "date"
+              ],
+              null
+            );
 
-        const type = pick(
-          item,
-          ["type","operation","action"],
-          "—"
-        );
 
-        const amount = pick(
-          item,
-          ["amount","value"],
-          "—"
-        );
+          const type =
+            pick(
+              item,
+              [
+                "type",
+                "operation",
+                "action"
+              ],
+              "—"
+            );
 
-        const status = pick(
-          item,
-          ["status","state"],
-          "—"
-        );
 
-        const reference = pick(
-          item,
-          ["reference","id","operation_id"],
-          "—"
-        );
+          const amount =
+            pick(
+              item,
+              [
+                "amount",
+                "value"
+              ],
+              "—"
+            );
 
-        return `
-          <tr>
-            <td>${esc(formatDate(date))}</td>
-            <td>${esc(type)}</td>
-            <td>${esc(amount)}</td>
-            <td>${esc(status)}</td>
-            <td class="mono">${esc(reference)}</td>
-          </tr>
-        `;
 
-      }).join("");
+          const status =
+            pick(
+              item,
+              [
+                "status",
+                "state"
+              ],
+              "—"
+            );
+
+
+          const reference =
+            pick(
+              item,
+              [
+                "reference",
+                "id",
+                "operation_id"
+              ],
+              "—"
+            );
+
+
+          return `
+            <tr>
+
+              <td>
+                ${esc(formatDate(date))}
+              </td>
+
+              <td>
+                ${esc(type)}
+              </td>
+
+              <td>
+                ${esc(amount)}
+              </td>
+
+              <td>
+                <span class="status ${statusClass(status)}">
+                  ${esc(status)}
+                </span>
+              </td>
+
+              <td class="mono">
+                ${esc(reference)}
+              </td>
+
+            </tr>
+          `;
+
+        }
+      ).join("");
+
 
   }catch(error){
 
@@ -2932,6 +4952,18 @@ async function loadOperations(){
       "Operações:",
       error
     );
+
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
 
     $("operationsTable").innerHTML =
       "<tr>" +
@@ -2943,50 +4975,76 @@ async function loadOperations(){
 }
 
 
-/* =========================
+/* =========================================================
    PAY STATUS
-========================= */
+========================================================= */
 
 async function loadPayStatus(){
 
   try{
 
-    const data = await apiGet(
-      API.treasury + "?action=pay_status"
-    );
+    const data =
+      await apiGet(
+        API.treasury +
+        "?action=pay_status"
+      );
 
-    const available = pick(
-      data,
-      [
-        "available",
-        "active",
-        "configured",
-        "ok"
-      ],
-      false
-    );
+
+    const available =
+      pick(
+        data,
+        [
+          "available",
+          "active",
+          "configured",
+          "ok"
+        ],
+        false
+      );
+
 
     const active =
       available === true ||
       available === "true" ||
       available === 1;
 
+
     $("configPay").textContent =
-      active ?
-      "ATIVO" :
-      "INDISPONÍVEL";
+      active
+        ? "ATIVO"
+        : "INDISPONÍVEL";
+
+
+    $("configPay").className =
+      active
+        ? "ok"
+        : "danger";
+
 
     $("configMpesa").textContent =
-      active ?
-      "ATIVO" :
-      "INDISPONÍVEL";
+      active
+        ? "ATIVO"
+        : "INDISPONÍVEL";
+
+
+    $("configMpesa").className =
+      active
+        ? "ok"
+        : "danger";
+
 
     /*
-      e-Mola não é marcado como ativo automaticamente.
+      Não afirmamos que e-Mola está ativo
+      sem integração de produção.
     */
 
     $("configEmola").textContent =
       "INDISPONÍVEL";
+
+
+    $("configEmola").className =
+      "warn";
+
 
   }catch(error){
 
@@ -2995,6 +5053,18 @@ async function loadPayStatus(){
       error
     );
 
+
+    if(
+      error.status === 401 ||
+      error.status === 403
+    ){
+
+      forceLogin();
+
+      return;
+    }
+
+
     $("configPay").textContent =
       "INDISPONÍVEL";
 
@@ -3007,82 +5077,147 @@ async function loadPayStatus(){
 }
 
 
-/* =========================
+/* =========================================================
    REFRESH
-========================= */
+========================================================= */
 
 async function refreshFinancialData(){
 
   await Promise.allSettled([
+
+    loadRate(false),
+
     loadDashboard(),
+
     loadTron(),
+
     loadDeposits(),
+
     loadWithdrawals(),
+
     loadOperations(),
-    loadPayStatus(),
-    loadRate(false)
+
+    loadPayStatus()
+
   ]);
 }
 
+
 async function refreshAll(){
 
-  const authenticated =
-    await checkSession();
+  const button =
+    $("refreshBtn");
 
-  if(authenticated === false){
-    return;
+
+  button.disabled =
+    true;
+
+
+  button.textContent =
+    "⏳ Atualizando...";
+
+
+  try{
+
+    const ok =
+      await checkSession();
+
+
+    if(!ok){
+      return;
+    }
+
+
+    await refreshFinancialData();
+
+
+    toast(
+      "Central Admin atualizada.",
+      "success"
+    );
+
+
+  }finally{
+
+    button.disabled =
+      false;
+
+    button.textContent =
+      "🔄 Atualizar";
+
   }
-
-  await refreshFinancialData();
-
-  toast(
-    "Central Admin atualizada.",
-    "success"
-  );
 }
 
 
-/* =========================
+/* =========================================================
    INIT
-========================= */
+========================================================= */
 
 async function init(){
 
-  const authenticated =
+  const ok =
     await checkSession();
 
-  if(authenticated === false){
+
+  if(!ok){
     return;
   }
 
-  setDepositMethod("mpesa");
-  setWithdrawalMethod("binance");
+
+  setDepositMethod(
+    "mpesa"
+  );
+
+
+  setWithdrawalMethod(
+    "binance"
+  );
+
 
   await refreshFinancialData();
 
+
   /*
     Exchange Rate:
-    atualização automática a cada 60 segundos.
-    A execução de uma conversão sempre busca novamente
-    a taxa antes de chamar a operação financeira.
+    atualização a cada 60 segundos.
   */
 
-  setInterval(()=>{
-    loadRate(false);
-  },60000);
+  setInterval(
+    ()=>{
+      if(authenticated){
+        loadRate(false);
+      }
+    },
+    60000
+  );
+
 
   /*
-    Atualização financeira periódica.
-    Não contém credenciais e usa sempre a sessão admin.
+    Tesouraria:
+    atualização periódica.
   */
 
-  setInterval(()=>{
-    loadDashboard();
-    loadTron();
-    loadWithdrawals();
-    loadOperations();
-  },30000);
+  setInterval(
+    ()=>{
+
+      if(!authenticated){
+        return;
+      }
+
+      loadDashboard();
+
+      loadTron();
+
+      loadWithdrawals();
+
+      loadOperations();
+
+    },
+    30000
+  );
+
 }
+
 
 document.addEventListener(
   "DOMContentLoaded",
