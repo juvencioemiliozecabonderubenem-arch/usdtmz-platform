@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>USDTMZ - Login Admin">
+
+  <title>USDTMZ — Login Admin</title>
 
   <style>
     * {
@@ -25,9 +26,9 @@
       max-width: 400px;
       margin: 20px;
       padding: 30px;
-      background: #fff;
+      background: #ffffff;
       border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     }
 
     h1 {
@@ -56,6 +57,11 @@
       border: 1px solid #d1d5db;
       border-radius: 9px;
       font-size: 16px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: #111827;
     }
 
     button {
@@ -64,14 +70,18 @@
       border: 0;
       border-radius: 9px;
       background: #111827;
-      color: #fff;
+      color: #ffffff;
       font-size: 16px;
       font-weight: bold;
       cursor: pointer;
     }
 
+    button:hover:not(:disabled) {
+      opacity: 0.92;
+    }
+
     button:disabled {
-      opacity: .6;
+      opacity: 0.6;
       cursor: not-allowed;
     }
 
@@ -83,8 +93,8 @@
       font-size: 14px;
     }
 
-    .success {
-      color: #16a34a !important;
+    #message.success {
+      color: #16a34a;
     }
   </style>
 </head>
@@ -99,9 +109,11 @@
       Painel Administrativo
     </div>
 
-    <form id="loginForm">
+    <form id="loginForm" autocomplete="on">
 
-      <label for="email">Email</label>
+      <label for="email">
+        Email
+      </label>
 
       <input
         type="email"
@@ -109,9 +121,12 @@
         name="email"
         autocomplete="username"
         required
+        maxlength="254"
       >
 
-      <label for="password">Senha</label>
+      <label for="password">
+        Senha
+      </label>
 
       <input
         type="password"
@@ -119,6 +134,7 @@
         name="password"
         autocomplete="current-password"
         required
+        maxlength="200"
       >
 
       <button
@@ -128,7 +144,11 @@
         Entrar
       </button>
 
-      <div id="message"></div>
+      <div
+        id="message"
+        role="alert"
+        aria-live="polite"
+      ></div>
 
     </form>
 
@@ -137,53 +157,71 @@
   <script>
     "use strict";
 
+    const LOGIN_API = "/api/admin-login";
+
     const form = document.getElementById("loginForm");
     const button = document.getElementById("loginButton");
     const message = document.getElementById("message");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+
 
     function showMessage(text, success) {
       message.textContent = text || "";
       message.className = success ? "success" : "";
     }
 
+
     async function loginAdmin(email, password) {
-      const response = await fetch("/api/admin-login", {
+
+      const response = await fetch(LOGIN_API, {
         method: "POST",
+
         credentials: "include",
+
         cache: "no-store",
+
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"
         },
+
         body: JSON.stringify({
           email: email,
           password: password
         })
       });
 
+
       let data = {};
 
       try {
         data = await response.json();
-      } catch {
+      } catch (error) {
         data = {};
       }
 
+
       if (!response.ok || data.success !== true) {
-        const error = new Error(
-          data.message || "Falha no login."
+
+        const loginError = new Error(
+          data.message ||
+          "Falha no login."
         );
 
-        error.status = response.status;
-        error.data = data;
+        loginError.status = response.status;
+        loginError.data = data;
 
-        throw error;
+        throw loginError;
       }
+
 
       return data;
     }
 
+
     form.addEventListener("submit", async function(event) {
+
       event.preventDefault();
 
       showMessage("", false);
@@ -191,17 +229,16 @@
       button.disabled = true;
       button.textContent = "Entrando...";
 
-      const email = document
-        .getElementById("email")
-        .value
+
+      const email = emailInput.value
         .trim()
         .toLowerCase();
 
-      const password = document
-        .getElementById("password")
-        .value;
+      const password = passwordInput.value;
+
 
       if (!email || !password) {
+
         showMessage(
           "Email e senha são obrigatórios.",
           false
@@ -209,31 +246,53 @@
 
         button.disabled = false;
         button.textContent = "Entrar";
+
         return;
       }
 
+
       try {
+
         const data = await loginAdmin(
           email,
           password
         );
 
+
         showMessage(
-          data.message || "Login realizado com sucesso.",
+          data.message ||
+          "Login realizado com sucesso.",
           true
         );
 
+
+        /*
+          O servidor cria o cookie:
+          usdtmz_admin_session
+
+          Não guardamos senha ou sessão
+          no localStorage/sessionStorage.
+        */
+
         setTimeout(function() {
-          window.location.replace("/admin.html");
+
+          window.location.replace(
+            "/admin.html"
+          );
+
         }, 100);
 
+
       } catch (error) {
+
         console.error(
-          "USDTMZ Login Admin:",
+          "USDTMZ — Login Admin:",
           error
         );
 
+
         if (error.status === 401) {
+
           showMessage(
             error.data?.message ||
             "Email ou senha incorretos.",
@@ -241,6 +300,7 @@
           );
 
         } else if (error.status === 400) {
+
           showMessage(
             error.data?.message ||
             "Dados de login inválidos.",
@@ -248,12 +308,14 @@
           );
 
         } else if (error.status >= 500) {
+
           showMessage(
-            "Erro interno do servidor.",
+            "Erro interno do servidor. Tente novamente.",
             false
           );
 
         } else {
+
           showMessage(
             error.data?.message ||
             "Erro de conexão com o servidor.",
@@ -262,10 +324,13 @@
         }
 
       } finally {
+
         button.disabled = false;
         button.textContent = "Entrar";
       }
+
     });
+
   </script>
 
 </body>
